@@ -26,6 +26,14 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.revisionsList, input),
   restoreRevision: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.revisionsRestore, input),
+
+  listDevices: () => ipcRenderer.invoke(ELECTRON_CHANNELS.devicesList),
+  getDeviceSession: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesSession),
+  connectDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesConnect, input),
+  disconnectDevice: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect),
 };
 
 contextBridge.exposeInMainWorld("androidPlatform", Object.freeze(api));

@@ -8,10 +8,15 @@ import {
 import { PersistenceDatabase } from "./persistence/database";
 import { ProjectStore } from "./persistence/project-store";
 import { registerProjectHandlers } from "./ipc/project-handlers";
+import { registerDeviceHandlers } from "./ipc/device-handlers";
+import { DeviceSessionService } from "./adb/device-session";
+import { TangoAdbGateway } from "./adb/tango-adb-gateway";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
 
 let persistence: PersistenceDatabase | null = null;
+let deviceSession: DeviceSessionService | null = null;
+let shuttingDown = false;
 
 function openPersistence(): ProjectStore {
   const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
@@ -76,6 +81,10 @@ void app.whenReady().then(() => {
   const store = openPersistence();
   registerProjectHandlers(store);
 
+  const session = new DeviceSessionService(new TangoAdbGateway());
+  deviceSession = session;
+  registerDeviceHandlers(session);
+
   createWindow();
 
   app.on("activate", () => {
@@ -84,6 +93,25 @@ void app.whenReady().then(() => {
     }
   });
 });
+
+app.on("before-quit", (event) => {
+  if (shuttingDown) {
+    return;
+  }
+  event.preventDefault();
+  shuttingDown = true;
+  void shutdownDeviceSession().finally(() => {
+    app.quit();
+  });
+});
+
+async function shutdownDeviceSession(): Promise<void> {
+  try {
+    await deviceSession?.dispose();
+  } catch (error) {
+    console.error("Failed to dispose device session during shutdown", error);
+  }
+}
 
 app.on("will-quit", () => {
   persistence?.close();

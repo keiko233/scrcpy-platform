@@ -8,7 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "test": "node --import tsx --test src/main/persistence/project-store.test.ts",
+    "test": "node --import tsx --test src/main/persistence/project-store.test.ts src/main/adb/device-session.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.electron.json",
     "lint": "oxlint"
   },
@@ -21,6 +21,8 @@
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.31",
     "@tanstack/react-router-devtools": "^1.167.1",
+    "@yume-chan/adb": "^2.6.2",
+    "@yume-chan/adb-server-node-tcp": "^2.5.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.32.0",
