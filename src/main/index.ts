@@ -5,8 +5,19 @@ import {
   type SystemInfo,
   type SystemPlatform,
 } from "../shared/electron-api";
+import { PersistenceDatabase } from "./persistence/database";
+import { ProjectStore } from "./persistence/project-store";
+import { registerProjectHandlers } from "./ipc/project-handlers";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
+
+let persistence: PersistenceDatabase | null = null;
+
+function openPersistence(): ProjectStore {
+  const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
+  persistence = new PersistenceDatabase(dbPath);
+  return new ProjectStore(persistence);
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -62,6 +73,9 @@ function getSystemPlatform(): SystemPlatform {
 void app.whenReady().then(() => {
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
 
+  const store = openPersistence();
+  registerProjectHandlers(store);
+
   createWindow();
 
   app.on("activate", () => {
@@ -69,6 +83,11 @@ void app.whenReady().then(() => {
       createWindow();
     }
   });
+});
+
+app.on("will-quit", () => {
+  persistence?.close();
+  persistence = null;
 });
 
 app.on("window-all-closed", () => {
