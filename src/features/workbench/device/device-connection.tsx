@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
 import type { DeviceManager } from "./use-devices";
 
 const SCRCPY_SETTINGS_STORAGE_KEY = "android-platform:scrcpy-settings";
@@ -61,6 +62,12 @@ function SettingRow({
 
 function ScrcpySettingsDialog() {
   const [open, setOpen] = useState(false);
+  const [savedSettings, setSavedSettings] =
+    useSafeLocalStorage(
+      SCRCPY_SETTINGS_STORAGE_KEY,
+      ScrcpySettingsSchema.nullable(),
+      null,
+    );
   const [settings, setSettings] = useState<ScrcpySettings>(
     DEFAULT_SCRCPY_SETTINGS,
   );
@@ -71,23 +78,15 @@ function ScrcpySettingsDialog() {
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
-      const saved = window.localStorage.getItem(SCRCPY_SETTINGS_STORAGE_KEY);
-      if (saved !== null) {
-        try {
-          const parsed = ScrcpySettingsSchema.safeParse(JSON.parse(saved));
-          if (parsed.success) {
-            const current = await window.androidPlatform.setScrcpySettings(
-              parsed.data,
-            );
-            if (!cancelled) {
-              setSettings(current);
-              setDraft(current);
-            }
-            return;
-          }
-        } catch {
-          window.localStorage.removeItem(SCRCPY_SETTINGS_STORAGE_KEY);
+      if (savedSettings !== null) {
+        const current = await window.androidPlatform.setScrcpySettings(
+          savedSettings,
+        );
+        if (!cancelled) {
+          setSettings(current);
+          setDraft(current);
         }
+        return;
       }
       const current = await window.androidPlatform.getScrcpySettings();
       if (!cancelled) {
@@ -103,7 +102,7 @@ function ScrcpySettingsDialog() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [savedSettings]);
 
   const validation = ScrcpySettingsSchema.safeParse(draft);
 
@@ -118,10 +117,7 @@ function ScrcpySettingsDialog() {
       const next = await window.androidPlatform.setScrcpySettings(
         validation.data,
       );
-      window.localStorage.setItem(
-        SCRCPY_SETTINGS_STORAGE_KEY,
-        JSON.stringify(next),
-      );
+      setSavedSettings(next);
       setSettings(next);
       setDraft(next);
       setOpen(false);

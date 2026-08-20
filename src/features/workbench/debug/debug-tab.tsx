@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import useAsync from "react-use/lib/useAsync";
 
 import {
   Alert,
@@ -8,22 +8,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { BugIcon, InfoIcon } from "lucide-react";
 
-import type { SystemInfo } from "@/shared/electron-api";
-
 export function DebugSettingsTab() {
-  const [system, setSystem] = useState<SystemInfo | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    void window.androidPlatform.getSystemInfo().then((info) => {
-      if (!cancelled) {
-        setSystem(info);
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  const { value: system } = useAsync(
+    () => window.androidPlatform.getSystemInfo(),
+    [],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-2">
@@ -52,9 +41,9 @@ export function DebugSettingsTab() {
         </div>
         <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[11px]">
           <dt className="text-muted-foreground">Runtime</dt>
-          <dd>{system ? system.runtime : "—"}</dd>
+          <dd>{system?.runtime ?? "—"}</dd>
           <dt className="text-muted-foreground">Platform</dt>
-          <dd>{system ? system.platform : "—"}</dd>
+          <dd>{system?.platform ?? "—"}</dd>
           <dt className="text-muted-foreground">Electron</dt>
           <dd>{system?.versions.electron ?? "—"}</dd>
           <dt className="text-muted-foreground">Chrome</dt>

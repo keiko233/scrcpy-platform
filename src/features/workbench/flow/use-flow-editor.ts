@@ -9,6 +9,7 @@ import type {
   XYPosition,
 } from "@xyflow/react";
 import { useEdgesState, useNodesState } from "@xyflow/react";
+import useLatest from "react-use/lib/useLatest";
 
 import type {
   ScriptDto,
@@ -78,20 +79,10 @@ export function useFlowEditor(
   const [saveState, setSaveState] = useState<"idle" | "saving">("idle");
   const [error, setError] = useState<FlowSaveError>(null);
 
-  const nodesRef = useRef<WorkbenchNode[]>(nodes);
-  const edgesRef = useRef<WorkbenchEdge[]>(edges);
-  const viewportRef = useRef<Viewport>(viewport);
+  const nodesRef = useLatest(nodes);
+  const edgesRef = useLatest(edges);
+  const viewportRef = useLatest(viewport);
   const suppressViewportDirtyRef = useRef(false);
-
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-  useEffect(() => {
-    edgesRef.current = edges;
-  }, [edges]);
-  useEffect(() => {
-    viewportRef.current = viewport;
-  }, [viewport]);
 
   const loadDocument = useCallback((document: FlowDocument) => {
     suppressViewportDirtyRef.current = true;

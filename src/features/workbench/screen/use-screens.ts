@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import useInterval from "react-use/lib/useInterval";
 
 import type {
   CreateVirtualDisplayInput,
@@ -99,30 +100,23 @@ export function useScreens(devices: DeviceManager): ScreenManager {
     [],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const current = await window.androidPlatform.getScreenSession();
-        if (!cancelled) {
-          setScreen(current);
-          if (current.errorMessage !== null) {
-            setError(current.errorMessage);
-          }
-        }
-      } catch (cause) {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
+  const load = useCallback(async () => {
+    try {
+      const current = await window.androidPlatform.getScreenSession();
+      setScreen(current);
+      if (current.errorMessage !== null) {
+        setError(current.errorMessage);
       }
-    };
-    void load();
-    const interval = window.setInterval(() => void load(), SCREEN_POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-    };
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    }
   }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useInterval(() => void load(), SCREEN_POLL_MS);
 
   useEffect(() => {
     const session = devices.session;

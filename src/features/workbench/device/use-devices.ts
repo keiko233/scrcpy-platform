@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import useInterval from "react-use/lib/useInterval";
 
 import type {
   AdbDeviceDto,
@@ -177,12 +178,7 @@ export function useDevices(): DeviceManager {
     };
   }, [applySessionSnapshot]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      void refreshSession();
-    }, SESSION_POLL_MS);
-    return () => clearInterval(interval);
-  }, [refreshSession]);
+  useInterval(() => void refreshSession(), SESSION_POLL_MS);
 
   const clearError = useCallback(() => setListError(null), []);
   const clearSessionError = useCallback(() => setSessionError(null), []);
