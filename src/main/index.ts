@@ -49,9 +49,20 @@ function createWindow(): void {
   });
 
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
-    const logLevel = level === 3 ? "error" : level === 2 ? "warn" : level === 1 ? "info" : "debug";
-    logger?.captureRenderer(logLevel, [message], `${sourceId}:${line}`);
+  win.webContents.on("console-message", (details) => {
+    const logLevel =
+      details.level === "error"
+        ? "error"
+        : details.level === "warning"
+          ? "warn"
+          : details.level === "info"
+            ? "info"
+            : "debug";
+    logger?.captureRenderer(
+      logLevel,
+      [details.message],
+      `${details.sourceId}:${details.lineNumber}`,
+    );
   });
   win.webContents.on("will-navigate", (event) => {
     event.preventDefault();

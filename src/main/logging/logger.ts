@@ -97,7 +97,12 @@ export class Logger {
 
   private getCallerLocation(): string | null {
     const stack = new Error().stack?.split("\n").slice(1) ?? [];
-    const caller = stack.find((line) => !line.includes("/logging/logger."));
+    const caller = stack.find(
+      (line) =>
+        !line.includes("/logging/logger.") &&
+        !line.includes("Logger.getCallerLocation") &&
+        !line.includes("Logger.write"),
+    );
     return caller?.trim().replace(/^at /, "") ?? null;
   }
 

@@ -380,6 +380,11 @@ export class ScreenSessionService {
   attachVideoPort(streamId: string, port: ScreenVideoPort): void {
     const stream = this.#stream;
     if (stream === null || stream.streamId !== streamId || this.#videoCodec === null) {
+      console.warn("scrcpy video port rejected", {
+        requestedStreamId: streamId,
+        activeStreamId: stream?.streamId ?? null,
+        hasCodec: this.#videoCodec !== null,
+      });
       try {
         port.postMessage({
           type: "stopped",
@@ -395,6 +400,10 @@ export class ScreenSessionService {
     this.#closeVideoPort("The monitor renderer was replaced.");
     this.#videoPort = port;
     try {
+      console.debug("scrcpy video port attached", {
+        streamId,
+        hasConfiguration: this.#videoConfiguration !== null,
+      });
       port.postMessage({
         type: "metadata",
         streamId,

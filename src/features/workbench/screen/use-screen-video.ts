@@ -48,6 +48,7 @@ export function useScreenVideo(
       null;
     let removeSizeListener: (() => void) | null = null;
     let requestRetry: number | null = null;
+    let waitingForKeyframe = true;
 
     const disposeDecoder = () => {
       removeSizeListener?.();
@@ -64,7 +65,12 @@ export function useScreenVideo(
       }
       if (message.type === "metadata") {
         disposeDecoder();
+        waitingForKeyframe = true;
         try {
+          console.debug("screen video metadata received", {
+            streamId,
+            codec: message.codec,
+          });
           const renderer = WebGLVideoFrameRenderer.isSupported
             ? new WebGLVideoFrameRenderer(canvas)
             : new BitmapVideoFrameRenderer(canvas);
@@ -78,6 +84,7 @@ export function useScreenVideo(
           });
           setState((current) => ({ ...current, connected: true, error: null }));
         } catch (cause) {
+          console.error("screen video decoder initialization failed", cause);
           setState({
             ...INITIAL_STATE,
             error: cause instanceof Error ? cause.message : String(cause),
@@ -86,7 +93,26 @@ export function useScreenVideo(
         return;
       }
       if (message.type === "packet") {
+        if (
+          message.packet.type === "data" &&
+          waitingForKeyframe &&
+          message.packet.keyframe !== true
+        ) {
+          return;
+        }
+        if (message.packet.type === "data" && message.packet.keyframe === true) {
+          waitingForKeyframe = false;
+        }
         void writer?.write(message.packet).catch((cause) => {
+          console.error("screen video packet decode failed", cause);
+          waitingForKeyframe = true;
+          disposeDecoder();
+          requestRetry = window.setTimeout(() => {
+            requestRetry = null;
+            if (!disposed) {
+              window.androidPlatform.requestScreenVideo({ streamId });
+            }
+          }, 100);
           setState((current) => ({
             ...current,
             connected: false,
@@ -95,6 +121,10 @@ export function useScreenVideo(
         });
         return;
       }
+      console.warn("screen video stopped", {
+        streamId,
+        reason: message.reason ?? null,
+      });
       setState({
         ...INITIAL_STATE,
         error: message.reason ?? "The screen stream stopped.",
@@ -128,6 +158,7 @@ export function useScreenVideo(
 
       port?.close();
       port = nextPort;
+      console.debug("screen video port received", { streamId });
       nextPort.onmessage = (portEvent: MessageEvent<ScreenVideoMessage>) => {
         receiveVideoMessage(portEvent.data);
       };
@@ -135,6 +166,7 @@ export function useScreenVideo(
     };
 
     window.addEventListener("message", receivePort);
+    console.debug("requesting screen video", { streamId });
     window.androidPlatform.requestScreenVideo({ streamId });
 
     return () => {

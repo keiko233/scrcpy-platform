@@ -78,6 +78,7 @@ export function registerScreenHandlers(service: ScreenSessionService): void {
     }
     const input = parsed.data;
     const { port1, port2 } = new MessageChannelMain();
+    console.debug("screen video port requested", { streamId: input.streamId });
     service.attachVideoPort(input.streamId, port1);
     event.sender.postMessage(
       ELECTRON_CHANNELS.screensVideoPort,

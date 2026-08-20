@@ -146,7 +146,9 @@ export function DeviceMonitor() {
     screens.screen?.streamId !== null && screens.screen?.streamId !== undefined;
   const displays = screens.screen?.displays ?? [];
   const activeDisplayValue =
-    screens.screen?.activeDisplayId?.toString() ?? undefined;
+    screens.screen?.activeDisplayId?.toString() ??
+    displays[0]?.displayId.toString() ??
+    "";
 
   return (
     <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-black/95">
