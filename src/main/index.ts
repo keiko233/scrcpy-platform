@@ -35,6 +35,7 @@ function createWindow(): void {
       contextIsolation: true,
       sandbox: true,
       nodeIntegration: false,
+      devTools: Boolean(rendererUrl),
     },
   });
 
@@ -46,6 +47,19 @@ function createWindow(): void {
   win.webContents.on("will-navigate", (event) => {
     event.preventDefault();
   });
+
+  if (rendererUrl) {
+    win.webContents.on("before-input-event", (event, input) => {
+      if (
+        input.type === "keyDown" &&
+        input.key === "F12" &&
+        !input.isAutoRepeat
+      ) {
+        event.preventDefault();
+        win.webContents.toggleDevTools();
+      }
+    });
+  }
 
   if (rendererUrl) {
     void win.loadURL(rendererUrl);

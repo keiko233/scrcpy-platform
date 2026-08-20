@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   ContextMenu,
+  ContextMenuGroup,
   ContextMenuGroupLabel,
   ContextMenuItem,
   ContextMenuPopup,
@@ -165,20 +166,22 @@ function FlowCanvas() {
           </ContextMenuTrigger>
 
           <ContextMenuPopup align="center" sideOffset={6}>
-            <ContextMenuGroupLabel>Add block at pointer</ContextMenuGroupLabel>
-            {BLOCK_KIND_ORDER.map((kind) => {
-              const definition = BLOCK_DEFINITIONS[kind];
-              const Icon = definition.icon;
-              return (
-                <ContextMenuItem
-                  key={kind}
-                  onClick={() => addBlockAtPane(kind)}
-                >
-                  <Icon />
-                  {definition.label}
-                </ContextMenuItem>
-              );
-            })}
+            <ContextMenuGroup>
+              <ContextMenuGroupLabel>Add block at pointer</ContextMenuGroupLabel>
+              {BLOCK_KIND_ORDER.map((kind) => {
+                const definition = BLOCK_DEFINITIONS[kind];
+                const Icon = definition.icon;
+                return (
+                  <ContextMenuItem
+                    key={kind}
+                    onClick={() => addBlockAtPane(kind)}
+                  >
+                    <Icon />
+                    {definition.label}
+                  </ContextMenuItem>
+                );
+              })}
+            </ContextMenuGroup>
             {selectedNodes.length > 0 && (
               <>
                 <ContextMenuSeparator />
