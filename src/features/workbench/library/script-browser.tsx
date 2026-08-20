@@ -136,8 +136,8 @@ export function ScriptBrowser() {
   };
 
   return (
-    <div className="wb-panel">
-      <div className="wb-panel-header">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+      <div className="flex h-7 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 text-xs font-medium text-muted-foreground">
         <FolderIcon className="size-3.5" />
         Files
       </div>

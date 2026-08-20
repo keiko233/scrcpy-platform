@@ -65,7 +65,7 @@ export function MenuPopup({
           data-slot="menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">
+          <div className="max-h-(--available-height) w-full overflow-y-auto">
             {children}
           </div>
         </MenuPrimitive.Popup>
@@ -252,7 +252,7 @@ export function MenuSeparator({
 }: MenuPrimitive.Separator.Props): React.ReactElement {
   return (
     <MenuPrimitive.Separator
-      className={cn("mx-2 my-1 h-px bg-border", className)}
+      className={cn("mx-1 my-0.5 h-px bg-border", className)}
       data-slot="menu-separator"
       {...props}
     />

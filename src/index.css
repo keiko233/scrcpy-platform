@@ -174,7 +174,7 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  --radius: 0;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -245,22 +245,6 @@ body,
 #root {
   height: 100%;
   overflow: hidden;
-}
-
-@layer components {
-  /* Compact panel chrome used across the workbench. */
-  .wb-panel {
-    @apply flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card;
-  }
-  .wb-panel-header {
-    @apply flex h-7 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 text-xs font-medium text-muted-foreground;
-  }
-  .wb-panel-body {
-    @apply flex min-h-0 flex-1 flex-col overflow-hidden;
-  }
-  .wb-scroll {
-    @apply min-h-0 flex-1 overflow-y-auto;
-  }
 }
 
 /* Compact React Flow styling that follows the app theme. */

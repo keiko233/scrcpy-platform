@@ -64,7 +64,7 @@ export function ContextMenuPopup({
           data-slot="context-menu-popup"
           {...props}
         >
-          <div className="max-h-(--available-height) w-full overflow-y-auto p-1">
+          <div className="max-h-(--available-height) w-full overflow-y-auto">
             {children}
           </div>
         </ContextMenuPrimitive.Popup>

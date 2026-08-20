@@ -11,7 +11,7 @@ export function WorkbenchRoute() {
   return (
     <WorkbenchProvider>
       <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
-        <WorkbenchToolbar />
+        {/* <WorkbenchToolbar /> */}
         <div className="min-h-0 flex-1">
           <Group orientation="vertical" className="h-full w-full">
             <Panel id="top" defaultSize="42" minSize={200}>
@@ -19,7 +19,9 @@ export function WorkbenchRoute() {
                 <Panel id="monitor" defaultSize="64" minSize={320}>
                   <DeviceMonitor />
                 </Panel>
+
                 <Separator />
+
                 <Panel id="upper-right" defaultSize="36" minSize={300}>
                   <UpperRightTabs />
                 </Panel>

@@ -208,8 +208,8 @@ export function FlowEditorPanel() {
   const { selectedScript } = library;
 
   return (
-    <div className="wb-panel">
-      <div className="wb-panel-header">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
+      <div className="flex items-center min-h-0 overflow-hidden bg-muted/40 p-1 text-sm gap-1">
         <GitForkIcon className="size-3.5" />
         Flow editor
         <span className="ms-auto flex min-w-0 items-center gap-2 truncate">
@@ -232,7 +232,7 @@ export function FlowEditorPanel() {
         </span>
       </div>
 
-      <div className="wb-panel-body">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {selectedScript === null ? (
           <EditorEmptyState />
         ) : (

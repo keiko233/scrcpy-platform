@@ -1,22 +1,63 @@
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
-import { MonitorIcon, VideoOffIcon } from "lucide-react";
+import {
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import {
+  ChevronLeftIcon,
+  CircleIcon,
+  MonitorIcon,
+  PlusIcon,
+  PowerIcon,
+  SmartphoneIcon,
+  SquareIcon,
+  VideoOffIcon,
+  Volume1Icon,
+  Volume2Icon,
+} from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
 import { EmptyMedia } from "@/components/ui/empty";
 
-import type { TouchAction } from "@/shared/screen-contracts";
+import type { DeviceButton, TouchAction } from "@/shared/screen-contracts";
 import { useScreenVideo } from "../screen/use-screen-video";
 import { useWorkbench } from "../use-workbench";
+import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import {
+  Menu,
+  MenuCheckboxItem,
+  MenuGroup,
+  MenuGroupLabel,
+  MenuItem,
+  MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSeparator,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
+  MenuTrigger,
+} from "@/components/ui/menu";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
 
-const STATE_VARIANT: Record<string, "outline" | "success" | "warning" | "error"> =
-  {
-    disconnected: "outline",
-    idle: "outline",
-    starting: "warning",
-    streaming: "success",
-    switching: "warning",
-    error: "error",
-  };
+type DeviceButtonConfig = {
+  button: DeviceButton;
+  label: string;
+  icon: typeof ChevronLeftIcon;
+};
+
+const DEVICE_BUTTONS: Array<DeviceButtonConfig> = [
+  { button: "back", label: "Back", icon: ChevronLeftIcon },
+  { button: "home", label: "Home", icon: CircleIcon },
+  { button: "app-switch", label: "Recent apps", icon: SquareIcon },
+];
+
+const VOLUME_BUTTONS: Array<DeviceButtonConfig> = [
+  { button: "volume-up", label: "Volume up", icon: Volume2Icon },
+  { button: "volume-down", label: "Volume down", icon: Volume1Icon },
+  { button: "power", label: "Power", icon: PowerIcon },
+];
 
 export function DeviceMonitor() {
   const { devices, screens } = useWorkbench();
@@ -24,11 +65,7 @@ export function DeviceMonitor() {
   const moveFrameRef = useRef<number | null>(null);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
   const session = devices.session;
-  const screen = screens.screen;
-  const video = useScreenVideo(canvasRef, screen?.streamId ?? null);
-
-  const state = screen?.state ?? session?.state ?? "disconnected";
-  const variant = STATE_VARIANT[state] ?? "outline";
+  const video = useScreenVideo(canvasRef, screens.screen?.streamId ?? null);
 
   const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -41,12 +78,18 @@ export function DeviceMonitor() {
     };
   };
 
-  const sendTouch = (action: TouchAction, position: { x: number; y: number }) => {
-    if (screen?.activeDisplayId === null || screen?.activeDisplayId === undefined) {
+  const sendTouch = (
+    action: TouchAction,
+    position: { x: number; y: number },
+  ) => {
+    if (
+      screens.screen?.activeDisplayId === null ||
+      screens.screen?.activeDisplayId === undefined
+    ) {
       return;
     }
     void screens.injectTouch({
-      displayId: screen.activeDisplayId,
+      displayId: screens.screen.activeDisplayId,
       action,
       ...position,
     });
@@ -99,77 +142,178 @@ export function DeviceMonitor() {
     [],
   );
 
-  const showCanvas = screen?.streamId !== null && screen?.streamId !== undefined;
+  const showCanvas =
+    screens.screen?.streamId !== null && screens.screen?.streamId !== undefined;
+  const displays = screens.screen?.displays ?? [];
+  const activeDisplayValue =
+    screens.screen?.activeDisplayId?.toString() ?? undefined;
 
   return (
-    <div className="wb-panel">
-      <div className="wb-panel-header">
-        <MonitorIcon className="size-3.5" />
-        Monitor
-        {screen?.activeDisplayId !== null && screen?.activeDisplayId !== undefined && (
-          <span className="font-mono text-[10px] text-muted-foreground">
-            display {screen.activeDisplayId}
-          </span>
-        )}
-        <div className="ms-auto flex items-center gap-1.5">
-          <Badge size="sm" variant={variant}>
-            {state}
-          </Badge>
-        </div>
-      </div>
+    <div className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-black/95">
+      {displays.length > 0 && (
+        <Tabs
+          className="shrink-0 gap-0 flex-row"
+          value={activeDisplayValue}
+          onValueChange={(value) => {
+            const displayId = Number(value);
+            if (Number.isInteger(displayId) && displayId >= 0) {
+              void screens.selectDisplay(displayId);
+            }
+          }}
+        >
+          <TabsList className="w-full rounded-none">
+            {displays.map((display) => (
+              <TabsTab
+                key={display.displayId}
+                value={display.displayId.toString()}
+                disabled={screens.busy}
+              >
+                {display.kind === "virtual" ? (
+                  <MonitorIcon className="size-3.5" />
+                ) : (
+                  <SmartphoneIcon className="size-3.5" />
+                )}
 
-      <div className="wb-panel-body gap-2 p-2">
-        <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-lg border bg-black/95">
-          {showCanvas && (
-            <canvas
-              aria-label="Live Android display"
-              className="h-auto max-h-full w-auto max-w-full touch-none bg-black"
-              onPointerCancel={(event) => pointerEnd("cancel", event)}
-              onPointerDown={pointerDown}
-              onPointerMove={pointerMove}
-              onPointerUp={(event) => pointerEnd("up", event)}
-              ref={canvasRef}
-            />
-          )}
-          {(!showCanvas || !video.connected) && (
+                <span>Display {display.displayId}</span>
+
+                <Badge size="sm" className="font-mono font-bold">
+                  {display.kind}
+                </Badge>
+              </TabsTab>
+            ))}
+          </TabsList>
+
+          <Menu>
+            <MenuTrigger render={<Button size="icon" variant="secondary" />}>
+              <PlusIcon />
+            </MenuTrigger>
+
+            <MenuPopup align="start">
+              <MenuItem>Profile</MenuItem>
+              <MenuSeparator />
+
+              <MenuGroup>
+                <MenuGroupLabel>Playback</MenuGroupLabel>
+                <MenuItem>Play</MenuItem>
+                <MenuItem>Pause</MenuItem>
+              </MenuGroup>
+
+              <MenuSeparator />
+
+              <MenuCheckboxItem>Shuffle</MenuCheckboxItem>
+              <MenuCheckboxItem>Repeat</MenuCheckboxItem>
+              <MenuCheckboxItem variant="switch">Auto save</MenuCheckboxItem>
+
+              <MenuSeparator />
+
+              <MenuGroup>
+                <MenuGroupLabel>Sort by</MenuGroupLabel>
+                <MenuRadioGroup>
+                  <MenuRadioItem>Artist</MenuRadioItem>
+                  <MenuRadioItem>Album</MenuRadioItem>
+                  <MenuRadioItem>Title</MenuRadioItem>
+                </MenuRadioGroup>
+              </MenuGroup>
+
+              <MenuSeparator />
+
+              <MenuSub>
+                <MenuSubTrigger>Add to playlist</MenuSubTrigger>
+                <MenuSubPopup>
+                  <MenuItem>Jazz</MenuItem>
+                  <MenuItem>Rock</MenuItem>
+                </MenuSubPopup>
+              </MenuSub>
+            </MenuPopup>
+          </Menu>
+        </Tabs>
+      )}
+
+      {!showCanvas ? (
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
+            <div className="flex flex-col items-center gap-3 px-6 text-center">
+              <EmptyMedia variant="icon" className="mb-0">
+                <VideoOffIcon aria-hidden="true" className="size-4" />
+              </EmptyMedia>
+
+              <div className="text-xs font-medium text-foreground">
+                {showCanvas
+                  ? "Waiting for scrcpy video"
+                  : "Video stream not connected"}
+              </div>
+
+              <p className="max-w-64 text-[11px] leading-4 text-muted-foreground">
+                {video.error ??
+                  (session?.state === "connected"
+                    ? "Open Screens to select a display. The main display starts automatically after connection."
+                    : "Connect an Android device to start monitoring its main display.")}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
+          <canvas
+            aria-label="Live Android display"
+            className="h-auto max-h-full w-auto max-w-full touch-none bg-black"
+            onPointerCancel={(event) => pointerEnd("cancel", event)}
+            onPointerDown={pointerDown}
+            onPointerMove={pointerMove}
+            onPointerUp={(event) => pointerEnd("up", event)}
+            ref={canvasRef}
+          />
+
+          {!video.connected && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
               <div className="flex flex-col items-center gap-3 px-6 text-center">
                 <EmptyMedia variant="icon" className="mb-0">
                   <VideoOffIcon aria-hidden="true" className="size-4" />
                 </EmptyMedia>
+
                 <div className="text-xs font-medium text-foreground">
-                  {showCanvas ? "Waiting for scrcpy video" : "Video stream not connected"}
+                  Waiting for scrcpy video
                 </div>
+
                 <p className="max-w-64 text-[11px] leading-4 text-muted-foreground">
-                  {video.error ??
-                    (session?.state === "connected"
-                      ? "Open Screens to select a display. The main display starts automatically after connection."
-                      : "Connect an Android device to start monitoring its main display.")}
+                  {video.error ?? "The video decoder is starting."}
                 </p>
               </div>
             </div>
           )}
         </div>
+      )}
 
-        <div className="grid shrink-0 grid-cols-2 gap-x-3 gap-y-1 rounded-lg border px-3 py-2 text-[11px]">
-          <span className="text-muted-foreground">Session</span>
-          <span className="truncate text-right font-mono" title={session?.sessionId}>
-            {session?.sessionId ?? "—"}
-          </span>
-          <span className="text-muted-foreground">Device</span>
-          <span
-            className="truncate text-right font-mono"
-            title={session?.serial ?? undefined}
+      <div className="flex gap-1 rounded-md bg-muted w-full">
+        {DEVICE_BUTTONS.map(({ button, label, icon: Icon }) => (
+          <Button
+            aria-label={label}
+            disabled={screens.busy}
+            key={button}
+            onClick={() => void screens.pressButton(button)}
+            size="icon-sm"
+            title={label}
+            variant="secondary"
           >
-            {session?.serial ?? "—"}
-          </span>
-          <span className="text-muted-foreground">Video</span>
-          <span className="text-right font-mono">
-            {video.width > 0 && video.height > 0
-              ? `${video.width}×${video.height}`
-              : "—"}
-          </span>
-        </div>
+            <Icon className="size-3" />
+          </Button>
+        ))}
+
+        <div className="flex-1" />
+
+        {VOLUME_BUTTONS.map(({ button, label, icon: Icon }) => (
+          <Button
+            aria-label={label}
+            disabled={screens.busy}
+            key={button}
+            onClick={() => void screens.pressButton(button)}
+            size="icon-sm"
+            title={label}
+            variant="secondary"
+          >
+            <Icon className="size-3" />
+          </Button>
+        ))}
       </div>
     </div>
   );

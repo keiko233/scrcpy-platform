@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { type RefObject, useEffect, useState } from "react";
 
 import type {
   ScrcpyMediaStreamPacket,
@@ -44,8 +44,10 @@ export function useScreenVideo(
     let disposed = false;
     let port: MessagePort | null = null;
     let decoder: WebCodecsVideoDecoder | null = null;
-    let writer: WritableStreamDefaultWriter<ScrcpyMediaStreamPacket> | null = null;
+    let writer: WritableStreamDefaultWriter<ScrcpyMediaStreamPacket> | null =
+      null;
     let removeSizeListener: (() => void) | null = null;
+    let requestRetry: number | null = null;
 
     const disposeDecoder = () => {
       removeSizeListener?.();
@@ -108,11 +110,22 @@ export function useScreenVideo(
       ) {
         return;
       }
+
       const nextPort = event.ports[0];
       if (nextPort === undefined) {
-        setState({ ...INITIAL_STATE, error: "Electron did not transfer a video port." });
+        setState({
+          ...INITIAL_STATE,
+          error: "Electron did not transfer a video port.",
+        });
+        requestRetry = window.setTimeout(() => {
+          requestRetry = null;
+          if (!disposed) {
+            window.androidPlatform.requestScreenVideo({ streamId });
+          }
+        }, 100);
         return;
       }
+
       port?.close();
       port = nextPort;
       nextPort.onmessage = (portEvent: MessageEvent<ScreenVideoMessage>) => {
@@ -127,6 +140,9 @@ export function useScreenVideo(
     return () => {
       disposed = true;
       window.removeEventListener("message", receivePort);
+      if (requestRetry !== null) {
+        window.clearTimeout(requestRetry);
+      }
       port?.close();
       disposeDecoder();
     };

@@ -3,15 +3,15 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
-import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import { defineConfig } from "electron-vite";
 
 // https://electron-vite.org/config/
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    clearScreen: false,
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    clearScreen: false,
     // Sandboxed preload scripts must be CommonJS. Keep the extension explicit
     // so Electron's sandbox loader can require it regardless of "type": "module".
     build: {
@@ -24,6 +24,7 @@ export default defineConfig({
     },
   },
   renderer: {
+    clearScreen: false,
     root: ".",
     resolve: {
       alias: {
