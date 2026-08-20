@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from "electron";
 import {
   ELECTRON_CHANNELS,
+  SCREEN_VIDEO_WINDOW_EVENT,
   type ElectronAPI,
 } from "../shared/electron-api";
 
@@ -34,6 +35,31 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesConnect, input),
   disconnectDevice: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect),
+
+  getScreenSession: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSession),
+  refreshScreens: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensRefresh),
+  startScreen: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensStart, input),
+  createVirtualScreen: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensCreateVirtual, input),
+  destroyVirtualScreen: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensDestroyVirtual),
+  pressDeviceButton: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensPressButton, input),
+  injectScreenTouch: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensInjectTouch, input),
+  requestScreenVideo: (input) =>
+    ipcRenderer.send(ELECTRON_CHANNELS.screensRequestVideo, input),
 };
+
+ipcRenderer.on(ELECTRON_CHANNELS.screensVideoPort, (event, payload) => {
+  window.postMessage(
+    { type: SCREEN_VIDEO_WINDOW_EVENT, ...payload },
+    "*",
+    event.ports,
+  );
+});
 
 contextBridge.exposeInMainWorld("androidPlatform", Object.freeze(api));

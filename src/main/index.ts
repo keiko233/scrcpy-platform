@@ -9,13 +9,16 @@ import { PersistenceDatabase } from "./persistence/database";
 import { ProjectStore } from "./persistence/project-store";
 import { registerProjectHandlers } from "./ipc/project-handlers";
 import { registerDeviceHandlers } from "./ipc/device-handlers";
+import { registerScreenHandlers } from "./ipc/screen-handlers";
 import { DeviceSessionService } from "./adb/device-session";
+import { ScreenSessionService } from "./adb/screen-session";
 import { TangoAdbGateway } from "./adb/tango-adb-gateway";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
 
 let persistence: PersistenceDatabase | null = null;
 let deviceSession: DeviceSessionService | null = null;
+let screenSession: ScreenSessionService | null = null;
 let shuttingDown = false;
 
 function openPersistence(): ProjectStore {
@@ -98,6 +101,9 @@ void app.whenReady().then(() => {
   const session = new DeviceSessionService(new TangoAdbGateway());
   deviceSession = session;
   registerDeviceHandlers(session);
+  const screens = new ScreenSessionService(session);
+  screenSession = screens;
+  registerScreenHandlers(screens);
 
   createWindow();
 
@@ -121,6 +127,7 @@ app.on("before-quit", (event) => {
 
 async function shutdownDeviceSession(): Promise<void> {
   try {
+    await screenSession?.dispose();
     await deviceSession?.dispose();
   } catch (error) {
     console.error("Failed to dispose device session during shutdown", error);

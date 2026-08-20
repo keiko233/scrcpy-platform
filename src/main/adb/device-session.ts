@@ -1,3 +1,4 @@
+import type { Adb } from "@yume-chan/adb";
 import type {
   AdbDeviceDto,
   ConnectDeviceFailure,
@@ -22,8 +23,13 @@ export type DeviceInfo = AdbDeviceDto;
 export interface DeviceConnection {
   readonly transportId: string;
   readonly serial: string;
+  readonly adb: Adb;
   close(): Promise<void>;
 }
+
+export type BeforeDeviceDisconnectHook = (
+  connection: DeviceConnection,
+) => Promise<void>;
 
 /**
  * Injected abstraction over the ADB transport.
@@ -75,6 +81,7 @@ export class DeviceSessionService {
   #errorMessage: string | null = null;
   #queue: Promise<void> = Promise.resolve();
   #disposePromise: Promise<void> | null = null;
+  readonly #beforeDisconnectHooks = new Set<BeforeDeviceDisconnectHook>();
 
   constructor(gateway: DeviceGateway, sessionId: string = randomSessionId()) {
     this.#gateway = gateway;
@@ -101,6 +108,15 @@ export class DeviceSessionService {
 
   getSession(): DeviceSessionDto {
     return this.#snapshot();
+  }
+
+  getConnection(): DeviceConnection | null {
+    return this.#state === "connected" ? this.#connection : null;
+  }
+
+  registerBeforeDisconnect(hook: BeforeDeviceDisconnectHook): () => void {
+    this.#beforeDisconnectHooks.add(hook);
+    return () => this.#beforeDisconnectHooks.delete(hook);
   }
 
   connectDevice(transportId: string): Promise<ConnectDeviceResult> {
@@ -203,6 +219,9 @@ export class DeviceSessionService {
     if (connection !== null) {
       this.#connection = null;
       try {
+        await Promise.allSettled(
+          [...this.#beforeDisconnectHooks].map((hook) => hook(connection)),
+        );
         await connection.close();
       } catch (error) {
         this.#target = null;

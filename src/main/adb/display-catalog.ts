@@ -1,0 +1,129 @@
+import type { AndroidDisplayDto } from "../../shared/screen-contracts";
+
+interface ParsedDisplay {
+  displayId: number;
+  name: string;
+  virtual: boolean;
+  primary: boolean;
+}
+
+export function parseDisplayIds(output: string): number[] {
+  return [...output.matchAll(/^\s*(\d+)\s*$/gm)].map((match) =>
+    Number(match[1]),
+  );
+}
+
+export function parseDisplayDetails(output: string): ParsedDisplay[] {
+  const matches = [...output.matchAll(/^\s*Display\s+(\d+):/gm)];
+  const displays = new Map<number, ParsedDisplay>();
+
+  for (const [index, match] of matches.entries()) {
+    const start = match.index ?? 0;
+    const end = matches[index + 1]?.index ?? output.length;
+    const block = output.slice(start, end);
+    const displayId = Number(match[1]);
+    const fallbackName = `Display ${displayId}`;
+    const name =
+      block.match(
+        /(?:mDisplayInfo=DisplayInfo|DisplayDeviceInfo)\{"([^"]+)"/,
+      )?.[1] ?? fallbackName;
+    const uniqueId = block.match(/uniqueId\s*[=:]?\s*"?([^",}\s]+)/)?.[1];
+    const virtual =
+      uniqueId?.startsWith("virtual:") === true ||
+      /\btype\s+VIRTUAL\b/.test(block);
+    const next: ParsedDisplay = {
+      displayId,
+      name,
+      virtual,
+      primary: !virtual && /\bFLAG_DEFAULT_DISPLAY\b/.test(block),
+    };
+    const current = displays.get(displayId);
+    displays.set(
+      displayId,
+      current === undefined
+        ? next
+        : {
+            displayId,
+            name:
+              current.name === fallbackName && name !== fallbackName
+                ? name
+                : current.name,
+            virtual: current.virtual || next.virtual,
+            primary: current.primary || next.primary,
+          },
+    );
+  }
+
+  return [...displays.values()];
+}
+
+export function mergeDisplayCatalog(
+  details: readonly ParsedDisplay[],
+  displayIds: readonly number[],
+  virtualIds: ReadonlySet<number>,
+  ownedVirtualDisplayId: number | null,
+): AndroidDisplayDto[] {
+  const authoritativeIds =
+    displayIds.length > 0 ? new Set(displayIds) : undefined;
+  const displays = new Map<number, AndroidDisplayDto>();
+
+  for (const detail of details) {
+    if (authoritativeIds !== undefined && !authoritativeIds.has(detail.displayId)) {
+      continue;
+    }
+    const virtual = detail.virtual || virtualIds.has(detail.displayId);
+    displays.set(detail.displayId, {
+      displayId: detail.displayId,
+      name: detail.name,
+      kind: virtual ? "virtual" : "physical",
+      primary: detail.primary && !virtual,
+      ownedBySession: detail.displayId === ownedVirtualDisplayId,
+    });
+  }
+
+  for (const displayId of displayIds) {
+    const current = displays.get(displayId);
+    const virtual = virtualIds.has(displayId);
+    if (current === undefined) {
+      displays.set(displayId, {
+        displayId,
+        name: `Display ${displayId}`,
+        kind: virtual ? "virtual" : "physical",
+        primary: displayId === 0 && !virtual,
+        ownedBySession: displayId === ownedVirtualDisplayId,
+      });
+    } else if (virtual || displayId === ownedVirtualDisplayId) {
+      displays.set(displayId, {
+        ...current,
+        kind: "virtual",
+        primary: false,
+        ownedBySession: displayId === ownedVirtualDisplayId,
+      });
+    }
+  }
+
+  const result = [...displays.values()].sort(
+    (left, right) => left.displayId - right.displayId,
+  );
+  if (!result.some((display) => display.primary)) {
+    const fallback = result.find(
+      (display) => display.displayId === 0 && display.kind === "physical",
+    );
+    if (fallback !== undefined) {
+      fallback.primary = true;
+    }
+  }
+  return result;
+}
+
+export function findAddedVirtualDisplayId(
+  before: readonly AndroidDisplayDto[],
+  after: readonly AndroidDisplayDto[],
+): number | undefined {
+  const existingIds = new Set(before.map((display) => display.displayId));
+  const added = after.filter((display) => !existingIds.has(display.displayId));
+  return (
+    added.find((display) => display.kind === "virtual")?.displayId ??
+    (added.length === 1 ? added[0]?.displayId : undefined)
+  );
+}

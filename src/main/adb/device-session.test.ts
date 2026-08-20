@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import type { Adb } from "@yume-chan/adb";
 import type { DeviceInfo } from "./device-session";
 import {
   DeviceServerUnavailableError,
@@ -24,6 +25,7 @@ function device(
 class FakeConnection implements DeviceConnection {
   readonly transportId: string;
   readonly serial: string;
+  readonly adb = {} as Adb;
   closeCalls = 0;
   closeError: Error | null = null;
 
@@ -251,6 +253,24 @@ describe("DeviceSessionService", () => {
     await service.disconnectDevice();
     assert.equal(connection.closeCalls, 1);
     assert.equal(service.getSession().state, "disconnected");
+  });
+
+  test("disconnect hooks run before the ADB connection closes", async () => {
+    const gateway = new FakeGateway();
+    gateway.devices = [device("2")];
+    const service = new DeviceSessionService(gateway);
+    await service.connectDevice("2");
+    const connection = gateway.connections.get("2");
+    assert.ok(connection);
+    const observations: number[] = [];
+    service.registerBeforeDisconnect(async (activeConnection) => {
+      assert.equal(activeConnection, connection);
+      observations.push(connection.closeCalls);
+    });
+
+    await service.disconnectDevice();
+    assert.deepEqual(observations, [0]);
+    assert.equal(connection.closeCalls, 1);
   });
 
   test("a failing close surfaces disconnect-failed without double closing", async () => {

@@ -97,16 +97,16 @@ function parseAdbSocketSpec(spec: string): SocketConnectOpts | null {
 class TangoDeviceConnection implements DeviceConnection {
   readonly transportId: string;
   readonly serial: string;
-  readonly #adb: Adb;
+  readonly adb: Adb;
 
   constructor(adb: Adb, transportId: string, serial: string) {
-    this.#adb = adb;
+    this.adb = adb;
     this.transportId = transportId;
     this.serial = serial;
   }
 
   async close(): Promise<void> {
-    await this.#adb.close();
+    await this.adb.close();
   }
 }
 

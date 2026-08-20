@@ -6,6 +6,7 @@ import { useDevices } from "./device/use-devices";
 import { FlowApiContext } from "./flow/flow-api-context";
 import { useFlowEditor } from "./flow/use-flow-editor";
 import { useScriptLibrary } from "./library/use-script-library";
+import { useScreens } from "./screen/use-screens";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
@@ -18,6 +19,7 @@ export function WorkbenchProvider({
 }): React.ReactElement {
   const library = useScriptLibrary();
   const devices = useDevices();
+  const screens = useScreens(devices);
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
 
   const {
@@ -90,6 +92,7 @@ export function WorkbenchProvider({
   const value: WorkbenchContextValue = {
     library,
     devices,
+    screens,
     flow,
     selectProjectSafe,
     selectScriptSafe,

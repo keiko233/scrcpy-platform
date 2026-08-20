@@ -1,5 +1,8 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createRouter as createTanStackRouter } from "@tanstack/react-router";
+import {
+  createHashHistory,
+  createRouter as createTanStackRouter,
+} from "@tanstack/react-router";
 import { routeTree } from "./route-tree.gen";
 
 export const queryClient = new QueryClient();
@@ -7,6 +10,7 @@ export const queryClient = new QueryClient();
 export function getRouter() {
   const router = createTanStackRouter({
     routeTree,
+    history: createHashHistory(),
     context: {
       queryClient,
     },

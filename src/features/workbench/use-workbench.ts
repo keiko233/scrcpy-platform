@@ -5,10 +5,12 @@ import type { RevisionDto } from "@/shared/project-contracts";
 import type { DeviceManager } from "./device/use-devices";
 import type { FlowEditor } from "./flow/use-flow-editor";
 import type { ScriptLibrary } from "./library/use-script-library";
+import type { ScreenManager } from "./screen/use-screens";
 
 export interface WorkbenchContextValue {
   library: ScriptLibrary;
   devices: DeviceManager;
+  screens: ScreenManager;
   flow: FlowEditor;
   selectProjectSafe: (projectId: string) => void;
   selectScriptSafe: (scriptId: string | null) => void;
