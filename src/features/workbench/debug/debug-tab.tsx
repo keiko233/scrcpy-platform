@@ -48,6 +48,13 @@ export function DebugSettingsTab() {
     setLogs([]);
   }
 
+  const levelClassName: Record<LogLevel, string> = {
+    debug: "text-muted-foreground",
+    info: "text-info-foreground",
+    warn: "text-warning-foreground",
+    error: "text-destructive-foreground",
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 overflow-y-auto p-2">
       <Alert variant="info" className="gap-1.5 px-2.5 py-2 text-xs">
@@ -128,14 +135,23 @@ export function DebugSettingsTab() {
             visibleLogs.map((entry) => (
               <div key={entry.id} className="border-b px-2 py-1.5 last:border-b-0">
                 <div className="flex gap-2 text-[9px] text-muted-foreground">
-                  <span>{new Date(entry.createdAt).toLocaleTimeString()}</span>
-                  <span className={entry.level === "error" ? "text-destructive" : entry.level === "warn" ? "text-amber-600" : "text-muted-foreground"}>
+                  <span>{entry.createdAt}</span>
+                  <span className={levelClassName[entry.level]}>
                     {entry.level.toUpperCase()}
                   </span>
-                  <span>{entry.source}</span>
-                  {entry.location && <span className="truncate" title={entry.location}>{entry.location}</span>}
+                  <span className="text-muted-foreground">[{entry.source}]</span>
+                  {entry.location && (
+                    <span
+                      className="truncate text-fuchsia-700 dark:text-fuchsia-300"
+                      title={entry.location}
+                    >
+                      {entry.location}
+                    </span>
+                  )}
                 </div>
-                <div className="break-words whitespace-pre-wrap">{entry.message}</div>
+                <div className="break-words whitespace-pre-wrap text-foreground">
+                  {entry.message}
+                </div>
               </div>
             ))
           )}

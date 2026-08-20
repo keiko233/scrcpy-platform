@@ -89,6 +89,10 @@ export interface LogEntry {
   location: string | null;
 }
 
+export function formatLogEntry(entry: LogEntry): string {
+  return `${entry.createdAt} ${entry.level.toUpperCase()} [${entry.source}]${entry.location ? ` ${entry.location}` : ""} ${entry.message}`;
+}
+
 export type LogListener = (entry: LogEntry) => void;
 
 export interface ElectronAPI {

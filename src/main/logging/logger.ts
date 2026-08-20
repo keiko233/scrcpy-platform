@@ -1,4 +1,5 @@
 import { BrowserWindow } from "electron";
+import { originalPositionFor, TraceMap } from "@jridgewell/trace-mapping";
 import {
   appendFileSync,
   existsSync,
@@ -7,14 +8,27 @@ import {
   statSync,
   unlinkSync,
 } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { LogEntry, LogLevel } from "../../shared/electron-api";
 
 const LOG_CHANNEL = "logs:entry";
 const MAX_LOG_FILE_BYTES = 10 * 1024 * 1024;
+const ANSI_RESET = "\u001b[0m";
+const ANSI_DIM = "\u001b[2m";
+const ANSI_SOURCE = "\u001b[90m";
+const ANSI_LOCATION = "\u001b[35m";
+const ANSI_LEVEL_COLORS: Record<LogLevel, string> = {
+  debug: "\u001b[37m",
+  info: "\u001b[34m",
+  warn: "\u001b[33m",
+  error: "\u001b[31m",
+};
 
 export class Logger {
   readonly #filePath: string;
   #nextId = 1;
+  #sourceMap: TraceMap | null | undefined;
   readonly #originalConsole = {
     debug: console.debug.bind(console),
     info: console.info.bind(console),
@@ -87,8 +101,14 @@ export class Logger {
       createdAt,
       location,
     };
-    const output = `${createdAt} ${level.toUpperCase()} [${source}]${location ? ` ${location}` : ""} ${message}`;
-    this.#originalConsole[level](output);
+    const levelLabel = `${ANSI_LEVEL_COLORS[level]}${level.toUpperCase()}${ANSI_RESET}`;
+    const sourceLabel = `${ANSI_SOURCE}[${source}]${ANSI_RESET}`;
+    const locationLabel = location
+      ? ` ${ANSI_LOCATION}${location}${ANSI_RESET}`
+      : "";
+    this.#originalConsole[level](
+      `${ANSI_DIM}${createdAt}${ANSI_RESET} ${levelLabel} ${sourceLabel}${locationLabel} ${message}`,
+    );
     this.writeFile(entry);
     for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(LOG_CHANNEL, entry);
@@ -97,13 +117,58 @@ export class Logger {
 
   private getCallerLocation(): string | null {
     const stack = new Error().stack?.split("\n").slice(1) ?? [];
-    const caller = stack.find(
-      (line) =>
-        !line.includes("/logging/logger.") &&
-        !line.includes("Logger.getCallerLocation") &&
-        !line.includes("Logger.write"),
-    );
-    return caller?.trim().replace(/^at /, "") ?? null;
+    for (const line of stack) {
+      if (
+        line.includes("/logging/logger.") ||
+        line.includes("Logger.getCallerLocation") ||
+        line.includes("Logger.write")
+      ) {
+        continue;
+      }
+      const location = this.mapLocation(line.trim().replace(/^at /, ""));
+      if (location?.includes("src/main/logging/logger.ts:")) {
+        continue;
+      }
+      return location;
+    }
+    return null;
+  }
+
+  private mapLocation(location: string | null): string | null {
+    if (location === null) {
+      return null;
+    }
+    const match = location.match(/\(?(.+?):(\d+):(\d+)\)?$/);
+    if (match === null) {
+      return location;
+    }
+    const [, , line, column] = match;
+    try {
+      if (this.#sourceMap === undefined) {
+        const bundlePath = fileURLToPath(import.meta.url);
+        const mapPath = `${bundlePath}.map`;
+        this.#sourceMap = existsSync(mapPath)
+          ? new TraceMap(readFileSync(mapPath, "utf8"))
+          : null;
+      }
+      if (this.#sourceMap === null) {
+        return location;
+      }
+      const original = originalPositionFor(this.#sourceMap, {
+        line: Number(line),
+        column: Number(column),
+      });
+      if (original.source === null || original.line === null) {
+        return location;
+      }
+      const sourcePath = original.source.startsWith("file://")
+        ? fileURLToPath(original.source)
+        : resolve(dirname(fileURLToPath(import.meta.url)), original.source);
+      const sourceLabel = sourcePath.match(/(?:^|\/)src\/.*$/)?.[0]?.slice(1) ?? sourcePath;
+      return `${sourceLabel}:${original.line}:${(original.column ?? 0) + 1}`;
+    } catch {
+      return location;
+    }
   }
 
   private writeFile(entry: LogEntry): void {

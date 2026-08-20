@@ -9,6 +9,9 @@ import { defineConfig } from "electron-vite";
 export default defineConfig({
   main: {
     clearScreen: false,
+    build: {
+      sourcemap: true,
+    },
   },
   preload: {
     clearScreen: false,
