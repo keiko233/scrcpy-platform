@@ -13,6 +13,7 @@ import { registerScreenHandlers } from "./ipc/screen-handlers";
 import { DeviceSessionService } from "./adb/device-session";
 import { ScreenSessionService } from "./adb/screen-session";
 import { TangoAdbGateway } from "./adb/tango-adb-gateway";
+import { Logger } from "./logging/logger";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
 
@@ -20,6 +21,7 @@ let persistence: PersistenceDatabase | null = null;
 let deviceSession: DeviceSessionService | null = null;
 let screenSession: ScreenSessionService | null = null;
 let shuttingDown = false;
+let logger: Logger | null = null;
 
 function openPersistence(): ProjectStore {
   const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
@@ -47,6 +49,10 @@ function createWindow(): void {
   });
 
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    const logLevel = level === 3 ? "error" : level === 2 ? "warn" : level === 1 ? "info" : "debug";
+    logger?.captureRenderer(logLevel, [message], `${sourceId}:${line}`);
+  });
   win.webContents.on("will-navigate", (event) => {
     event.preventDefault();
   });
@@ -96,6 +102,14 @@ void app.whenReady().then(() => {
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
 
   const store = openPersistence();
+  logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
+  logger.install();
+  ipcMain.handle(ELECTRON_CHANNELS.logsList, (_event, input?: { limit?: number }) =>
+    logger?.list(input?.limit),
+  );
+  ipcMain.handle(ELECTRON_CHANNELS.logsClear, () => {
+    logger?.clear();
+  });
   registerProjectHandlers(store);
 
   const session = new DeviceSessionService(new TangoAdbGateway());
@@ -135,6 +149,8 @@ async function shutdownDeviceSession(): Promise<void> {
 }
 
 app.on("will-quit", () => {
+  logger?.dispose();
+  logger = null;
   persistence?.close();
   persistence = null;
 });

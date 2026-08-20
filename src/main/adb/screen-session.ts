@@ -512,10 +512,16 @@ export class ScreenSessionService {
         ? options.value.scid
         : options.value.scid.value.toString(16);
     const serverPath = `${SCRCPY_SERVER_PATH}.${scid}.jar`;
+    const startedAt = Date.now();
+    console.info("scrcpy client starting", { scid, serverPath, publishVideo });
     await this.#pushServer(connection.adb, serverPath);
     let client: ScrcpyClient;
     try {
       client = await AdbScrcpyClient.start(connection.adb, serverPath, options);
+      console.info("scrcpy client connected", {
+        scid,
+        elapsedMs: Date.now() - startedAt,
+      });
     } catch (error) {
       await connection.adb.subprocess.noneProtocol
         .spawnWait(["rm", "-f", serverPath])
@@ -564,10 +570,24 @@ export class ScreenSessionService {
       managed.removeSizeListener = video.sizeChanged(({ width, height }) => {
         managed.width = width;
         managed.height = height;
+        console.info("scrcpy video size changed", {
+          scid,
+          width,
+          height,
+          elapsedMs: Date.now() - startedAt,
+        });
         if (managed.publishVideo && this.#stream === managed) {
           this.#videoWidth = width;
           this.#videoHeight = height;
         }
+      });
+      console.info("scrcpy video stream ready", {
+        scid,
+        streamId,
+        codec: video.metadata.codec,
+        width: video.width,
+        height: video.height,
+        elapsedMs: Date.now() - startedAt,
       });
       managed.videoDone = this.#consumeVideo(managed);
       if (this.#settings.turnScreenOff) {
@@ -612,6 +632,7 @@ export class ScreenSessionService {
   async #consumeVideo(
     managed: ManagedScrcpyClient,
   ): Promise<void> {
+    let packetCount = 0;
     if (managed.publishVideo) {
       this.#videoCodec = managed.codec;
     }
@@ -619,9 +640,20 @@ export class ScreenSessionService {
       while (true) {
         const result = await managed.reader.read();
         if (result.done) {
+          console.warn("scrcpy video stream ended", {
+            scid: managed.scid,
+            packetCount,
+            closing: managed.closing,
+          });
           break;
         }
+        packetCount += 1;
         if (result.value.type === "configuration") {
+          console.info("scrcpy video configuration received", {
+            scid: managed.scid,
+            packetCount,
+            bytes: result.value.data.byteLength,
+          });
           managed.configuration = {
             ...result.value,
             data: result.value.data.slice(),
@@ -640,6 +672,11 @@ export class ScreenSessionService {
         this.#closeVideoPort(this.#errorMessage);
       }
     } catch (error) {
+      console.error("scrcpy video reader failed", {
+        scid: managed.scid,
+        packetCount,
+        error: errorMessageOf(error),
+      });
       if (!managed.closing && managed.publishVideo && this.#stream === managed) {
         this.#state = "error";
         this.#errorMessage = `scrcpy video failed: ${errorMessageOf(error)}`;
@@ -717,13 +754,37 @@ export class ScreenSessionService {
   async #waitForVideoSize(managed: ManagedScrcpyClient): Promise<void> {
     for (let attempt = 0; attempt < 300; attempt += 1) {
       if (managed.width > 0 && managed.height > 0) {
+        console.info("scrcpy video size available", {
+          scid: managed.scid,
+          width: managed.width,
+          height: managed.height,
+          waitedMs: attempt * 10,
+        });
         return;
       }
       if (managed.closing) {
+        console.warn("scrcpy closed while waiting for video size", {
+          scid: managed.scid,
+          waitedMs: attempt * 10,
+        });
         throw new Error("scrcpy closed before reporting a video size");
+      }
+      if (attempt > 0 && attempt % 50 === 0) {
+        console.debug("waiting for scrcpy video size", {
+          scid: managed.scid,
+          waitedMs: attempt * 10,
+          width: managed.width,
+          height: managed.height,
+        });
       }
       await delay(10);
     }
+    console.error("scrcpy video size timeout", {
+      scid: managed.scid,
+      waitedMs: 3000,
+      width: managed.width,
+      height: managed.height,
+    });
     throw new Error("scrcpy did not report a video size within 3 seconds");
   }
 

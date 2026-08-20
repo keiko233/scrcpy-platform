@@ -35,6 +35,9 @@ import type {
 
 export const ELECTRON_CHANNELS = {
   systemInfo: "system:get-info",
+  logsList: "logs:list",
+  logsClear: "logs:clear",
+  logsEntry: "logs:entry",
   projectsList: "projects:list",
   projectsCreate: "projects:create",
   scriptsList: "scripts:list",
@@ -75,8 +78,24 @@ export interface SystemInfo {
   };
 }
 
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogEntry {
+  id: number;
+  level: LogLevel;
+  message: string;
+  source: "main" | "renderer";
+  createdAt: string;
+  location: string | null;
+}
+
+export type LogListener = (entry: LogEntry) => void;
+
 export interface ElectronAPI {
   getSystemInfo(): Promise<SystemInfo>;
+  listLogs(input?: { limit?: number }): Promise<LogEntry[]>;
+  clearLogs(): Promise<void>;
+  onLog(listener: LogListener): () => void;
 
   listProjects(): Promise<ProjectDto[]>;
   createProject(input: CreateProjectInput): Promise<ProjectDto>;

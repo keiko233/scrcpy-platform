@@ -7,6 +7,14 @@ import {
 
 const api: ElectronAPI = {
   getSystemInfo: () => ipcRenderer.invoke(ELECTRON_CHANNELS.systemInfo),
+  listLogs: (input) => ipcRenderer.invoke(ELECTRON_CHANNELS.logsList, input),
+  clearLogs: () => ipcRenderer.invoke(ELECTRON_CHANNELS.logsClear),
+  onLog: (listener) => {
+    const handler = (_event: Electron.IpcRendererEvent, entry: Parameters<typeof listener>[0]) =>
+      listener(entry);
+    ipcRenderer.on(ELECTRON_CHANNELS.logsEntry, handler);
+    return () => ipcRenderer.removeListener(ELECTRON_CHANNELS.logsEntry, handler);
+  },
 
   listProjects: () => ipcRenderer.invoke(ELECTRON_CHANNELS.projectsList),
   createProject: (input) =>
