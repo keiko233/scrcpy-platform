@@ -147,9 +147,7 @@ export function ScriptBrowser() {
           <Alert variant="warning" className="gap-1.5 px-2.5 py-1.5 text-xs">
             <AlertTriangleIcon />
             <AlertTitle className="text-xs">Library error</AlertTitle>
-            <AlertDescription className="text-[11px]">
-              {error}
-            </AlertDescription>
+            <AlertDescription className="text-[11px]">{error}</AlertDescription>
           </Alert>
         )}
 
@@ -310,16 +308,20 @@ export function ScriptBrowser() {
 
       <Separator />
 
-      <div className="flex h-8 shrink-0 items-center gap-2 border-t px-1.5 py-1">
+      <div className="flex h-8 shrink-0 items-center gap-2 pl-1.5">
         <HistoryIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-[11px] font-medium text-muted-foreground">
+        <span className="text-[10px] font-medium text-muted-foreground">
           Versions
         </span>
+
         <div className="flex-1" />
+
         <Button
           size="sm"
-          variant="outline"
-          disabled={selectedScript === null || busy || flow.saveState === "saving"}
+          variant="secondary"
+          disabled={
+            selectedScript === null || busy || flow.saveState === "saving"
+          }
           loading={busy || flow.saveState === "saving"}
           onClick={() => void createRevisionAction()}
         >

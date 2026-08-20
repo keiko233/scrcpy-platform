@@ -1,7 +1,6 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { UpperRightTabs } from "./components/upper-right-tabs";
-import { WorkbenchToolbar } from "./components/workbench-toolbar";
 import { DeviceMonitor } from "./monitor/device-monitor";
 import { FlowEditorPanel } from "./editor/flow-editor";
 import { ScriptBrowser } from "./library/script-browser";

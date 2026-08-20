@@ -39,7 +39,7 @@ import {
   MenuTrigger,
 } from "@/components/ui/menu";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
 type DeviceButtonConfig = {
   button: DeviceButton;
@@ -161,27 +161,29 @@ export function DeviceMonitor() {
             }
           }}
         >
-          <TabsList className="w-full rounded-none">
-            {displays.map((display) => (
-              <TabsTab
-                key={display.displayId}
-                value={display.displayId.toString()}
-                disabled={screens.busy}
-              >
-                {display.kind === "virtual" ? (
-                  <MonitorIcon className="size-3.5" />
-                ) : (
-                  <SmartphoneIcon className="size-3.5" />
-                )}
+          <ScrollArea className="min-w-0 flex-1 bg-muted">
+            <TabsList className="w-max min-w-full rounded-none h-8">
+              {displays.map((display) => (
+                <TabsTab
+                  key={display.displayId}
+                  value={display.displayId.toString()}
+                  disabled={screens.busy}
+                >
+                  {display.kind === "virtual" ? (
+                    <MonitorIcon className="size-3.5" />
+                  ) : (
+                    <SmartphoneIcon className="size-3.5" />
+                  )}
 
-                <span>Display {display.displayId}</span>
+                  <span>Display {display.displayId}</span>
 
-                <Badge size="sm" className="font-mono font-bold">
-                  {display.kind}
-                </Badge>
-              </TabsTab>
-            ))}
-          </TabsList>
+                  <Badge size="sm" className="font-mono font-bold">
+                    {display.kind}
+                  </Badge>
+                </TabsTab>
+              ))}
+            </TabsList>
+          </ScrollArea>
 
           <Menu>
             <MenuTrigger render={<Button size="icon" variant="secondary" />}>
@@ -209,9 +211,9 @@ export function DeviceMonitor() {
               <MenuGroup>
                 <MenuGroupLabel>Sort by</MenuGroupLabel>
                 <MenuRadioGroup>
-                  <MenuRadioItem>Artist</MenuRadioItem>
-                  <MenuRadioItem>Album</MenuRadioItem>
-                  <MenuRadioItem>Title</MenuRadioItem>
+                  <MenuRadioItem value="artist">Artist</MenuRadioItem>
+                  <MenuRadioItem value="album">Album</MenuRadioItem>
+                  <MenuRadioItem value="title">Title</MenuRadioItem>
                 </MenuRadioGroup>
               </MenuGroup>
 

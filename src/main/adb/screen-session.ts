@@ -53,6 +53,7 @@ export interface ScreenVideoPort {
 interface ManagedScrcpyClient {
   client: ScrcpyClient;
   scid: string;
+  serverPath: string;
   streamId: string;
   reader: ReadableStreamDefaultReader<ScrcpyMediaStreamPacket>;
   outputDone: Promise<void>;
@@ -65,6 +66,9 @@ interface ManagedScrcpyClient {
   configuration: ScrcpyMediaStreamPacket | null;
   width: number;
   height: number;
+  touchActive: boolean;
+  touchX: number;
+  touchY: number;
 }
 
 function errorMessageOf(error: unknown): string {
@@ -104,7 +108,6 @@ export class ScreenSessionService {
   #videoHeight = 0;
   #errorMessage: string | null = null;
   #settings: ScrcpySettings = { ...DEFAULT_SCRCPY_SETTINGS };
-  #serverConnection: object | null = null;
   #queue: Promise<void> = Promise.resolve();
   #disposed = false;
   readonly #removeDisconnectHook: () => void;
@@ -188,7 +191,6 @@ export class ScreenSessionService {
             `Android display ${displayId} is no longer available.`,
           );
         }
-        await this.#ensureServer();
         await this.#replaceStream(displayId);
         this.#state = "streaming";
         return { status: "ok", screen: this.getSnapshot() };
@@ -216,7 +218,6 @@ export class ScreenSessionService {
       this.#errorMessage = null;
       let owner: ManagedScrcpyClient | null = null;
       try {
-        await this.#ensureServer();
         const before = await this.#listDisplays();
         const ownerOptions = this.#createOptions({
           newDisplay: `${input.width}x${input.height}/${input.dpi}`,
@@ -328,12 +329,14 @@ export class ScreenSessionService {
 
   injectTouch(input: InjectScreenTouchInput): Promise<ScreenOperationResult> {
     return this.#enqueue(async () => {
-      const controller = this.#controller();
+      const stream = this.#stream;
+      const controller = stream?.client.controller;
       if (
-        controller === null ||
+        stream === null ||
+        controller === undefined ||
         this.#activeDisplayId !== input.displayId ||
-        this.#videoWidth === 0 ||
-        this.#videoHeight === 0
+        stream.width === 0 ||
+        stream.height === 0
       ) {
         return this.#failure(
           "not-streaming",
@@ -345,20 +348,28 @@ export class ScreenSessionService {
           down: AndroidMotionEventAction.Down,
           move: AndroidMotionEventAction.Move,
           up: AndroidMotionEventAction.Up,
-          cancel: AndroidMotionEventAction.Cancel,
+          // scrcpy 3.3.3 doesn't remove a finger from its pointer state for
+          // ACTION_CANCEL. Send ACTION_UP so a browser-side pointer cancel
+          // can't leave Android with a permanently pressed virtual finger.
+          cancel: AndroidMotionEventAction.Up,
         } as const;
         const released = input.action === "up" || input.action === "cancel";
+        const pointerX = input.x * stream.width;
+        const pointerY = input.y * stream.height;
         await controller.injectTouch({
           action: actions[input.action],
           pointerId: ScrcpyPointerId.Finger,
-          pointerX: input.x * this.#videoWidth,
-          pointerY: input.y * this.#videoHeight,
-          videoWidth: this.#videoWidth,
-          videoHeight: this.#videoHeight,
+          pointerX,
+          pointerY,
+          videoWidth: stream.width,
+          videoHeight: stream.height,
           pressure: released ? 0 : 1,
           actionButton: AndroidMotionEventButton.Primary,
           buttons: released ? 0 : AndroidMotionEventButton.Primary,
         });
+        stream.touchActive = !released;
+        stream.touchX = input.x;
+        stream.touchY = input.y;
         return { status: "ok", screen: this.getSnapshot() };
       } catch (error) {
         return this.#operationFailure("Could not inject touch input", error);
@@ -424,7 +435,6 @@ export class ScreenSessionService {
         .spawnWait(["rm", "-f", SCRCPY_SERVER_PATH])
         .catch(() => undefined);
     }
-    this.#serverConnection = null;
     this.#state = "disconnected";
     this.#displays = [];
     this.#activeDisplayId = null;
@@ -436,14 +446,7 @@ export class ScreenSessionService {
     this.#errorMessage = null;
   }
 
-  async #ensureServer(): Promise<void> {
-    const connection = this.#deviceSession.getConnection();
-    if (connection === null) {
-      throw new Error("Android device is not connected");
-    }
-    if (this.#serverConnection === connection) {
-      return;
-    }
+  async #pushServer(adb: Adb, serverPath: string): Promise<void> {
     const buffer = await readFile(SCRCPY_SERVER_BINARY);
     const file = new ReadableStream<Uint8Array>({
       start(controller) {
@@ -451,8 +454,7 @@ export class ScreenSessionService {
         controller.close();
       },
     });
-    await AdbScrcpyClient.pushServer(connection.adb, file, SCRCPY_SERVER_PATH);
-    this.#serverConnection = connection;
+    await AdbScrcpyClient.pushServer(adb, file, serverPath);
   }
 
   #createOptions(
@@ -476,7 +478,10 @@ export class ScreenSessionService {
       sendDeviceMeta: true,
       sendFrameMeta: true,
       sendCodecMeta: true,
-      cleanup: false,
+      // Cleanup restores screen power, show-touches, and stay-awake state.
+      // The server JAR is also unlinked on startup, so #startClient gives each
+      // concurrently managed scrcpy instance its own temporary copy.
+      cleanup: true,
       scid: ScrcpyInstanceId.random(),
       ...(target.maxSize !== undefined
         ? { maxSize: target.maxSize }
@@ -506,11 +511,17 @@ export class ScreenSessionService {
       typeof options.value.scid === "string"
         ? options.value.scid
         : options.value.scid.value.toString(16);
-    const client = await AdbScrcpyClient.start(
-      connection.adb,
-      SCRCPY_SERVER_PATH,
-      options,
-    );
+    const serverPath = `${SCRCPY_SERVER_PATH}.${scid}.jar`;
+    await this.#pushServer(connection.adb, serverPath);
+    let client: ScrcpyClient;
+    try {
+      client = await AdbScrcpyClient.start(connection.adb, serverPath, options);
+    } catch (error) {
+      await connection.adb.subprocess.noneProtocol
+        .spawnWait(["rm", "-f", serverPath])
+        .catch(() => undefined);
+      throw error;
+    }
     const recentOutput: string[] = [];
     const outputDone = client.output
       .pipeTo(
@@ -533,6 +544,7 @@ export class ScreenSessionService {
       const managed = {
         client,
         scid,
+        serverPath,
         streamId,
         reader,
         outputDone,
@@ -545,6 +557,9 @@ export class ScreenSessionService {
         configuration: null,
         width: video.width,
         height: video.height,
+        touchActive: false,
+        touchX: 0,
+        touchY: 0,
       } satisfies ManagedScrcpyClient;
       managed.removeSizeListener = video.sizeChanged(({ width, height }) => {
         managed.width = width;
@@ -564,6 +579,9 @@ export class ScreenSessionService {
     } catch (error) {
       await client.controller?.close().catch(() => undefined);
       await client.close().catch(() => undefined);
+      await connection.adb.subprocess.noneProtocol
+        .spawnWait(["rm", "-f", serverPath])
+        .catch(() => undefined);
       throw new Error(
         recentOutput.length === 0
           ? errorMessageOf(error)
@@ -653,32 +671,38 @@ export class ScreenSessionService {
     }
 
     if (targetOwner !== null) {
+      await this.#waitForVideoSize(targetOwner);
       this.#activateManaged(targetOwner, displayId);
       return;
     }
 
+    let next: ManagedScrcpyClient | null = null;
     try {
-      const next = await this.#startClient(
+      next = await this.#startClient(
         this.#createOptions({ displayId }),
         true,
       );
-      this.#stream = next;
-      this.#activeDisplayId = displayId;
+      await this.#waitForVideoSize(next);
+      this.#activateManaged(next, displayId);
     } catch (error) {
+      if (next !== null && this.#stream !== next) {
+        await this.#closeManaged(next).catch(() => undefined);
+      }
       if (previousDisplayId !== null) {
         try {
           if (
             previousDisplayId === this.#ownedVirtualDisplayId &&
             this.#displayOwner !== null
           ) {
+            await this.#waitForVideoSize(this.#displayOwner);
             this.#activateManaged(this.#displayOwner, previousDisplayId);
           } else {
             const restored = await this.#startClient(
               this.#createOptions({ displayId: previousDisplayId }),
               true,
             );
-            this.#stream = restored;
-            this.#activeDisplayId = previousDisplayId;
+            await this.#waitForVideoSize(restored);
+            this.#activateManaged(restored, previousDisplayId);
           }
         } catch (rollbackError) {
           throw new Error(
@@ -688,6 +712,19 @@ export class ScreenSessionService {
       }
       throw error;
     }
+  }
+
+  async #waitForVideoSize(managed: ManagedScrcpyClient): Promise<void> {
+    for (let attempt = 0; attempt < 300; attempt += 1) {
+      if (managed.width > 0 && managed.height > 0) {
+        return;
+      }
+      if (managed.closing) {
+        throw new Error("scrcpy closed before reporting a video size");
+      }
+      await delay(10);
+    }
+    throw new Error("scrcpy did not report a video size within 3 seconds");
   }
 
   #activateManaged(managed: ManagedScrcpyClient, displayId: number): void {
@@ -710,6 +747,7 @@ export class ScreenSessionService {
     }
     managed.closing = true;
     managed.removeSizeListener();
+    await this.#releaseTouch(managed);
     await managed.reader.cancel().catch(() => undefined);
     await managed.client.controller?.close().catch(() => undefined);
     await managed.client.close().catch(() => undefined);
@@ -720,6 +758,9 @@ export class ScreenSessionService {
           .spawnWait(["kill", pid])
           .catch(() => undefined);
       }
+      await adb.subprocess.noneProtocol
+        .spawnWait(["rm", "-f", managed.serverPath])
+        .catch(() => undefined);
     }
     await Promise.race([
       Promise.all([
@@ -729,6 +770,27 @@ export class ScreenSessionService {
       ]).then(() => undefined),
       delay(500),
     ]);
+  }
+
+  async #releaseTouch(managed: ManagedScrcpyClient): Promise<void> {
+    const controller = managed.client.controller;
+    if (!managed.touchActive || controller === undefined) {
+      return;
+    }
+    managed.touchActive = false;
+    await controller
+      .injectTouch({
+        action: AndroidMotionEventAction.Up,
+        pointerId: ScrcpyPointerId.Finger,
+        pointerX: managed.touchX * managed.width,
+        pointerY: managed.touchY * managed.height,
+        videoWidth: managed.width,
+        videoHeight: managed.height,
+        pressure: 0,
+        actionButton: AndroidMotionEventButton.Primary,
+        buttons: 0,
+      })
+      .catch(() => undefined);
   }
 
   async #findProcessIds(scid: string, adbOverride?: Adb): Promise<string[]> {
