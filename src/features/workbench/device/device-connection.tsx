@@ -102,7 +102,8 @@ function ScrcpySettingsDialog() {
     return () => {
       cancelled = true;
     };
-  }, [savedSettings]);
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const validation = ScrcpySettingsSchema.safeParse(draft);
 
