@@ -38,6 +38,10 @@ const api: ElectronAPI = {
 
   getScreenSession: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensSession),
+  getScrcpySettings: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsGet),
+  setScrcpySettings: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsSet, input),
   refreshScreens: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensRefresh),
   startScreen: (input) =>

@@ -10,6 +10,37 @@ export const ScreenStateSchema = z.enum([
 ]);
 export type ScreenState = z.infer<typeof ScreenStateSchema>;
 
+export const ScrcpySettingsSchema = z.object({
+  maxSize: z.number().int().min(256).max(7680).nullable(),
+  maxFps: z.number().int().min(1).max(240),
+  videoBitRate: z.number().int().min(1_000_000).max(100_000_000),
+  videoCodec: z.enum(["h264", "h265", "av1"]),
+  audio: z.boolean(),
+  audioSource: z.enum(["output", "playback", "mic"]),
+  audioCodec: z.enum(["opus", "aac", "flac"]),
+  audioBitRate: z.number().int().min(16_000).max(1_000_000),
+  turnScreenOff: z.boolean(),
+  stayAwake: z.boolean(),
+  showTouches: z.boolean(),
+  powerOffOnClose: z.boolean(),
+});
+export type ScrcpySettings = z.infer<typeof ScrcpySettingsSchema>;
+
+export const DEFAULT_SCRCPY_SETTINGS: ScrcpySettings = {
+  maxSize: null,
+  maxFps: 60,
+  videoBitRate: 20_000_000,
+  videoCodec: "h265",
+  audio: false,
+  audioSource: "output",
+  audioCodec: "opus",
+  audioBitRate: 128_000,
+  turnScreenOff: false,
+  stayAwake: false,
+  showTouches: false,
+  powerOffOnClose: false,
+};
+
 export const AndroidDisplayDtoSchema = z.object({
   displayId: z.number().int().nonnegative(),
   name: z.string().min(1),

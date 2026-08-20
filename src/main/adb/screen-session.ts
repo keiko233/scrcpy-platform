@@ -8,6 +8,7 @@ import {
   AndroidKeyEventAction,
   AndroidMotionEventAction,
   AndroidMotionEventButton,
+  AndroidScreenPowerMode,
   ScrcpyInstanceId,
   ScrcpyPointerId,
 } from "@yume-chan/scrcpy";
@@ -27,7 +28,9 @@ import type {
   ScreenOperationResult,
   ScreenSessionDto,
   ScreenVideoMessage,
+  ScrcpySettings,
 } from "../../shared/screen-contracts";
+import { DEFAULT_SCRCPY_SETTINGS } from "../../shared/screen-contracts";
 import type { DeviceSessionService } from "./device-session";
 import {
   findAddedVirtualDisplayId,
@@ -54,6 +57,7 @@ interface ManagedScrcpyClient {
   reader: ReadableStreamDefaultReader<ScrcpyMediaStreamPacket>;
   outputDone: Promise<void>;
   videoDone: Promise<void>;
+  audioDone: Promise<void>;
   removeSizeListener: () => void;
   closing: boolean;
   publishVideo: boolean;
@@ -99,6 +103,7 @@ export class ScreenSessionService {
   #videoWidth = 0;
   #videoHeight = 0;
   #errorMessage: string | null = null;
+  #settings: ScrcpySettings = { ...DEFAULT_SCRCPY_SETTINGS };
   #serverConnection: object | null = null;
   #queue: Promise<void> = Promise.resolve();
   #disposed = false;
@@ -138,6 +143,14 @@ export class ScreenSessionService {
       videoHeight: this.#videoHeight,
       errorMessage: this.#errorMessage,
     };
+  }
+
+  getSettings(): ScrcpySettings {
+    return { ...this.#settings };
+  }
+
+  setSettings(settings: ScrcpySettings): void {
+    this.#settings = { ...settings };
   }
 
   refreshDisplays(): Promise<ScreenOperationResult> {
@@ -451,9 +464,13 @@ export class ScreenSessionService {
       videoBitRate?: number;
     },
   ): ScrcpyOptions {
+    const settings = this.#settings;
     return new AdbScrcpyOptions3_3_3({
       tunnelForward: false,
-      audio: false,
+      audio: settings.audio,
+      audioSource: settings.audioSource,
+      audioCodec: settings.audioCodec,
+      audioBitRate: settings.audioBitRate,
       video: true,
       control: true,
       sendDeviceMeta: true,
@@ -461,10 +478,17 @@ export class ScreenSessionService {
       sendCodecMeta: true,
       cleanup: false,
       scid: ScrcpyInstanceId.random(),
-      maxSize: target.maxSize ?? 1600,
-      maxFps: target.maxFps ?? 30,
-      videoBitRate: target.videoBitRate ?? 8_000_000,
-      videoCodec: "h264",
+      ...(target.maxSize !== undefined
+        ? { maxSize: target.maxSize }
+        : settings.maxSize === null
+          ? {}
+          : { maxSize: settings.maxSize }),
+      maxFps: target.maxFps ?? settings.maxFps,
+      videoBitRate: target.videoBitRate ?? settings.videoBitRate,
+      videoCodec: settings.videoCodec,
+      stayAwake: settings.stayAwake,
+      showTouches: settings.showTouches,
+      powerOffOnClose: settings.powerOffOnClose,
       displayId: target.displayId,
       newDisplay: target.newDisplay,
     });
@@ -500,6 +524,7 @@ export class ScreenSessionService {
         }),
       )
       .catch(() => undefined);
+    const audioDone = this.#consumeAudio(client);
 
     try {
       const video = await client.videoStream;
@@ -512,6 +537,7 @@ export class ScreenSessionService {
         reader,
         outputDone,
         videoDone: Promise.resolve(),
+        audioDone,
         removeSizeListener: () => {},
         closing: false,
         publishVideo,
@@ -529,6 +555,11 @@ export class ScreenSessionService {
         }
       });
       managed.videoDone = this.#consumeVideo(managed);
+      if (this.#settings.turnScreenOff) {
+        void client.controller
+          ?.setScreenPowerMode(AndroidScreenPowerMode.Off)
+          .catch(() => undefined);
+      }
       return managed;
     } catch (error) {
       await client.controller?.close().catch(() => undefined);
@@ -538,6 +569,25 @@ export class ScreenSessionService {
           ? errorMessageOf(error)
           : `${errorMessageOf(error)}\nscrcpy: ${recentOutput.slice(-6).join(" | ")}`,
       );
+    }
+  }
+
+  async #consumeAudio(client: ScrcpyClient): Promise<void> {
+    try {
+      const audio = await client.audioStream;
+      if (audio?.type !== "success") {
+        return;
+      }
+      await audio.stream.pipeTo(
+        new WritableStream<ScrcpyMediaStreamPacket>({
+          write() {
+            // Audio playback is not connected to the renderer yet, but the
+            // stream must always be drained to prevent scrcpy backpressure.
+          },
+        }),
+      );
+    } catch {
+      // Video/control remain usable when audio capture isn't supported.
     }
   }
 
@@ -672,7 +722,11 @@ export class ScreenSessionService {
       }
     }
     await Promise.race([
-      Promise.all([managed.videoDone, managed.outputDone]).then(() => undefined),
+      Promise.all([
+        managed.videoDone,
+        managed.audioDone,
+        managed.outputDone,
+      ]).then(() => undefined),
       delay(500),
     ]);
   }

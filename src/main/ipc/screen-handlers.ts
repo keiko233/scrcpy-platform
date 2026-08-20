@@ -7,12 +7,27 @@ import {
   InjectScreenTouchInputSchema,
   PressDeviceButtonInputSchema,
   RequestScreenVideoInputSchema,
+  ScrcpySettingsSchema,
+  type ScrcpySettings,
   type ScreenOperationResult,
 } from "../../shared/screen-contracts";
 import type { ScreenSessionService } from "../adb/screen-session";
 
 export function registerScreenHandlers(service: ScreenSessionService): void {
   ipcMain.handle(ELECTRON_CHANNELS.screensSession, () => service.getSnapshot());
+
+  ipcMain.handle(ELECTRON_CHANNELS.screensSettingsGet, () =>
+    service.getSettings(),
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensSettingsSet,
+    (_event, raw: unknown): ScrcpySettings => {
+      const settings = ScrcpySettingsSchema.parse(raw);
+      service.setSettings(settings);
+      return service.getSettings();
+    },
+  );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensRefresh,

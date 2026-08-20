@@ -13,6 +13,7 @@ import type {
   RequestScreenVideoInput,
   ScreenOperationResult,
   ScreenSessionDto,
+  ScrcpySettings,
 } from "./screen-contracts";
 import type {
   CreateProjectInput,
@@ -48,6 +49,8 @@ export const ELECTRON_CHANNELS = {
   devicesConnect: "devices:connect",
   devicesDisconnect: "devices:disconnect",
   screensSession: "screens:session",
+  screensSettingsGet: "screens:settings:get",
+  screensSettingsSet: "screens:settings:set",
   screensRefresh: "screens:refresh",
   screensStart: "screens:start",
   screensCreateVirtual: "screens:create-virtual",
@@ -93,6 +96,8 @@ export interface ElectronAPI {
   disconnectDevice(): Promise<DisconnectDeviceResult>;
 
   getScreenSession(): Promise<ScreenSessionDto>;
+  getScrcpySettings(): Promise<ScrcpySettings>;
+  setScrcpySettings(input: ScrcpySettings): Promise<ScrcpySettings>;
   refreshScreens(): Promise<ScreenOperationResult>;
   startScreen(input: DisplayIdInput): Promise<ScreenOperationResult>;
   createVirtualScreen(
