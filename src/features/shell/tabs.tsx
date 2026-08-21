@@ -1,24 +1,18 @@
-import {
-  BugIcon,
-  MonitorIcon,
-  SettingsIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { BugIcon, MonitorIcon, SettingsIcon, type LucideIcon } from "lucide-react";
 
 export type TabId = "workbench" | "debug" | "settings";
 
-export interface TabDefinition {
+export interface WorkspaceDefinition {
   id: TabId;
-  label: string;
   icon: LucideIcon;
 }
 
-export const TABS: readonly TabDefinition[] = [
-  { id: "workbench", label: "Workbench", icon: MonitorIcon },
-  { id: "debug", label: "Debug", icon: BugIcon },
-  { id: "settings", label: "Settings", icon: SettingsIcon },
+export const WORKSPACES: readonly WorkspaceDefinition[] = [
+  { id: "workbench", icon: MonitorIcon },
+  { id: "debug", icon: BugIcon },
+  { id: "settings", icon: SettingsIcon },
 ];
 
 export function isTabId(value: string): value is TabId {
-  return TABS.some((tab) => tab.id === value);
+  return WORKSPACES.some((workspace) => workspace.id === value);
 }
