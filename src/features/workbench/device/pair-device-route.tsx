@@ -13,12 +13,12 @@ export function PairDeviceRoute() {
 
   useEffect(() => {
     if (state === "connected") {
-      void navigate({ to: "/platform" });
+      void navigate({ to: "/$tab", params: { tab: "workbench" } });
     }
   }, [state, navigate]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-background">
+    <div className="flex h-full w-full flex-col overflow-hidden bg-background">
       <div className="flex h-9 shrink-0 items-center gap-2 border-b bg-card px-2">
         <span className="text-xs font-semibold">Pair a device</span>
         <span className="text-[10px] text-muted-foreground">

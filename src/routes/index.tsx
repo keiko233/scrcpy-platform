@@ -5,7 +5,10 @@ import { getDeviceSessionState } from "./device-session-state";
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {
     const state = await getDeviceSessionState();
-    throw redirect({ to: state === "connected" ? "/platform" : "/pair" });
+    if (state === "connected") {
+      throw redirect({ to: "/$tab", params: { tab: "workbench" } });
+    }
+    throw redirect({ to: "/pair" });
   },
   component: () => null,
 });

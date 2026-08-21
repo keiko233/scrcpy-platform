@@ -11,7 +11,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as deviceRouteRouteImport } from './routes/(device)/route'
 import { Route as platformRouteRouteImport } from './routes/(platform)/route'
 import { Route as devicePairIndexRouteImport } from './routes/(device)/pair/index'
-import { Route as platformPlatformIndexRouteImport } from './routes/(platform)/platform/index'
+import { Route as platformTabIndexRouteImport } from './routes/(platform)/$tab/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -31,21 +31,21 @@ const devicePairIndexRoute = devicePairIndexRouteImport.update({
   path: '/pair/',
   getParentRoute: () => deviceRouteRoute,
 } as any)
-const platformPlatformIndexRoute = platformPlatformIndexRouteImport.update({
-  id: '/platform/',
-  path: '/platform/',
+const platformTabIndexRoute = platformTabIndexRouteImport.update({
+  id: '/$tab/',
+  path: '/$tab/',
   getParentRoute: () => platformRouteRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pair/': typeof devicePairIndexRoute
-  '/platform/': typeof platformPlatformIndexRoute
+  '/$tab/': typeof platformTabIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pair': typeof devicePairIndexRoute
-  '/platform': typeof platformPlatformIndexRoute
+  '/$tab': typeof platformTabIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -53,20 +53,20 @@ export interface FileRoutesById {
   '/(device)': typeof deviceRouteRouteWithChildren
   '/(platform)': typeof platformRouteRouteWithChildren
   '/(device)/pair/': typeof devicePairIndexRoute
-  '/(platform)/platform/': typeof platformPlatformIndexRoute
+  '/(platform)/$tab/': typeof platformTabIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pair/' | '/platform/'
+  fullPaths: '/' | '/pair/' | '/$tab/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pair' | '/platform'
+  to: '/' | '/pair' | '/$tab'
   id:
     | '__root__'
     | '/'
     | '/(device)'
     | '/(platform)'
     | '/(device)/pair/'
-    | '/(platform)/platform/'
+    | '/(platform)/$tab/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -105,11 +105,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof devicePairIndexRouteImport
       parentRoute: typeof deviceRouteRoute
     }
-    '/(platform)/platform/': {
-      id: '/(platform)/platform/'
-      path: '/platform'
-      fullPath: '/platform/'
-      preLoaderRoute: typeof platformPlatformIndexRouteImport
+    '/(platform)/$tab/': {
+      id: '/(platform)/$tab/'
+      path: '/$tab'
+      fullPath: '/$tab/'
+      preLoaderRoute: typeof platformTabIndexRouteImport
       parentRoute: typeof platformRouteRoute
     }
   }
@@ -128,11 +128,11 @@ const deviceRouteRouteWithChildren = deviceRouteRoute._addFileChildren(
 )
 
 interface platformRouteRouteChildren {
-  platformPlatformIndexRoute: typeof platformPlatformIndexRoute
+  platformTabIndexRoute: typeof platformTabIndexRoute
 }
 
 const platformRouteRouteChildren: platformRouteRouteChildren = {
-  platformPlatformIndexRoute: platformPlatformIndexRoute,
+  platformTabIndexRoute: platformTabIndexRoute,
 }
 
 const platformRouteRouteWithChildren = platformRouteRoute._addFileChildren(

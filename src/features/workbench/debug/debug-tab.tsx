@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LogEntry, LogLevel } from "@/shared/electron-api";
 import { LogMessage } from "./log-message";
 
-export function DebugSettingsTab() {
+export function DebugScreen() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [level, setLevel] = useState<LogLevel | "all">("all");
   const [query, setQuery] = useState("");
