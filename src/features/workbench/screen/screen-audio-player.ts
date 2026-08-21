@@ -162,7 +162,10 @@ export class ScreenAudioPlayer {
         data.sampleRate,
       );
       for (let channel = 0; channel < data.numberOfChannels; channel += 1) {
-        data.copyTo(buffer.getChannelData(channel), { planeIndex: channel });
+        data.copyTo(buffer.getChannelData(channel), {
+          planeIndex: channel,
+          format: "f32-planar",
+        });
       }
       const source = context.createBufferSource();
       source.buffer = buffer;
