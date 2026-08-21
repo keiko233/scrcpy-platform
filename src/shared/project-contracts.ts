@@ -115,13 +115,7 @@ export const FLOW_NODE_DATA_PORTS = {
       dataPort("y", "Region Y", "number"),
       dataPort("width", "Width", "number"),
       dataPort("height", "Height", "number"),
-      dataPort("languages", "Languages", "string"),
       dataPort("expectedText", "Expected text", "string"),
-      dataPort("matchMode", "Match mode", "string"),
-      dataPort("caseSensitive", "Case sensitive", "boolean"),
-      dataPort("timeoutMs", "Timeout", "number"),
-      dataPort("intervalMs", "Retry interval", "number"),
-      dataPort("failOnTimeout", "Fail on timeout", "boolean"),
     ],
     outputs: [
       outputPort("text", "Text", "string"),

@@ -19,6 +19,51 @@ describe("workbench block definitions", () => {
     }
   });
 
+  it("declares typed OCR data inputs", () => {
+    expect(FLOW_NODE_DATA_PORTS.ocr.inputs).toEqual([
+      { id: "x", label: "Region X", dataType: "number", field: "x" },
+      { id: "y", label: "Region Y", dataType: "number", field: "y" },
+      { id: "width", label: "Width", dataType: "number", field: "width" },
+      { id: "height", label: "Height", dataType: "number", field: "height" },
+      {
+        id: "expectedText",
+        label: "Expected text",
+        dataType: "string",
+        field: "expectedText",
+      },
+    ]);
+  });
+
+  it("does not expose OCR configuration as connectable data inputs", () => {
+    const configPorts = [
+      "languages",
+      "matchMode",
+      "caseSensitive",
+      "timeoutMs",
+      "intervalMs",
+      "failOnTimeout",
+    ];
+    const ocrInputIds = FLOW_NODE_DATA_PORTS.ocr.inputs.map(
+      (port) => port.id,
+    );
+    for (const id of configPorts) {
+      expect(ocrInputIds, `ocr.${id} input`).not.toContain(id);
+    }
+  });
+
+  it("keeps OCR configuration in its original inspector controls", () => {
+    const fields = Object.fromEntries(
+      BLOCK_DEFINITIONS.ocr.fields.map((field) => [field.name, field]),
+    );
+
+    expect(fields.languages?.kind).toBe("select");
+    expect(fields.matchMode?.kind).toBe("select");
+    expect(fields.caseSensitive?.kind).toBe("boolean");
+    expect(fields.failOnTimeout?.kind).toBe("boolean");
+    expect(fields.timeoutMs?.kind).toBe("number");
+    expect(fields.intervalMs?.kind).toBe("number");
+  });
+
   it("declares typed OCR data outputs", () => {
     expect(FLOW_NODE_DATA_PORTS.ocr.outputs).toEqual([
       { id: "text", label: "Text", dataType: "string" },
