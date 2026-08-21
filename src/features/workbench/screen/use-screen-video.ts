@@ -13,6 +13,7 @@ import type { WritableStreamDefaultWriter } from "@yume-chan/stream-extra";
 
 import { SCREEN_VIDEO_WINDOW_EVENT } from "@/shared/electron-api";
 import type { ScreenVideoMessage } from "@/shared/screen-contracts";
+import { screenAudioPlayer } from "./screen-audio-player";
 
 export interface ScreenVideoState {
   connected: boolean;
@@ -63,7 +64,20 @@ export function useScreenVideo(
       if (disposed || message.streamId !== streamId) {
         return;
       }
+      if (message.type === "audio-metadata") {
+        screenAudioPlayer.configure(
+          message.codec,
+          message.sampleRate,
+          message.channels,
+        );
+        return;
+      }
+      if (message.type === "audio-packet") {
+        screenAudioPlayer.feed(message.packet);
+        return;
+      }
       if (message.type === "metadata") {
+        screenAudioPlayer.reset();
         disposeDecoder();
         waitingForKeyframe = true;
         try {
@@ -129,6 +143,7 @@ export function useScreenVideo(
         ...INITIAL_STATE,
         error: message.reason ?? "The screen stream stopped.",
       });
+      screenAudioPlayer.reset();
       disposeDecoder();
     };
 
@@ -176,6 +191,7 @@ export function useScreenVideo(
         window.clearTimeout(requestRetry);
       }
       port?.close();
+      screenAudioPlayer.reset();
       disposeDecoder();
     };
   }, [canvasRef, streamId]);

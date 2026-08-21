@@ -31,7 +31,7 @@ export const DEFAULT_SCRCPY_SETTINGS: ScrcpySettings = {
   maxFps: 60,
   videoBitRate: 20_000_000,
   videoCodec: "h265",
-  audio: false,
+  audio: true,
   audioSource: "output",
   audioCodec: "opus",
   audioBitRate: 128_000,
@@ -147,15 +147,31 @@ export interface ScreenVideoMetadataMessage {
   codec: number;
 }
 
+export interface ScreenMediaPacket {
+  type: "configuration" | "data";
+  keyframe?: boolean;
+  pts?: bigint;
+  data: Uint8Array;
+}
+
 export interface ScreenVideoPacketMessage {
   type: "packet";
   streamId: string;
-  packet: {
-    type: "configuration" | "data";
-    keyframe?: boolean;
-    pts?: bigint;
-    data: Uint8Array;
-  };
+  packet: ScreenMediaPacket;
+}
+
+export interface ScreenAudioMetadataMessage {
+  type: "audio-metadata";
+  streamId: string;
+  codec: string;
+  sampleRate: number;
+  channels: number;
+}
+
+export interface ScreenAudioPacketMessage {
+  type: "audio-packet";
+  streamId: string;
+  packet: ScreenMediaPacket;
 }
 
 export interface ScreenVideoStoppedMessage {
@@ -167,4 +183,6 @@ export interface ScreenVideoStoppedMessage {
 export type ScreenVideoMessage =
   | ScreenVideoMetadataMessage
   | ScreenVideoPacketMessage
+  | ScreenAudioMetadataMessage
+  | ScreenAudioPacketMessage
   | ScreenVideoStoppedMessage;

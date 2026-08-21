@@ -42,6 +42,11 @@ import { DisplayIdDeviceMessageParser } from "./display-id-message";
 
 const SCRCPY_SERVER_PATH = "/data/local/tmp/android-platform-scrcpy-server.jar";
 
+// scrcpy always captures 48kHz stereo PCM before encoding (see `AudioConfig` in
+// the server). The renderer needs these to configure its audio decoder.
+const AUDIO_SAMPLE_RATE = 48_000;
+const AUDIO_CHANNELS = 2;
+
 type ScrcpyOptions = AdbScrcpyOptions3_3_3<true>;
 type ScrcpyClient = AdbScrcpyClient<ScrcpyOptions>;
 
@@ -64,6 +69,8 @@ interface ManagedScrcpyClient {
   publishVideo: boolean;
   codec: number;
   configuration: ScrcpyMediaStreamPacket | null;
+  audioCodec: string | null;
+  audioConfiguration: ScrcpyMediaStreamPacket | null;
   width: number;
   height: number;
   touchActive: boolean;
@@ -104,6 +111,8 @@ export class ScreenSessionService {
   #videoPort: ScreenVideoPort | null = null;
   #videoConfiguration: ScrcpyMediaStreamPacket | null = null;
   #videoCodec: number | null = null;
+  #audioConfiguration: ScrcpyMediaStreamPacket | null = null;
+  #audioCodec: string | null = null;
   #videoWidth = 0;
   #videoHeight = 0;
   #errorMessage: string | null = null;
@@ -412,6 +421,18 @@ export class ScreenSessionService {
       if (this.#videoConfiguration !== null) {
         this.#publishPacket(this.#videoConfiguration);
       }
+      if (this.#audioCodec !== null) {
+        port.postMessage({
+          type: "audio-metadata",
+          streamId,
+          codec: this.#audioCodec,
+          sampleRate: AUDIO_SAMPLE_RATE,
+          channels: AUDIO_CHANNELS,
+        });
+        if (this.#audioConfiguration !== null) {
+          this.#publishAudioPacket(this.#audioConfiguration);
+        }
+      }
       void stream.client.controller?.resetVideo().catch(() => undefined);
     } catch {
       if (this.#videoPort === port) {
@@ -450,6 +471,8 @@ export class ScreenSessionService {
     this.#ownedVirtualDisplayId = null;
     this.#videoConfiguration = null;
     this.#videoCodec = null;
+    this.#audioConfiguration = null;
+    this.#audioCodec = null;
     this.#videoWidth = 0;
     this.#videoHeight = 0;
     this.#errorMessage = null;
@@ -550,7 +573,6 @@ export class ScreenSessionService {
         }),
       )
       .catch(() => undefined);
-    const audioDone = this.#consumeAudio(client);
 
     try {
       const video = await client.videoStream;
@@ -564,12 +586,14 @@ export class ScreenSessionService {
         reader,
         outputDone,
         videoDone: Promise.resolve(),
-        audioDone,
+        audioDone: Promise.resolve(),
         removeSizeListener: () => {},
         closing: false,
         publishVideo,
         codec: video.metadata.codec,
         configuration: null,
+        audioCodec: null,
+        audioConfiguration: null,
         width: video.width,
         height: video.height,
         touchActive: false,
@@ -599,6 +623,7 @@ export class ScreenSessionService {
         elapsedMs: Date.now() - startedAt,
       });
       managed.videoDone = this.#consumeVideo(managed);
+      managed.audioDone = this.#consumeAudio(managed);
       if (this.#settings.turnScreenOff) {
         void client.controller
           ?.setScreenPowerMode(AndroidScreenPowerMode.Off)
@@ -619,17 +644,29 @@ export class ScreenSessionService {
     }
   }
 
-  async #consumeAudio(client: ScrcpyClient): Promise<void> {
+  async #consumeAudio(managed: ManagedScrcpyClient): Promise<void> {
     try {
-      const audio = await client.audioStream;
+      const audio = await managed.client.audioStream;
       if (audio?.type !== "success") {
         return;
       }
+      managed.audioCodec = audio.codec.optionValue;
+      console.info("scrcpy audio stream ready", {
+        scid: managed.scid,
+        codec: managed.audioCodec,
+      });
       await audio.stream.pipeTo(
         new WritableStream<ScrcpyMediaStreamPacket>({
-          write() {
-            // Audio playback is not connected to the renderer yet, but the
-            // stream must always be drained to prevent scrcpy backpressure.
+          write: (packet) => {
+            if (packet.type === "configuration") {
+              managed.audioConfiguration = {
+                ...packet,
+                data: packet.data.slice(),
+              };
+            }
+            if (managed.publishVideo && this.#stream === managed) {
+              this.#publishAudioPacket(packet);
+            }
           },
         }),
       );
@@ -706,6 +743,8 @@ export class ScreenSessionService {
     this.#activeDisplayId = null;
     this.#videoConfiguration = null;
     this.#videoCodec = null;
+    this.#audioConfiguration = null;
+    this.#audioCodec = null;
     this.#videoWidth = 0;
     this.#videoHeight = 0;
     this.#closeVideoPort("The observed display changed.");
@@ -803,6 +842,8 @@ export class ScreenSessionService {
     this.#activeDisplayId = displayId;
     this.#videoCodec = managed.codec;
     this.#videoConfiguration = managed.configuration;
+    this.#audioCodec = managed.audioCodec;
+    this.#audioConfiguration = managed.audioConfiguration;
     this.#videoWidth = managed.width;
     this.#videoHeight = managed.height;
     void managed.client.controller?.resetVideo().catch(() => undefined);
@@ -987,6 +1028,29 @@ export class ScreenSessionService {
     try {
       port.postMessage({
         type: "packet",
+        streamId,
+        packet: {
+          ...packet,
+          data: packet.data.slice(),
+        },
+      });
+    } catch {
+      if (this.#videoPort === port) {
+        this.#videoPort = null;
+      }
+      port.close();
+    }
+  }
+
+  #publishAudioPacket(packet: ScrcpyMediaStreamPacket): void {
+    const streamId = this.#stream?.streamId;
+    const port = this.#videoPort;
+    if (streamId === undefined || port === null) {
+      return;
+    }
+    try {
+      port.postMessage({
+        type: "audio-packet",
         streamId,
         packet: {
           ...packet,
