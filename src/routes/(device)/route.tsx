@@ -1,3 +1,12 @@
-import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/(device)")({ component: Outlet });
+import { getDeviceSessionState } from "../device-session-state";
+
+export const Route = createFileRoute("/(device)")({
+  component: Outlet,
+  beforeLoad: async () => {
+    if ((await getDeviceSessionState()) === "connected") {
+      throw redirect({ to: "/platform" });
+    }
+  },
+});

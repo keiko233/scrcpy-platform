@@ -12,6 +12,7 @@ const SESSION_POLL_MS = 2000;
 export interface DeviceManager {
   devices: AdbDeviceDto[];
   session: DeviceSessionDto | null;
+  sessionLoaded: boolean;
   selectedTransportId: string | null;
   loadingDevices: boolean;
   connecting: boolean;
@@ -44,6 +45,7 @@ function describeConnectFailure(error: ConnectDeviceFailure): string {
 export function useDevices(): DeviceManager {
   const [devices, setDevices] = useState<AdbDeviceDto[]>([]);
   const [session, setSession] = useState<DeviceSessionDto | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [selectedTransportId, setSelectedTransportId] = useState<string | null>(
     null,
   );
@@ -172,6 +174,11 @@ export function useDevices(): DeviceManager {
             cause instanceof Error ? cause.message : String(cause),
           );
         }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setSessionLoaded(true);
+        }
       });
     return () => {
       cancelled = true;
@@ -186,6 +193,7 @@ export function useDevices(): DeviceManager {
   return {
     devices,
     session,
+    sessionLoaded,
     selectedTransportId,
     loadingDevices,
     connecting,

@@ -30,7 +30,6 @@ import {
   PlugIcon,
   RefreshCwIcon,
   Settings2Icon,
-  UnplugIcon,
   XIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -440,18 +439,16 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
     selectedTransportId,
     loadingDevices,
     connecting,
-    disconnecting,
     listError,
     sessionError,
     setSelectedTransportId,
     refresh,
     connect,
-    disconnect,
     clearError,
     clearSessionError,
   } = manager;
 
-  const busy = connecting || disconnecting;
+  const busy = connecting;
   const state = session?.state ?? "disconnected";
   const canConnect =
     selectedTransportId !== null &&
@@ -540,17 +537,6 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
         >
           <PlugIcon />
           Connect
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          className="flex-1"
-          disabled={busy || state === "disconnected" || state === "error"}
-          loading={disconnecting}
-          onClick={() => void disconnect()}
-        >
-          <UnplugIcon />
-          Disconnect
         </Button>
         {(listError !== null || sessionError !== null) && (
           <Button

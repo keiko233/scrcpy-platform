@@ -26,7 +26,9 @@ export function LogMessage({ message }: { message: string }) {
   return (
     <div
       className="log-message wrap-break-word"
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{
+        __html: html,
+      }}
     />
   );
 }
