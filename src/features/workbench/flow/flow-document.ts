@@ -1,4 +1,5 @@
 import type {
+  IsValidConnection,
   NodeChange,
   OnConnect,
   Viewport,
@@ -6,12 +7,14 @@ import type {
 } from "@xyflow/react";
 import { applyNodeChanges } from "@xyflow/react";
 
-import type {
-  FlowDocument,
-  FlowEdge,
-  FlowViewport,
-  JsonValue,
-} from "@/shared/project-contracts";
+import {
+  areFlowDataTypesCompatible,
+  resolveFlowPort,
+  type FlowDocument,
+  type FlowEdge,
+  type FlowViewport,
+  type JsonValue,
+} from "../../../shared/project-contracts";
 
 import type { WorkbenchEdge, WorkbenchNode } from "../types";
 import { BLOCK_DEFINITIONS, isFlowBlockKind } from "../blocks";
@@ -138,7 +141,12 @@ export function patchNodeData(
 export function mergeEdge(
   edges: WorkbenchEdge[],
   connection: Parameters<OnConnect>[0],
+  nodes: WorkbenchNode[],
 ): WorkbenchEdge[] {
+  const ports = connectionPorts(nodes, connection);
+  if (ports === null) {
+    return edges;
+  }
   const sourceHandle = connection.sourceHandle ?? null;
   const targetHandle = connection.targetHandle ?? null;
   const isExactDuplicate = (edge: WorkbenchEdge) =>
@@ -159,10 +167,57 @@ export function mergeEdge(
         !(
           (edge.target === next.target &&
             (edge.targetHandle ?? null) === targetHandle) ||
-          (edge.source === next.source &&
+          (ports.source.role === "flow" &&
+            edge.source === next.source &&
             (edge.sourceHandle ?? null) === sourceHandle)
         ),
     ),
     next,
   ];
+}
+
+function connectionPorts(
+  nodes: WorkbenchNode[],
+  connection: Parameters<IsValidConnection<WorkbenchEdge>>[0],
+) {
+  if (connection.source === null || connection.target === null) {
+    return null;
+  }
+  const source = nodes.find((node) => node.id === connection.source);
+  const target = nodes.find((node) => node.id === connection.target);
+  if (source === undefined || target === undefined) {
+    return null;
+  }
+  const sourcePort = resolveFlowPort(
+    source.data.kind,
+    "output",
+    connection.sourceHandle ?? undefined,
+  );
+  const targetPort = resolveFlowPort(
+    target.data.kind,
+    "input",
+    connection.targetHandle ?? undefined,
+  );
+  if (
+    sourcePort === null ||
+    targetPort === null ||
+    sourcePort.role !== targetPort.role
+  ) {
+    return null;
+  }
+  if (
+    sourcePort.role === "data" &&
+    targetPort.role === "data" &&
+    !areFlowDataTypesCompatible(sourcePort.dataType, targetPort.dataType)
+  ) {
+    return null;
+  }
+  return { source: sourcePort, target: targetPort };
+}
+
+export function canConnectPorts(
+  nodes: WorkbenchNode[],
+  connection: Parameters<IsValidConnection<WorkbenchEdge>>[0],
+): boolean {
+  return connectionPorts(nodes, connection) !== null;
 }

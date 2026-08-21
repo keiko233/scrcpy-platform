@@ -58,6 +58,156 @@ export const FLOW_NODE_PORTS = {
   { inputs: readonly string[]; outputs: readonly string[] }
 >;
 
+export const FLOW_DATA_TYPES = [
+  "any",
+  "string",
+  "number",
+  "boolean",
+] as const;
+
+export type FlowDataType = (typeof FLOW_DATA_TYPES)[number];
+
+export interface FlowDataPortDefinition {
+  id: string;
+  label: string;
+  dataType: FlowDataType;
+  field?: string;
+}
+
+interface FlowNodeDataPorts {
+  inputs: readonly FlowDataPortDefinition[];
+  outputs: readonly FlowDataPortDefinition[];
+}
+
+const dataPort = (
+  id: string,
+  label: string,
+  dataType: FlowDataType,
+  field = id,
+): FlowDataPortDefinition => ({ id, label, dataType, field });
+
+const outputPort = (
+  id: string,
+  label: string,
+  dataType: FlowDataType,
+): FlowDataPortDefinition => ({ id, label, dataType });
+
+export const FLOW_NODE_DATA_PORTS = {
+  start: { inputs: [], outputs: [] },
+  end: { inputs: [], outputs: [] },
+  click: {
+    inputs: [dataPort("x", "X", "number"), dataPort("y", "Y", "number")],
+    outputs: [],
+  },
+  swipe: {
+    inputs: [
+      dataPort("fromX", "From X", "number"),
+      dataPort("fromY", "From Y", "number"),
+      dataPort("toX", "To X", "number"),
+      dataPort("toY", "To Y", "number"),
+      dataPort("durationMs", "Duration", "number"),
+    ],
+    outputs: [],
+  },
+  ocr: {
+    inputs: [
+      dataPort("x", "Region X", "number"),
+      dataPort("y", "Region Y", "number"),
+      dataPort("width", "Width", "number"),
+      dataPort("height", "Height", "number"),
+      dataPort("languages", "Languages", "string"),
+      dataPort("expectedText", "Expected text", "string"),
+      dataPort("matchMode", "Match mode", "string"),
+      dataPort("caseSensitive", "Case sensitive", "boolean"),
+      dataPort("timeoutMs", "Timeout", "number"),
+      dataPort("intervalMs", "Retry interval", "number"),
+      dataPort("failOnTimeout", "Fail on timeout", "boolean"),
+    ],
+    outputs: [
+      outputPort("text", "Text", "string"),
+      outputPort("confidence", "Confidence", "number"),
+      outputPort("matched", "Matched", "boolean"),
+    ],
+  },
+  delay: {
+    inputs: [dataPort("ms", "Duration", "number")],
+    outputs: [],
+  },
+  "launch-app": {
+    inputs: [
+      dataPort("packageName", "Package", "string"),
+      dataPort("activity", "Activity", "string"),
+    ],
+    outputs: [],
+  },
+  "set-variable": {
+    inputs: [dataPort("expression", "Value", "any")],
+    outputs: [outputPort("value", "Value", "any")],
+  },
+  if: {
+    inputs: [dataPort("condition", "Condition", "boolean")],
+    outputs: [],
+  },
+  merge: { inputs: [], outputs: [] },
+  for: {
+    inputs: [
+      dataPort("from", "From", "number"),
+      dataPort("to", "To", "number"),
+      dataPort("step", "Step", "number"),
+    ],
+    outputs: [outputPort("index", "Index", "number")],
+  },
+  while: {
+    inputs: [dataPort("condition", "Condition", "boolean")],
+    outputs: [],
+  },
+  assert: {
+    inputs: [
+      dataPort("condition", "Condition", "boolean"),
+      dataPort("message", "Message", "string"),
+    ],
+    outputs: [],
+  },
+} as const satisfies Record<FlowNodeKind, FlowNodeDataPorts>;
+
+export type FlowPortDirection = "input" | "output";
+
+export type ResolvedFlowPort =
+  | { id: string; role: "flow"; dataType: "flow" }
+  | ({ role: "data" } & FlowDataPortDefinition);
+
+export function resolveFlowPort(
+  kind: FlowNodeKind,
+  direction: FlowPortDirection,
+  persistedPort: string | undefined,
+): ResolvedFlowPort | null {
+  const flowPorts =
+    direction === "input"
+      ? FLOW_NODE_PORTS[kind].inputs
+      : FLOW_NODE_PORTS[kind].outputs;
+  const resolvedId =
+    persistedPort ?? (flowPorts.length === 1 ? flowPorts[0] : undefined);
+  if (
+    resolvedId !== undefined &&
+    (flowPorts as readonly string[]).includes(resolvedId)
+  ) {
+    return { id: resolvedId, role: "flow", dataType: "flow" };
+  }
+  const dataPorts =
+    direction === "input"
+      ? FLOW_NODE_DATA_PORTS[kind].inputs
+      : FLOW_NODE_DATA_PORTS[kind].outputs;
+  const data = dataPorts.find((port) => port.id === resolvedId);
+  return data === undefined ? null : { ...data, role: "data" };
+}
+
+export function areFlowDataTypesCompatible(
+  output: FlowDataType,
+  input: FlowDataType,
+): boolean {
+  return output === "any" || input === "any" || output === input;
+}
+
 const FlowPositionSchema = z
   .object({
     x: z.number().finite(),

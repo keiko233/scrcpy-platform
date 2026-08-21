@@ -1,8 +1,12 @@
 import {
+  areFlowDataTypesCompatible,
+  FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
+  resolveFlowPort,
   type FlowEdge,
   type FlowNode,
   type FlowNodeKind,
+  type ResolvedFlowPort,
 } from "./project-contracts";
 
 export type FlowValidationIssueKind =
@@ -14,6 +18,8 @@ export type FlowValidationIssueKind =
   | "multiple-ends"
   | "missing-endpoint"
   | "invalid-port"
+  | "incompatible-port-role"
+  | "incompatible-port-type"
   | "illegal-port-count"
   | "invalid-loop-back"
   | "illegal-incoming"
@@ -42,16 +48,6 @@ function push(map: Map<string, FlowEdge[]>, key: string, edge: FlowEdge): void {
   } else {
     map.set(key, [edge]);
   }
-}
-
-function resolvePort(
-  declaredPorts: readonly string[],
-  persistedPort: string | undefined,
-): string {
-  if (persistedPort !== undefined) {
-    return persistedPort;
-  }
-  return declaredPorts.length === 1 ? declaredPorts[0] : "";
 }
 
 function portKey(nodeId: string, port: string): string {
@@ -148,43 +144,67 @@ export function validateFlow(
   const outgoing = new Map<string, FlowEdge[]>();
   const incomingByPort = new Map<string, FlowEdge[]>();
   const outgoingByPort = new Map<string, FlowEdge[]>();
-  for (const edge of edges) {
-    if (nodeKinds.has(edge.source) && nodeKinds.has(edge.target)) {
-      push(outgoing, edge.source, edge);
-      push(incoming, edge.target, edge);
-    }
-  }
+  const incomingDataByPort = new Map<string, FlowEdge[]>();
+  const controlEdges: FlowEdge[] = [];
 
   for (const edge of edges) {
     const sourceKind = nodeKinds.get(edge.source);
     const targetKind = nodeKinds.get(edge.target);
+    let sourcePort: ResolvedFlowPort | null = null;
+    let targetPort: ResolvedFlowPort | null = null;
     if (sourceKind !== undefined) {
-      const outputs: readonly string[] = FLOW_NODE_PORTS[sourceKind].outputs;
-      const port = resolvePort(outputs, edge.sourceHandle);
-      if (!outputs.includes(port)) {
+      sourcePort = resolveFlowPort(sourceKind, "output", edge.sourceHandle);
+      if (sourcePort === null) {
         issues.push({
           kind: "invalid-port",
           edgeId: edge.id,
           port: edge.sourceHandle,
           message: `Edge "${edge.id}" uses source handle "${edge.sourceHandle ?? "(none)"}" which is not an output port of "${edge.source}" (${sourceKind}).`,
         });
-      } else {
-        push(outgoingByPort, portKey(edge.source, port), edge);
       }
     }
     if (targetKind !== undefined) {
-      const inputs: readonly string[] = FLOW_NODE_PORTS[targetKind].inputs;
-      const port = resolvePort(inputs, edge.targetHandle);
-      if (!inputs.includes(port)) {
+      targetPort = resolveFlowPort(targetKind, "input", edge.targetHandle);
+      if (targetPort === null) {
         issues.push({
           kind: "invalid-port",
           edgeId: edge.id,
           port: edge.targetHandle,
           message: `Edge "${edge.id}" uses target handle "${edge.targetHandle ?? "(none)"}" which is not an input port of "${edge.target}" (${targetKind}).`,
         });
-      } else {
-        push(incomingByPort, portKey(edge.target, port), edge);
       }
+    }
+    if (sourcePort === null || targetPort === null) {
+      continue;
+    }
+    if (sourcePort.role !== targetPort.role) {
+      issues.push({
+        kind: "incompatible-port-role",
+        edgeId: edge.id,
+        message: `Edge "${edge.id}" cannot connect ${sourcePort.role} output "${edge.source}.${sourcePort.id}" to ${targetPort.role} input "${edge.target}.${targetPort.id}".`,
+      });
+      continue;
+    }
+    if (
+      sourcePort.role === "data" &&
+      targetPort.role === "data" &&
+      !areFlowDataTypesCompatible(sourcePort.dataType, targetPort.dataType)
+    ) {
+      issues.push({
+        kind: "incompatible-port-type",
+        edgeId: edge.id,
+        message: `Edge "${edge.id}" cannot connect ${sourcePort.dataType} output "${edge.source}.${sourcePort.id}" to ${targetPort.dataType} input "${edge.target}.${targetPort.id}".`,
+      });
+      continue;
+    }
+    if (sourcePort.role === "flow") {
+      controlEdges.push(edge);
+      push(outgoing, edge.source, edge);
+      push(incoming, edge.target, edge);
+      push(outgoingByPort, portKey(edge.source, sourcePort.id), edge);
+      push(incomingByPort, portKey(edge.target, targetPort.id), edge);
+    } else {
+      push(incomingDataByPort, portKey(edge.target, targetPort.id), edge);
     }
   }
 
@@ -233,10 +253,21 @@ export function validateFlow(
         });
       }
     }
+    for (const port of FLOW_NODE_DATA_PORTS[node.type].inputs) {
+      const count = incomingDataByPort.get(portKey(node.id, port.id))?.length ?? 0;
+      if (count > 1) {
+        issues.push({
+          kind: "illegal-port-count",
+          nodeId: node.id,
+          port: port.id,
+          message: `Data input port "${port.id}" on node "${node.id}" has ${count} edges; expected at most 1.`,
+        });
+      }
+    }
   }
 
   const acyclicOutgoing = new Map<string, FlowEdge[]>();
-  for (const edge of edges) {
+  for (const edge of controlEdges) {
     if (
       nodeKinds.has(edge.source) &&
       nodeKinds.has(edge.target) &&
@@ -254,7 +285,7 @@ export function validateFlow(
     });
   }
 
-  for (const edge of edges) {
+  for (const edge of controlEdges) {
     if (!isLoopBackEdge(edge, nodeKinds)) {
       continue;
     }
@@ -317,9 +348,13 @@ function deterministicOrder(
   const outgoing = new Map<string, FlowEdge[]>();
   const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
   for (const edge of edges) {
+    const sourceKind = nodeKinds.get(edge.source);
+    const targetKind = nodeKinds.get(edge.target);
     if (
-      !nodeKinds.has(edge.source) ||
-      !nodeKinds.has(edge.target) ||
+      sourceKind === undefined ||
+      targetKind === undefined ||
+      resolveFlowPort(sourceKind, "output", edge.sourceHandle)?.role !== "flow" ||
+      resolveFlowPort(targetKind, "input", edge.targetHandle)?.role !== "flow" ||
       isLoopBackEdge(edge, nodeKinds)
     ) {
       continue;

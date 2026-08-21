@@ -68,6 +68,7 @@ function FlowCanvas() {
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isValidConnection,
     onViewportChange,
     onMoveEnd,
     addBlock,
@@ -153,6 +154,7 @@ function FlowCanvas() {
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
+              isValidConnection={isValidConnection}
               onNodeClick={() => setUpperRightTab("block")}
               viewport={viewport}
               onViewportChange={onViewportChange}

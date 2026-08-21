@@ -13,6 +13,18 @@ import {
   toFlowDocument,
 } from "./flow-document";
 
+function workbenchNode(
+  id: string,
+  type: WorkbenchNode["type"],
+): WorkbenchNode {
+  return {
+    id,
+    type,
+    position: { x: 0, y: 0 },
+    data: { kind: type },
+  } as WorkbenchNode;
+}
+
 describe("workbench flow document", () => {
   it("persists only JSON-safe graph state", () => {
     const nodes: WorkbenchNode[] = [
@@ -241,12 +253,16 @@ describe("workbench flow document", () => {
       },
     ];
 
-    const merged = mergeEdge(existing, {
-      source: "start",
-      target: "click-1",
-      sourceHandle: "next",
-      targetHandle: "in",
-    });
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "start",
+        target: "click-1",
+        sourceHandle: "next",
+        targetHandle: "in",
+      },
+      [workbenchNode("start", "start"), workbenchNode("click-1", "click")],
+    );
 
     assert.equal(merged.length, 1);
     assert.equal(merged[0]?.id, "e1");
@@ -263,12 +279,16 @@ describe("workbench flow document", () => {
       },
     ];
 
-    const merged = mergeEdge(existing, {
-      source: "delay-1",
-      target: "click-1",
-      sourceHandle: "next",
-      targetHandle: "in",
-    });
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "delay-1",
+        target: "click-1",
+        sourceHandle: "next",
+        targetHandle: "in",
+      },
+      [workbenchNode("delay-1", "delay"), workbenchNode("click-1", "click")],
+    );
 
     assert.equal(merged.length, 1);
     assert.equal(merged[0]?.source, "delay-1");
@@ -287,15 +307,74 @@ describe("workbench flow document", () => {
       },
     ];
 
-    const merged = mergeEdge(existing, {
-      source: "start",
-      target: "delay-1",
-      sourceHandle: "next",
-      targetHandle: "in",
-    });
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "start",
+        target: "delay-1",
+        sourceHandle: "next",
+        targetHandle: "in",
+      },
+      [workbenchNode("start", "start"), workbenchNode("delay-1", "delay")],
+    );
 
     assert.equal(merged.length, 1);
     assert.equal(merged[0]?.target, "delay-1");
     assert.notEqual(merged[0]?.id, "e1");
+  });
+
+  it("allows typed data outputs to fan out to multiple compatible inputs", () => {
+    const nodes = [
+      workbenchNode("ocr", "ocr"),
+      workbenchNode("delay-1", "delay"),
+      workbenchNode("delay-2", "delay"),
+    ];
+    const existing: WorkbenchEdge[] = [
+      {
+        id: "data-1",
+        source: "ocr",
+        target: "delay-1",
+        sourceHandle: "confidence",
+        targetHandle: "ms",
+      },
+    ];
+
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "ocr",
+        target: "delay-2",
+        sourceHandle: "confidence",
+        targetHandle: "ms",
+      },
+      nodes,
+    );
+
+    assert.equal(merged.length, 2);
+    assert.deepEqual(
+      merged.map((edge) => edge.target).sort(),
+      ["delay-1", "delay-2"],
+    );
+  });
+
+  it("ignores incompatible typed data connections", () => {
+    const nodes = [
+      workbenchNode("ocr", "ocr"),
+      workbenchNode("delay", "delay"),
+    ];
+    const existing: WorkbenchEdge[] = [];
+
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "ocr",
+        target: "delay",
+        sourceHandle: "text",
+        targetHandle: "ms",
+      },
+      nodes,
+    );
+
+    assert.equal(merged, existing);
   });
 });

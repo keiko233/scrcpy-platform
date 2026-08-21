@@ -55,6 +55,48 @@ describe("workbench flow validation", () => {
     assert.deepEqual(issues, []);
   });
 
+  it("accepts optional typed data edges without counting them as control flow", () => {
+    const nodes = [
+      node("start", "start"),
+      node("ocr", "ocr"),
+      node("delay", "delay"),
+      node("end", "end"),
+    ];
+    const issues = validateFlow(nodes, [
+      edge("e1", "start", "ocr"),
+      edge("e2", "ocr", "delay"),
+      edge("e3", "delay", "end"),
+      edge("data-1", "ocr", "delay", "confidence", "ms"),
+    ]);
+
+    assert.deepEqual(issues, []);
+  });
+
+  it("rejects data edges with incompatible types or flow/data roles", () => {
+    const nodes = [
+      node("start", "start"),
+      node("ocr", "ocr"),
+      node("delay", "delay"),
+      node("end", "end"),
+    ];
+    const base = [
+      edge("e1", "start", "ocr"),
+      edge("e2", "ocr", "delay"),
+      edge("e3", "delay", "end"),
+    ];
+    const wrongType = validateFlow(nodes, [
+      ...base,
+      edge("data-1", "ocr", "delay", "text", "ms"),
+    ]);
+    assert.ok(issueKinds(wrongType).includes("incompatible-port-type"));
+
+    const wrongRole = validateFlow(nodes, [
+      ...base,
+      edge("data-2", "ocr", "delay", "next", "ms"),
+    ]);
+    assert.ok(issueKinds(wrongRole).includes("incompatible-port-role"));
+  });
+
   it("reports duplicate node and edge ids", () => {
     const { nodes, edges } = linearGraph();
     const issues = validateFlow(

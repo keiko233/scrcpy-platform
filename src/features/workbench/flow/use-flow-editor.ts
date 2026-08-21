@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   EdgeChange,
+  IsValidConnection,
   NodeChange,
   OnConnect,
   OnEdgesChange,
@@ -21,6 +22,7 @@ import { BLOCK_DEFINITIONS } from "../blocks";
 import type { FlowBlockKind, WorkbenchEdge, WorkbenchNode } from "../types";
 import {
   applyNodesChange,
+  canConnectPorts,
   defaultViewport,
   edgesFromDocument,
   mergeEdge,
@@ -48,6 +50,7 @@ export interface FlowEditor {
   onNodesChange: OnNodesChange<WorkbenchNode>;
   onEdgesChange: OnEdgesChange<WorkbenchEdge>;
   onConnect: OnConnect;
+  isValidConnection: IsValidConnection<WorkbenchEdge>;
   onViewportChange: (viewport: Viewport) => void;
   onMoveEnd: () => void;
   addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
@@ -131,10 +134,20 @@ export function useFlowEditor(
 
   const onConnect = useCallback<OnConnect>(
     (connection) => {
-      setEdges((current) => mergeEdge(current, connection));
-      setDirty(true);
+      setEdges((current) => {
+        const next = mergeEdge(current, connection, nodesRef.current);
+        if (next !== current) {
+          setDirty(true);
+        }
+        return next;
+      });
     },
     [setEdges],
+  );
+
+  const isValidConnection = useCallback<IsValidConnection<WorkbenchEdge>>(
+    (connection) => canConnectPorts(nodesRef.current, connection),
+    [],
   );
 
   const onViewportChange = useCallback((nextViewport: Viewport) => {
@@ -312,6 +325,7 @@ export function useFlowEditor(
     onNodesChange,
     onEdgesChange,
     onConnect,
+    isValidConnection,
     onViewportChange,
     onMoveEnd,
     addBlock,
