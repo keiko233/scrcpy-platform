@@ -91,6 +91,7 @@ export function useScreenVideo(
           decoder = new WebCodecsVideoDecoder({
             codec: message.codec as ScrcpyVideoCodecId,
             renderer,
+            hardwareAcceleration: "prefer-hardware",
           });
           writer = decoder.writable.getWriter();
           removeSizeListener = decoder.sizeChanged(({ width, height }) => {
