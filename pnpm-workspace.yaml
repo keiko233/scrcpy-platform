@@ -1,6 +1,9 @@
 allowBuilds:
   esbuild: true
   electron: true
+  # Its postinstall only prints an OpenCollective message; runtime files are
+  # already present in the package, so explicitly skip it.
+  tesseract.js: false
 minimumReleaseAgeExclude:
   - '@tanstack/router-core@1.171.26'
   - '@tanstack/router-generator@1.167.32'

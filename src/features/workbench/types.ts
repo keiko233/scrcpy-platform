@@ -45,4 +45,15 @@ export type FieldDefinition =
       placeholder?: string;
       min?: number;
       step?: number;
+    }
+  | {
+      name: string;
+      label: string;
+      kind: "select";
+      options: ReadonlyArray<{ value: string; label: string }>;
+    }
+  | {
+      name: string;
+      label: string;
+      kind: "boolean";
     };

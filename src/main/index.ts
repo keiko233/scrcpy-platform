@@ -16,6 +16,7 @@ import { ScreenSessionService } from "./adb/screen-session";
 import { TangoAdbGateway } from "./adb/tango-adb-gateway";
 import { Logger } from "./logging/logger";
 import { AdbFlowActionDriver } from "./runtime/adb-flow-driver";
+import { createAdbOcrRecognitionDriver } from "./runtime/adb-ocr-recognition";
 import { FlowRuntimeService } from "./runtime/flow-runtime";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
@@ -159,7 +160,9 @@ void app.whenReady().then(() => {
   const screens = new ScreenSessionService(session);
   screenSession = screens;
   registerScreenHandlers(screens);
-  const runtime = new FlowRuntimeService(store, new AdbFlowActionDriver(session));
+  const runtime = new FlowRuntimeService(store, new AdbFlowActionDriver(session), {
+    recognition: createAdbOcrRecognitionDriver(session, app.getPath("userData")),
+  });
   flowRuntime = runtime;
   registerRunHandlers(runtime);
   session.registerBeforeDisconnect(() => runtime.cancelCurrent());

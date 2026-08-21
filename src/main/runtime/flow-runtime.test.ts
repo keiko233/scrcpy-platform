@@ -16,6 +16,10 @@ import {
   type FlowActionDriver,
   type FlowRunTarget,
 } from "./flow-runtime";
+import type {
+  FlowRecognitionDriver,
+  FlowRecognitionResult,
+} from "./flow-recognition";
 
 function node(
   id: string,
@@ -112,6 +116,25 @@ class FakeDriver implements FlowActionDriver {
   }
 }
 
+class FakeRecognition implements FlowRecognitionDriver {
+  readonly calls: string[] = [];
+  assignments: FlowRecognitionResult["assignments"] = {
+    ocrText: "Ready",
+    ocrConfidence: 96,
+    ocrMatched: true,
+  };
+  disposed = false;
+
+  async recognize(node: FlowNode): Promise<FlowRecognitionResult> {
+    this.calls.push(node.id);
+    return { assignments: this.assignments };
+  }
+
+  async dispose(): Promise<void> {
+    this.disposed = true;
+  }
+}
+
 const RUN_INPUT = {
   scriptId: "script-1",
   deviceId: "device-1",
@@ -119,13 +142,18 @@ const RUN_INPUT = {
   displayId: 4,
 } as const;
 
-function serviceFor(document: FlowDocument, driver = new FakeDriver()) {
+function serviceFor(
+  document: FlowDocument,
+  driver = new FakeDriver(),
+  recognition?: FlowRecognitionDriver,
+) {
   const repository = {
     getScript: ({ scriptId }: { scriptId: string }) =>
       scriptId === "script-1" ? script(document) : null,
   };
   const service = new FlowRuntimeService(repository, driver, {
     createRunId: () => "run-1",
+    recognition,
   });
   return { service, driver };
 }
@@ -258,12 +286,34 @@ describe("FlowRuntimeService", () => {
     );
   });
 
-  test("reports OCR as unsupported in this runtime batch", async () => {
+  test("reports a missing OCR recognition driver", async () => {
     const { service } = serviceFor(linearDocument([node("ocr", "ocr")]));
     service.start(RUN_INPUT);
     const failed = await waitForTerminal(service);
     assert.equal(failed.state, "failed");
-    assert.match(failed.error ?? "", /OCR node.*not supported/);
+    assert.match(failed.error ?? "", /OCR node.*no recognition driver/);
+  });
+
+  test("stores structured OCR assignments for later expressions", async () => {
+    const recognition = new FakeRecognition();
+    const { service } = serviceFor(
+      linearDocument([
+        node("ocr", "ocr"),
+        node("assert", "assert", {
+          condition: "$ocrMatched && $ocrConfidence >= 90",
+        }),
+      ]),
+      new FakeDriver(),
+      recognition,
+    );
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(completed.variables, recognition.assignments);
+    assert.deepEqual(recognition.calls, ["ocr"]);
+    await service.dispose();
+    assert.equal(recognition.disposed, true);
   });
 
   test("evaluates variables, takes one If branch, merges, and asserts", async () => {

@@ -17,6 +17,7 @@ import type {
   StopFlowRunInput,
   StopFlowRunResult,
 } from "../../shared/run-contracts";
+import type { FlowRecognitionDriver } from "./flow-recognition";
 
 export interface FlowScriptRepository {
   getScript(input: { scriptId: string }): ScriptDto | null;
@@ -44,6 +45,7 @@ export interface FlowActionDriver {
 export interface FlowRuntimeOptions {
   createRunId?: () => string;
   now?: () => string;
+  recognition?: FlowRecognitionDriver;
 }
 
 class RunCancelledError extends Error {
@@ -94,12 +96,22 @@ function requiredString(
   return normalized;
 }
 
+const RESERVED_VARIABLE_NAMES = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
+
+function isSafeVariableName(name: string): boolean {
+  return (
+    /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) &&
+    !RESERVED_VARIABLE_NAMES.has(name)
+  );
+}
+
 function variableName(node: FlowNode, field = "name"): string {
   const name = requiredString(node, field, { trim: true });
-  if (
-    !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ||
-    RESERVED_VARIABLE_NAMES.has(name)
-  ) {
+  if (!isSafeVariableName(name)) {
     throw new Error(
       `Node "${node.id}" has invalid variable name "${name}".`,
     );
@@ -152,12 +164,6 @@ interface ForLoopState {
   maximum: number;
 }
 
-const RESERVED_VARIABLE_NAMES = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
 function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   abortIfNeeded(signal);
   if (ms === 0) {
@@ -182,6 +188,7 @@ export class FlowRuntimeService {
   readonly #driver: FlowActionDriver;
   readonly #createRunId: () => string;
   readonly #now: () => string;
+  readonly #recognition: FlowRecognitionDriver | null;
   readonly #listeners = new Set<FlowRunListener>();
   #run: FlowRunDto | null = null;
   #abortController: AbortController | null = null;
@@ -197,6 +204,7 @@ export class FlowRuntimeService {
     this.#createRunId =
       options.createRunId ?? (() => `run-${crypto.randomUUID()}`);
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#recognition = options.recognition ?? null;
   }
 
   subscribe(listener: FlowRunListener): () => void {
@@ -316,6 +324,7 @@ export class FlowRuntimeService {
 
   async dispose(): Promise<void> {
     await this.cancelCurrent();
+    await this.#recognition?.dispose();
     this.#listeners.clear();
   }
 
@@ -462,9 +471,20 @@ export class FlowRuntimeService {
         );
         return "next";
       case "ocr":
-        throw new Error(
-          `OCR node "${node.id}" is not supported by this runtime batch.`,
-        );
+        if (this.#recognition === null) {
+          throw new Error(`OCR node "${node.id}" has no recognition driver.`);
+        }
+        for (const [name, value] of Object.entries(
+          (await this.#recognition.recognize(node, context, signal)).assignments,
+        )) {
+          if (!isSafeVariableName(name)) {
+            throw new Error(
+              `OCR node "${node.id}" returned invalid variable name "${name}".`,
+            );
+          }
+          variables[name] = value;
+        }
+        return "next";
       case "click":
       case "swipe":
       case "launch-app":

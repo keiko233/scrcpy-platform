@@ -3,6 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyMedia, EmptyTitle } from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BlocksIcon, Trash2Icon } from "lucide-react";
 import type { JsonValue } from "@/shared/project-contracts";
@@ -142,6 +150,30 @@ export function BlockInspectorTab() {
                   step={field.step}
                   placeholder={field.placeholder}
                   onChange={(next) => commit(field.name, next)}
+                />
+              ) : field.kind === "select" ? (
+                <Select
+                  value={String(data[field.name] ?? field.options[0]?.value ?? "")}
+                  onValueChange={(value) => {
+                    if (value !== null) commit(field.name, value);
+                  }}
+                >
+                  <SelectTrigger size="sm" className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {field.options.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : field.kind === "boolean" ? (
+                <Switch
+                  checked={data[field.name] === true}
+                  onCheckedChange={(checked) => commit(field.name, checked)}
+                  aria-label={field.label}
                 />
               ) : (
                 <Input
