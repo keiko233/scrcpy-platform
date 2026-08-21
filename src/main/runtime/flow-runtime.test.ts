@@ -46,6 +46,33 @@ function linearDocument(middle: FlowNode[] = []): FlowDocument {
   };
 }
 
+function graphDocument(
+  nodes: FlowNode[],
+  edges: Array<
+    [
+      id: string,
+      source: string,
+      target: string,
+      sourceHandle: string,
+      targetHandle: string,
+    ]
+  >,
+): FlowDocument {
+  return {
+    schemaVersion: 1,
+    nodes,
+    edges: edges.map(
+      ([id, source, target, sourceHandle, targetHandle]) => ({
+        id,
+        source,
+        target,
+        sourceHandle,
+        targetHandle,
+      }),
+    ),
+  };
+}
+
 function script(document: FlowDocument): ScriptDto {
   return {
     id: "script-1",
@@ -238,5 +265,181 @@ describe("FlowRuntimeService", () => {
     const failed = await waitForTerminal(service);
     assert.equal(failed.state, "failed");
     assert.match(failed.error ?? "", /OCR node.*not supported/);
+  });
+
+  test("evaluates variables, takes one If branch, merges, and asserts", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("seed", "set-variable", { name: "count", expression: "3" }),
+        node("if", "if", { condition: "$count >= 3" }),
+        node("true-value", "set-variable", {
+          name: "result",
+          expression: "$count * 14",
+        }),
+        node("false-value", "set-variable", {
+          name: "result",
+          expression: "0",
+        }),
+        node("merge", "merge"),
+        node("assert", "assert", {
+          condition: "$result == 42",
+          message: "unexpected result",
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "seed", "next", "in"],
+        ["e2", "seed", "if", "next", "in"],
+        ["e3", "if", "true-value", "true", "in"],
+        ["e4", "if", "false-value", "false", "in"],
+        ["e5", "true-value", "merge", "next", "a"],
+        ["e6", "false-value", "merge", "next", "b"],
+        ["e7", "merge", "assert", "next", "in"],
+        ["e8", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(completed.variables, { count: 3, result: 42 });
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "false-value")?.state,
+      "skipped",
+    );
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "true-value")
+        ?.executionCount,
+      1,
+    );
+  });
+
+  test("runs a guarded For range and exposes its final variables", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("seed", "set-variable", { name: "sum", expression: "0" }),
+        node("for", "for", {
+          variable: "i",
+          from: "0",
+          to: "4",
+          step: "1",
+          maxIterations: 10,
+        }),
+        node("body", "set-variable", {
+          name: "sum",
+          expression: "$sum + $i",
+        }),
+        node("assert", "assert", { condition: "$sum == 6" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "seed", "next", "in"],
+        ["e2", "seed", "for", "next", "in"],
+        ["e3", "for", "body", "body", "in"],
+        ["e4", "body", "for", "next", "loop"],
+        ["e5", "for", "assert", "done", "in"],
+        ["e6", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(completed.variables, { sum: 6, i: 3 });
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "for")?.executionCount,
+      5,
+    );
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "body")?.executionCount,
+      4,
+    );
+  });
+
+  test("runs While and fails clearly when its iteration guard is exceeded", async () => {
+    const whileDocument = (condition: string, maximum: number) =>
+      graphDocument(
+        [
+          node("start", "start"),
+          node("seed", "set-variable", { name: "count", expression: "0" }),
+          node("while", "while", {
+            condition,
+            maxIterations: maximum,
+          }),
+          node("body", "set-variable", {
+            name: "count",
+            expression: "$count + 1",
+          }),
+          node("assert", "assert", { condition: "$count == 3" }),
+          node("end", "end"),
+        ],
+        [
+          ["e1", "start", "seed", "next", "in"],
+          ["e2", "seed", "while", "next", "in"],
+          ["e3", "while", "body", "body", "in"],
+          ["e4", "body", "while", "next", "loop"],
+          ["e5", "while", "assert", "done", "in"],
+          ["e6", "assert", "end", "next", "in"],
+        ],
+      );
+
+    const successful = serviceFor(whileDocument("$count < 3", 10)).service;
+    successful.start(RUN_INPUT);
+    const completed = await waitForTerminal(successful);
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.count, 3);
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "body")?.executionCount,
+      3,
+    );
+
+    const guarded = serviceFor(whileDocument("true", 2)).service;
+    guarded.start(RUN_INPUT);
+    const failed = await waitForTerminal(guarded);
+    assert.equal(failed.state, "failed");
+    assert.match(failed.error ?? "", /While node.*exceeded 2 iterations/);
+    assert.equal(
+      failed.steps.find((step) => step.nodeId === "body")?.executionCount,
+      2,
+    );
+  });
+
+  test("fails on unsafe or invalid expressions without invoking the driver", async () => {
+    const { service, driver } = serviceFor(
+      linearDocument([
+        node("set", "set-variable", {
+          name: "value",
+          expression: "process.exit()",
+        }),
+      ]),
+    );
+
+    service.start(RUN_INPUT);
+    const failed = await waitForTerminal(service);
+    assert.equal(failed.state, "failed");
+    assert.match(failed.error ?? "", /Unexpected|not allowed|token/i);
+    assert.deepEqual(driver.calls, []);
+  });
+
+  test("rejects variable names that could mutate an object prototype", async () => {
+    const { service } = serviceFor(
+      linearDocument([
+        node("set", "set-variable", {
+          name: "__proto__",
+          expression: "1",
+        }),
+      ]),
+    );
+
+    service.start(RUN_INPUT);
+    const failed = await waitForTerminal(service);
+    assert.equal(failed.state, "failed");
+    assert.match(failed.error ?? "", /invalid variable name/);
   });
 });

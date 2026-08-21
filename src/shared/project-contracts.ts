@@ -29,6 +29,12 @@ export const FLOW_NODE_KINDS = [
   "ocr",
   "delay",
   "launch-app",
+  "set-variable",
+  "if",
+  "merge",
+  "for",
+  "while",
+  "assert",
 ] as const;
 
 export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
@@ -41,6 +47,12 @@ export const FLOW_NODE_PORTS = {
   ocr: { inputs: ["in"], outputs: ["next"] },
   delay: { inputs: ["in"], outputs: ["next"] },
   "launch-app": { inputs: ["in"], outputs: ["next"] },
+  "set-variable": { inputs: ["in"], outputs: ["next"] },
+  if: { inputs: ["in"], outputs: ["true", "false"] },
+  merge: { inputs: ["a", "b"], outputs: ["next"] },
+  for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
+  while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
+  assert: { inputs: ["in"], outputs: ["next"] },
 } as const satisfies Record<
   FlowNodeKind,
   { inputs: readonly string[]; outputs: readonly string[] }

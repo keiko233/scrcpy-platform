@@ -33,13 +33,16 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             definition?.kind && `wb-block-${definition.kind}`,
           )}
         >
-          {definition?.inputPorts.map((port) => (
+          {definition?.inputPorts.map((port, index, ports) => (
             <Handle
               key={port}
               id={port}
               type="target"
               position={Position.Left}
               className="!-left-[5px]"
+              style={{ top: `${((index + 1) / (ports.length + 1)) * 100}%` }}
+              title={`Input: ${port}`}
+              aria-label={`Input port ${port}`}
             />
           ))}
           <div className="flex items-center gap-2">
@@ -61,13 +64,16 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               </div>
             </div>
           </div>
-          {definition?.outputPorts.map((port) => (
+          {definition?.outputPorts.map((port, index, ports) => (
             <Handle
               key={port}
               id={port}
               type="source"
               position={Position.Right}
               className="!-right-[5px]"
+              style={{ top: `${((index + 1) / (ports.length + 1)) * 100}%` }}
+              title={`Output: ${port}`}
+              aria-label={`Output port ${port}`}
             />
           ))}
         </div>

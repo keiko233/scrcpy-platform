@@ -14,6 +14,8 @@ export type FlowValidationIssueKind =
   | "multiple-ends"
   | "missing-endpoint"
   | "invalid-port"
+  | "illegal-port-count"
+  | "invalid-loop-back"
   | "illegal-incoming"
   | "illegal-outgoing"
   | "cycle"
@@ -50,6 +52,21 @@ function resolvePort(
     return persistedPort;
   }
   return declaredPorts.length === 1 ? declaredPorts[0] : "";
+}
+
+function portKey(nodeId: string, port: string): string {
+  return `${nodeId}\u0000${port}`;
+}
+
+function isLoopBackEdge(
+  edge: FlowEdge,
+  nodeKinds: ReadonlyMap<string, FlowNodeKind>,
+): boolean {
+  const targetKind = nodeKinds.get(edge.target);
+  return (
+    (targetKind === "for" || targetKind === "while") &&
+    edge.targetHandle === "loop"
+  );
 }
 
 export function validateFlow(
@@ -129,6 +146,8 @@ export function validateFlow(
 
   const incoming = new Map<string, FlowEdge[]>();
   const outgoing = new Map<string, FlowEdge[]>();
+  const incomingByPort = new Map<string, FlowEdge[]>();
+  const outgoingByPort = new Map<string, FlowEdge[]>();
   for (const edge of edges) {
     if (nodeKinds.has(edge.source) && nodeKinds.has(edge.target)) {
       push(outgoing, edge.source, edge);
@@ -149,6 +168,8 @@ export function validateFlow(
           port: edge.sourceHandle,
           message: `Edge "${edge.id}" uses source handle "${edge.sourceHandle ?? "(none)"}" which is not an output port of "${edge.source}" (${sourceKind}).`,
         });
+      } else {
+        push(outgoingByPort, portKey(edge.source, port), edge);
       }
     }
     if (targetKind !== undefined) {
@@ -161,13 +182,16 @@ export function validateFlow(
           port: edge.targetHandle,
           message: `Edge "${edge.id}" uses target handle "${edge.targetHandle ?? "(none)"}" which is not an input port of "${edge.target}" (${targetKind}).`,
         });
+      } else {
+        push(incomingByPort, portKey(edge.target, port), edge);
       }
     }
   }
 
   for (const node of nodes) {
     const incomingCount = incoming.get(node.id)?.length ?? 0;
-    const expectedIncoming = node.type === "start" ? 0 : 1;
+    const inputs: readonly string[] = FLOW_NODE_PORTS[node.type].inputs;
+    const expectedIncoming = inputs.length;
     if (incomingCount !== expectedIncoming) {
       issues.push({
         kind: "illegal-incoming",
@@ -177,7 +201,8 @@ export function validateFlow(
     }
 
     const outgoingCount = outgoing.get(node.id)?.length ?? 0;
-    const expectedOutgoing = node.type === "end" ? 0 : 1;
+    const outputs: readonly string[] = FLOW_NODE_PORTS[node.type].outputs;
+    const expectedOutgoing = outputs.length;
     if (outgoingCount !== expectedOutgoing) {
       issues.push({
         kind: "illegal-outgoing",
@@ -185,15 +210,67 @@ export function validateFlow(
         message: `Node "${node.id}" has ${outgoingCount} outgoing edge(s); expected ${expectedOutgoing}.`,
       });
     }
+
+    for (const port of inputs) {
+      const count = incomingByPort.get(portKey(node.id, port))?.length ?? 0;
+      if (count !== 1) {
+        issues.push({
+          kind: "illegal-port-count",
+          nodeId: node.id,
+          port,
+          message: `Input port "${port}" on node "${node.id}" has ${count} edge(s); expected 1.`,
+        });
+      }
+    }
+    for (const port of outputs) {
+      const count = outgoingByPort.get(portKey(node.id, port))?.length ?? 0;
+      if (count !== 1) {
+        issues.push({
+          kind: "illegal-port-count",
+          nodeId: node.id,
+          port,
+          message: `Output port "${port}" on node "${node.id}" has ${count} edge(s); expected 1.`,
+        });
+      }
+    }
   }
 
-  const cycle = detectCycle(nodes, outgoing);
+  const acyclicOutgoing = new Map<string, FlowEdge[]>();
+  for (const edge of edges) {
+    if (
+      nodeKinds.has(edge.source) &&
+      nodeKinds.has(edge.target) &&
+      !isLoopBackEdge(edge, nodeKinds)
+    ) {
+      push(acyclicOutgoing, edge.source, edge);
+    }
+  }
+  const cycle = detectCycle(nodes, acyclicOutgoing);
   if (cycle !== null) {
     issues.push({
       kind: "cycle",
       nodeId: cycle[0],
       message: `Cycle detected in the flow graph: ${cycle.join(" -> ")}.`,
     });
+  }
+
+  for (const edge of edges) {
+    if (!isLoopBackEdge(edge, nodeKinds)) {
+      continue;
+    }
+    const bodyEdge = outgoingByPort.get(portKey(edge.target, "body"))?.[0];
+    if (
+      bodyEdge !== undefined &&
+      !reachableFrom(bodyEdge.target, acyclicOutgoing).has(edge.source)
+    ) {
+      issues.push({
+        kind: "invalid-loop-back",
+        edgeId: edge.id,
+        nodeId: edge.target,
+        port: "loop",
+        message: `Edge "${edge.id}" enters loop port "${edge.target}.loop" from outside that loop's body path.`,
+      });
+    }
   }
 
   if (starts.length === 1) {
@@ -224,11 +301,11 @@ export function compileFlow(
   edges: readonly FlowEdge[],
 ): CompiledFlow {
   const issues = validateFlow(nodes, edges);
-  const order = issues.length === 0 ? linearOrder(nodes, edges) : [];
+  const order = issues.length === 0 ? deterministicOrder(nodes, edges) : [];
   return { valid: issues.length === 0, issues, order };
 }
 
-function linearOrder(
+function deterministicOrder(
   nodes: readonly FlowNode[],
   edges: readonly FlowEdge[],
 ): string[] {
@@ -236,27 +313,40 @@ function linearOrder(
   if (start === undefined) {
     return [];
   }
-  const nodeIds = new Set(nodes.map((node) => node.id));
-  const outgoing = new Map<string, string[]>();
+  const nodeKinds = new Map(nodes.map((node) => [node.id, node.type]));
+  const outgoing = new Map<string, FlowEdge[]>();
+  const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
   for (const edge of edges) {
-    if (!nodeIds.has(edge.source)) {
+    if (
+      !nodeKinds.has(edge.source) ||
+      !nodeKinds.has(edge.target) ||
+      isLoopBackEdge(edge, nodeKinds)
+    ) {
       continue;
     }
-    const targets = outgoing.get(edge.source);
-    if (targets) {
-      targets.push(edge.target);
-    } else {
-      outgoing.set(edge.source, [edge.target]);
-    }
+    push(outgoing, edge.source, edge);
+    incomingCount.set(edge.target, (incomingCount.get(edge.target) ?? 0) + 1);
   }
 
   const order: string[] = [];
-  const visited = new Set<string>();
-  let current: string | undefined = start.id;
-  while (current !== undefined && !visited.has(current)) {
-    visited.add(current);
-    order.push(current);
-    current = (outgoing.get(current) ?? []).sort()[0];
+  const queued = new Set<string>([start.id]);
+  const ready = [start.id];
+  while (ready.length > 0) {
+    const nodeId = ready.shift() as string;
+    order.push(nodeId);
+    const edgesFromNode = [...(outgoing.get(nodeId) ?? [])].sort(
+      (left, right) =>
+        (left.sourceHandle ?? "").localeCompare(right.sourceHandle ?? "") ||
+        left.target.localeCompare(right.target),
+    );
+    for (const edge of edgesFromNode) {
+      const remaining = (incomingCount.get(edge.target) ?? 0) - 1;
+      incomingCount.set(edge.target, remaining);
+      if (remaining === 0 && !queued.has(edge.target)) {
+        queued.add(edge.target);
+        ready.push(edge.target);
+      }
+    }
   }
   return order;
 }

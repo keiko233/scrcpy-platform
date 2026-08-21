@@ -167,6 +167,112 @@ describe("workbench flow validation", () => {
     assert.deepEqual(compiled.order, ["start", "click-1", "delay-1", "end"]);
   });
 
+  it("validates both If branches and orders Merge after their branch bodies", () => {
+    const nodes = [
+      node("start", "start"),
+      node("if", "if"),
+      node("false-action", "delay"),
+      node("true-action", "click"),
+      node("merge", "merge"),
+      node("end", "end"),
+    ];
+    const edges = [
+      edge("e1", "start", "if"),
+      edge("e2", "if", "true-action", "true"),
+      edge("e3", "if", "false-action", "false"),
+      edge("e4", "true-action", "merge", "next", "a"),
+      edge("e5", "false-action", "merge", "next", "b"),
+      edge("e6", "merge", "end"),
+    ];
+
+    const compiled = compileFlow(nodes, edges);
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+    assert.deepEqual(compiled.order, [
+      "start",
+      "if",
+      "false-action",
+      "true-action",
+      "merge",
+      "end",
+    ]);
+  });
+
+  it("accepts an explicit guarded loop-back but rejects ordinary cycles", () => {
+    const nodes = [
+      node("start", "start"),
+      node("for", "for"),
+      node("body", "set-variable"),
+      node("end", "end"),
+    ];
+    const loopEdges = [
+      edge("e1", "start", "for", "next", "in"),
+      edge("e2", "for", "body", "body", "in"),
+      edge("e3", "body", "for", "next", "loop"),
+      edge("e4", "for", "end", "done", "in"),
+    ];
+
+    const compiled = compileFlow(nodes, loopEdges);
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.order, ["start", "for", "body", "end"]);
+
+    const ordinaryCycle = validateFlow(nodes, [
+      edge("e1", "start", "for", "next", "in"),
+      edge("e2", "for", "body", "body", "in"),
+      edge("e3", "body", "for", "next", "in"),
+      edge("e4", "for", "end", "done", "in"),
+    ]);
+    assert.ok(issueKinds(ordinaryCycle).includes("cycle"));
+    assert.ok(issueKinds(ordinaryCycle).includes("illegal-port-count"));
+  });
+
+  it("requires one edge on every declared branch port", () => {
+    const nodes = [
+      node("start", "start"),
+      node("if", "if"),
+      node("end", "end"),
+    ];
+    const issues = validateFlow(nodes, [
+      edge("e1", "start", "if"),
+      edge("e2", "if", "end", "true", "in"),
+    ]);
+    assert.ok(
+      issues.some(
+        (issue) =>
+          issue.kind === "illegal-port-count" &&
+          issue.nodeId === "if" &&
+          issue.port === "false",
+      ),
+    );
+  });
+
+  it("rejects a loop input reached from outside the loop body", () => {
+    const nodes = [
+      node("start", "start"),
+      node("if", "if"),
+      node("for", "for"),
+      node("body", "set-variable"),
+      node("merge", "merge"),
+      node("end", "end"),
+    ];
+    const issues = validateFlow(nodes, [
+      edge("e1", "start", "if"),
+      edge("e2", "if", "for", "true", "in"),
+      edge("e3", "if", "for", "false", "loop"),
+      edge("e4", "for", "body", "body", "in"),
+      edge("e5", "body", "merge", "next", "a"),
+      edge("e6", "for", "merge", "done", "b"),
+      edge("e7", "merge", "end"),
+    ]);
+
+    assert.ok(
+      issues.some(
+        (issue) =>
+          issue.kind === "invalid-loop-back" && issue.edgeId === "e3",
+      ),
+    );
+  });
+
   it("compiles no order for an invalid graph", () => {
     const nodes = linearGraph().nodes;
     const compiled = compileFlow(nodes, []);

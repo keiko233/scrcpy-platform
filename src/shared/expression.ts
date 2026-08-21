@@ -1,0 +1,403 @@
+import type { JsonValue } from "./project-contracts";
+
+const MAX_EXPRESSION_LENGTH = 4096;
+const MAX_TOKENS = 512;
+const MAX_DEPTH = 64;
+
+type TokenKind = "number" | "string" | "identifier" | "operator" | "(" | ")" | "eof";
+
+interface Token {
+  kind: TokenKind;
+  text: string;
+  value?: JsonValue;
+  offset: number;
+}
+
+type ExpressionNode =
+  | { type: "literal"; value: JsonValue }
+  | { type: "variable"; name: string }
+  | { type: "unary"; operator: "!" | "+" | "-"; operand: ExpressionNode }
+  | {
+      type: "binary";
+      operator: string;
+      left: ExpressionNode;
+      right: ExpressionNode;
+    };
+
+export type ExpressionVariables = Readonly<Record<string, JsonValue>>;
+
+export class ExpressionError extends Error {
+  readonly offset: number | null;
+
+  constructor(message: string, offset: number | null = null) {
+    super(offset === null ? message : `${message} at character ${offset + 1}.`);
+    this.name = "ExpressionError";
+    this.offset = offset;
+  }
+}
+
+const OPERATORS = [
+  "===",
+  "!==",
+  "&&",
+  "||",
+  "??",
+  "<=",
+  ">=",
+  "==",
+  "!=",
+  "+",
+  "-",
+  "*",
+  "/",
+  "%",
+  "<",
+  ">",
+  "!",
+] as const;
+
+function tokenize(source: string): Token[] {
+  if (source.length === 0) {
+    throw new ExpressionError("Expression cannot be empty");
+  }
+  if (source.length > MAX_EXPRESSION_LENGTH) {
+    throw new ExpressionError(
+      `Expression exceeds ${MAX_EXPRESSION_LENGTH} characters`,
+    );
+  }
+
+  const tokens: Token[] = [];
+  let offset = 0;
+  const push = (token: Token) => {
+    tokens.push(token);
+    if (tokens.length > MAX_TOKENS) {
+      throw new ExpressionError(`Expression exceeds ${MAX_TOKENS} tokens`);
+    }
+  };
+
+  while (offset < source.length) {
+    const character = source[offset];
+    if (/\s/.test(character)) {
+      offset += 1;
+      continue;
+    }
+    if (character === "(" || character === ")") {
+      push({ kind: character, text: character, offset });
+      offset += 1;
+      continue;
+    }
+    if (character === "\"" || character === "'") {
+      const quote = character;
+      const start = offset;
+      offset += 1;
+      let value = "";
+      let closed = false;
+      while (offset < source.length) {
+        const current = source[offset++];
+        if (current === quote) {
+          closed = true;
+          break;
+        }
+        if (current !== "\\") {
+          value += current;
+          continue;
+        }
+        if (offset >= source.length) {
+          break;
+        }
+        const escaped = source[offset++];
+        const escapes: Record<string, string> = {
+          n: "\n",
+          r: "\r",
+          t: "\t",
+          "\\": "\\",
+          "\"": "\"",
+          "'": "'",
+        };
+        value += escapes[escaped] ?? escaped;
+      }
+      if (!closed) {
+        throw new ExpressionError("Unterminated string", start);
+      }
+      push({
+        kind: "string",
+        text: source.slice(start, offset),
+        value,
+        offset: start,
+      });
+      continue;
+    }
+    if (/\d/.test(character) || (character === "." && /\d/.test(source[offset + 1] ?? ""))) {
+      const start = offset;
+      const match = /^(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?/.exec(
+        source.slice(offset),
+      );
+      if (match === null) {
+        throw new ExpressionError("Invalid number", start);
+      }
+      offset += match[0].length;
+      const value = Number(match[0]);
+      if (!Number.isFinite(value)) {
+        throw new ExpressionError("Number must be finite", start);
+      }
+      push({ kind: "number", text: match[0], value, offset: start });
+      continue;
+    }
+    if (/[A-Za-z_$]/.test(character)) {
+      const start = offset;
+      offset += 1;
+      while (/[A-Za-z0-9_]/.test(source[offset] ?? "")) {
+        offset += 1;
+      }
+      const text = source.slice(start, offset);
+      if (text === "$") {
+        throw new ExpressionError("Variable name is missing after $", start);
+      }
+      push({ kind: "identifier", text, offset: start });
+      continue;
+    }
+    const operator = OPERATORS.find((candidate) =>
+      source.startsWith(candidate, offset),
+    );
+    if (operator !== undefined) {
+      push({ kind: "operator", text: operator, offset });
+      offset += operator.length;
+      continue;
+    }
+    throw new ExpressionError(`Unexpected character "${character}"`, offset);
+  }
+  tokens.push({ kind: "eof", text: "", offset: source.length });
+  return tokens;
+}
+
+class Parser {
+  readonly #tokens: Token[];
+  #index = 0;
+  #depth = 0;
+
+  constructor(tokens: Token[]) {
+    this.#tokens = tokens;
+  }
+
+  parse(): ExpressionNode {
+    const expression = this.#parseNullish();
+    const token = this.#peek();
+    if (token.kind !== "eof") {
+      throw new ExpressionError(`Unexpected token "${token.text}"`, token.offset);
+    }
+    return expression;
+  }
+
+  #peek(): Token {
+    return this.#tokens[this.#index];
+  }
+
+  #take(): Token {
+    return this.#tokens[this.#index++];
+  }
+
+  #binary(
+    next: () => ExpressionNode,
+    operators: readonly string[],
+  ): ExpressionNode {
+    let left = next();
+    while (
+      this.#peek().kind === "operator" &&
+      operators.includes(this.#peek().text)
+    ) {
+      const operator = this.#take().text;
+      left = { type: "binary", operator, left, right: next() };
+    }
+    return left;
+  }
+
+  #parseNullish = (): ExpressionNode =>
+    this.#binary(this.#parseOr, ["??"]);
+
+  #parseOr = (): ExpressionNode => this.#binary(this.#parseAnd, ["||"]);
+
+  #parseAnd = (): ExpressionNode =>
+    this.#binary(this.#parseEquality, ["&&"]);
+
+  #parseEquality = (): ExpressionNode =>
+    this.#binary(this.#parseComparison, ["==", "!=", "===", "!=="]);
+
+  #parseComparison = (): ExpressionNode =>
+    this.#binary(this.#parseAdditive, ["<", "<=", ">", ">="]);
+
+  #parseAdditive = (): ExpressionNode =>
+    this.#binary(this.#parseMultiplicative, ["+", "-"]);
+
+  #parseMultiplicative = (): ExpressionNode =>
+    this.#binary(this.#parseUnary, ["*", "/", "%"]);
+
+  #parseUnary = (): ExpressionNode => {
+    const token = this.#peek();
+    if (
+      token.kind === "operator" &&
+      (token.text === "!" || token.text === "+" || token.text === "-")
+    ) {
+      this.#take();
+      return {
+        type: "unary",
+        operator: token.text,
+        operand: this.#parseUnary(),
+      };
+    }
+    return this.#parsePrimary();
+  };
+
+  #parsePrimary(): ExpressionNode {
+    const token = this.#take();
+    if (token.kind === "number" || token.kind === "string") {
+      return { type: "literal", value: token.value as JsonValue };
+    }
+    if (token.kind === "identifier") {
+      if (token.text === "true" || token.text === "false") {
+        return { type: "literal", value: token.text === "true" };
+      }
+      if (token.text === "null") {
+        return { type: "literal", value: null };
+      }
+      return {
+        type: "variable",
+        name: token.text.startsWith("$") ? token.text.slice(1) : token.text,
+      };
+    }
+    if (token.kind === "(") {
+      this.#depth += 1;
+      if (this.#depth > MAX_DEPTH) {
+        throw new ExpressionError(`Expression exceeds depth ${MAX_DEPTH}`, token.offset);
+      }
+      const expression = this.#parseNullish();
+      const closing = this.#take();
+      this.#depth -= 1;
+      if (closing.kind !== ")") {
+        throw new ExpressionError("Expected closing parenthesis", closing.offset);
+      }
+      return expression;
+    }
+    throw new ExpressionError(
+      token.kind === "eof" ? "Expected a value" : `Unexpected token "${token.text}"`,
+      token.offset,
+    );
+  }
+}
+
+export function expressionTruthy(value: JsonValue): boolean {
+  return value !== null && value !== false && value !== 0 && value !== "";
+}
+
+function numeric(value: JsonValue, operator: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new ExpressionError(`Operator ${operator} requires numeric operands`);
+  }
+  return value;
+}
+
+function compare(left: JsonValue, right: JsonValue, operator: string): boolean {
+  if (typeof left === "number" && typeof right === "number") {
+    if (operator === "<") return left < right;
+    if (operator === "<=") return left <= right;
+    if (operator === ">") return left > right;
+    return left >= right;
+  }
+  if (typeof left === "string" && typeof right === "string") {
+    if (operator === "<") return left < right;
+    if (operator === "<=") return left <= right;
+    if (operator === ">") return left > right;
+    return left >= right;
+  }
+  throw new ExpressionError(
+    `Operator ${operator} requires two numbers or two strings`,
+  );
+}
+
+function evaluate(node: ExpressionNode, variables: ExpressionVariables, depth = 0): JsonValue {
+  if (depth > MAX_DEPTH) {
+    throw new ExpressionError(`Expression exceeds evaluation depth ${MAX_DEPTH}`);
+  }
+  if (node.type === "literal") {
+    return node.value;
+  }
+  if (node.type === "variable") {
+    if (!Object.hasOwn(variables, node.name)) {
+      throw new ExpressionError(`Variable "${node.name}" is not defined`);
+    }
+    return variables[node.name];
+  }
+  if (node.type === "unary") {
+    const value = evaluate(node.operand, variables, depth + 1);
+    if (node.operator === "!") return !expressionTruthy(value);
+    const number = numeric(value, node.operator);
+    return node.operator === "-" ? -number : number;
+  }
+
+  const left = evaluate(node.left, variables, depth + 1);
+  if (node.operator === "&&") {
+    return expressionTruthy(left)
+      ? evaluate(node.right, variables, depth + 1)
+      : left;
+  }
+  if (node.operator === "||") {
+    return expressionTruthy(left)
+      ? left
+      : evaluate(node.right, variables, depth + 1);
+  }
+  if (node.operator === "??") {
+    return left === null ? evaluate(node.right, variables, depth + 1) : left;
+  }
+  const right = evaluate(node.right, variables, depth + 1);
+  switch (node.operator) {
+    case "==":
+    case "===":
+      return left === right;
+    case "!=":
+    case "!==":
+      return left !== right;
+    case "<":
+    case "<=":
+    case ">":
+    case ">=":
+      return compare(left, right, node.operator);
+    case "+":
+      if (typeof left === "string" || typeof right === "string") {
+        if (
+          (typeof left !== "string" && typeof left !== "number" && typeof left !== "boolean") ||
+          (typeof right !== "string" && typeof right !== "number" && typeof right !== "boolean")
+        ) {
+          throw new ExpressionError("String concatenation requires primitive operands");
+        }
+        return String(left) + String(right);
+      }
+      return numeric(left, "+") + numeric(right, "+");
+    case "-":
+      return numeric(left, "-") - numeric(right, "-");
+    case "*":
+      return numeric(left, "*") * numeric(right, "*");
+    case "/": {
+      const divisor = numeric(right, "/");
+      if (divisor === 0) throw new ExpressionError("Division by zero");
+      return numeric(left, "/") / divisor;
+    }
+    case "%": {
+      const divisor = numeric(right, "%");
+      if (divisor === 0) throw new ExpressionError("Modulo by zero");
+      return numeric(left, "%") % divisor;
+    }
+    default:
+      throw new ExpressionError(`Unsupported operator ${node.operator}`);
+  }
+}
+
+export function evaluateExpression(
+  source: string,
+  variables: ExpressionVariables = {},
+): JsonValue {
+  const ast = new Parser(tokenize(source.trim())).parse();
+  const value = evaluate(ast, variables);
+  if (typeof value === "number" && !Number.isFinite(value)) {
+    throw new ExpressionError("Expression result must be finite");
+  }
+  return value;
+}

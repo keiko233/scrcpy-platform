@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { FLOW_NODE_KINDS } from "./project-contracts";
+import { FLOW_NODE_KINDS, JsonValueSchema } from "./project-contracts";
 import type { FlowValidationIssue } from "./flow-graph";
 
 export const StartFlowRunInputSchema = z
@@ -31,6 +31,7 @@ export const FlowRunStepStateSchema = z.enum([
   "completed",
   "failed",
   "cancelled",
+  "skipped",
 ]);
 
 export const FlowRunStepDtoSchema = z
@@ -41,6 +42,7 @@ export const FlowRunStepDtoSchema = z
     startedAt: z.string().datetime().nullable(),
     finishedAt: z.string().datetime().nullable(),
     error: z.string().nullable(),
+    executionCount: z.number().int().nonnegative(),
   })
   .strict();
 
@@ -56,6 +58,7 @@ export const FlowRunDtoSchema = z
     startedAt: z.string().datetime(),
     finishedAt: z.string().datetime().nullable(),
     error: z.string().nullable(),
+    variables: z.record(z.string(), JsonValueSchema),
     steps: z.array(FlowRunStepDtoSchema),
   })
   .strict();

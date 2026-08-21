@@ -1,5 +1,13 @@
 import { compileFlow } from "../../shared/flow-graph";
-import type { FlowNode, ScriptDto } from "../../shared/project-contracts";
+import { evaluateExpression, expressionTruthy } from "../../shared/expression";
+import {
+  FLOW_NODE_PORTS,
+  type FlowDocument,
+  type FlowEdge,
+  type FlowNode,
+  type JsonValue,
+  type ScriptDto,
+} from "../../shared/project-contracts";
 import type {
   FlowRunDto,
   FlowRunListener,
@@ -52,6 +60,7 @@ function errorMessageOf(error: unknown): string {
 function cloneRun(run: FlowRunDto): FlowRunDto {
   return {
     ...run,
+    variables: structuredClone(run.variables),
     steps: run.steps.map((step) => ({ ...step })),
   };
 }
@@ -68,6 +77,86 @@ function nonnegativeDuration(value: unknown, nodeId: string): number {
   }
   return Math.round(value);
 }
+
+function requiredString(
+  node: FlowNode,
+  field: string,
+  options: { trim?: boolean } = {},
+): string {
+  const value = node.data[field];
+  if (typeof value !== "string") {
+    throw new Error(`Node "${node.id}" requires string field "${field}".`);
+  }
+  const normalized = options.trim ? value.trim() : value;
+  if (normalized.length === 0) {
+    throw new Error(`Node "${node.id}" requires nonempty field "${field}".`);
+  }
+  return normalized;
+}
+
+function variableName(node: FlowNode, field = "name"): string {
+  const name = requiredString(node, field, { trim: true });
+  if (
+    !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ||
+    RESERVED_VARIABLE_NAMES.has(name)
+  ) {
+    throw new Error(
+      `Node "${node.id}" has invalid variable name "${name}".`,
+    );
+  }
+  return name;
+}
+
+function maximumIterations(node: FlowNode): number {
+  const value = node.data.maxIterations;
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 1 ||
+    value > 100_000
+  ) {
+    throw new Error(
+      `Node "${node.id}" requires maxIterations between 1 and 100000.`,
+    );
+  }
+  return value;
+}
+
+function numericExpression(
+  node: FlowNode,
+  field: string,
+  variables: Readonly<Record<string, JsonValue>>,
+): number {
+  const result = evaluateExpression(requiredString(node, field), variables);
+  if (typeof result !== "number" || !Number.isFinite(result)) {
+    throw new Error(
+      `Expression "${field}" on node "${node.id}" must return a finite number.`,
+    );
+  }
+  return result;
+}
+
+function resolvedPort(
+  declared: readonly string[],
+  persisted: string | undefined,
+): string {
+  return persisted ?? (declared.length === 1 ? declared[0] : "");
+}
+
+interface ForLoopState {
+  variable: string;
+  current: number;
+  to: number;
+  step: number;
+  iterations: number;
+  maximum: number;
+}
+
+const RESERVED_VARIABLE_NAMES = new Set([
+  "__proto__",
+  "constructor",
+  "prototype",
+]);
 
 function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
   abortIfNeeded(signal);
@@ -171,6 +260,7 @@ export class FlowRuntimeService {
       startedAt: null,
       finishedAt: null,
       error: null,
+      executionCount: 0,
     }));
     this.#run = {
       runId,
@@ -183,12 +273,17 @@ export class FlowRuntimeService {
       startedAt,
       finishedAt: null,
       error: null,
+      variables: {},
       steps,
     };
     const controller = new AbortController();
     this.#abortController = controller;
     this.#publish();
-    this.#execution = this.#execute(orderedNodes, controller.signal).finally(
+    this.#execution = this.#execute(
+      script.draftDocument,
+      orderedNodes[0]?.id ?? "",
+      controller.signal,
+    ).finally(
       () => {
         if (this.#abortController === controller) {
           this.#abortController = null;
@@ -224,7 +319,11 @@ export class FlowRuntimeService {
     this.#listeners.clear();
   }
 
-  async #execute(nodes: FlowNode[], signal: AbortSignal): Promise<void> {
+  async #execute(
+    document: FlowDocument,
+    startNodeId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
     const run = this.#run as FlowRunDto;
     const context: FlowActionContext = {
       runId: run.runId,
@@ -233,25 +332,89 @@ export class FlowRuntimeService {
       displayId: run.displayId,
     };
 
+    const nodes = new Map(document.nodes.map((node) => [node.id, node]));
+    const steps = new Map(run.steps.map((step) => [step.nodeId, step]));
+    const outgoing = new Map<string, FlowEdge[]>();
+    for (const edge of document.edges) {
+      const list = outgoing.get(edge.source);
+      if (list) list.push(edge);
+      else outgoing.set(edge.source, [edge]);
+    }
+    const forLoops = new Map<string, ForLoopState>();
+    const whileIterations = new Map<string, number>();
+    let currentNodeId: string | null = startNodeId;
+    let arrivalPort: string | null = null;
+    let transitions = 0;
+
     try {
-      for (let index = 0; index < nodes.length; index += 1) {
+      while (currentNodeId !== null) {
+        transitions += 1;
+        if (transitions > 100_000) {
+          throw new Error("Flow exceeded the maximum of 100000 node transitions.");
+        }
         abortIfNeeded(signal);
-        const node = nodes[index];
-        const step = run.steps[index];
+        const node = nodes.get(currentNodeId);
+        const step = steps.get(currentNodeId);
+        if (node === undefined || step === undefined) {
+          throw new Error(`Flow reached missing node "${currentNodeId}".`);
+        }
         step.state = "running";
         step.startedAt = this.#now();
+        step.finishedAt = null;
+        step.error = null;
+        step.executionCount += 1;
         run.currentNodeId = node.id;
         this.#publish();
 
-        await this.#executeNode(node, context, signal);
+        const outputPort = await this.#executeNode(
+          node,
+          arrivalPort,
+          context,
+          signal,
+          run.variables,
+          forLoops,
+          whileIterations,
+        );
         abortIfNeeded(signal);
         step.state = "completed";
         step.finishedAt = this.#now();
         run.currentNodeId = null;
         this.#publish();
+
+        if (outputPort === null) {
+          currentNodeId = null;
+          continue;
+        }
+        const declaredOutputs: readonly string[] =
+          FLOW_NODE_PORTS[node.type].outputs;
+        const edge = (outgoing.get(node.id) ?? []).find(
+          (candidate) =>
+            resolvedPort(declaredOutputs, candidate.sourceHandle) === outputPort,
+        );
+        if (edge === undefined) {
+          throw new Error(
+            `Node "${node.id}" has no edge for output port "${outputPort}".`,
+          );
+        }
+        const target = nodes.get(edge.target);
+        if (target === undefined) {
+          throw new Error(`Edge "${edge.id}" targets missing node "${edge.target}".`);
+        }
+        currentNodeId = target.id;
+        arrivalPort = resolvedPort(
+          FLOW_NODE_PORTS[target.type].inputs,
+          edge.targetHandle,
+        );
+      }
+      const finishedAt = this.#now();
+      for (const step of run.steps) {
+        if (step.state === "pending") {
+          step.state = "skipped";
+          step.finishedAt = finishedAt;
+        }
       }
       run.state = "completed";
-      run.finishedAt = this.#now();
+      run.finishedAt = finishedAt;
       this.#publish();
     } catch (error) {
       const cancelled = signal.aborted || error instanceof RunCancelledError;
@@ -280,19 +443,24 @@ export class FlowRuntimeService {
 
   async #executeNode(
     node: FlowNode,
+    arrivalPort: string | null,
     context: FlowActionContext,
     signal: AbortSignal,
-  ): Promise<void> {
+    variables: Record<string, JsonValue>,
+    forLoops: Map<string, ForLoopState>,
+    whileIterations: Map<string, number>,
+  ): Promise<string | null> {
     switch (node.type) {
       case "start":
+        return "next";
       case "end":
-        return;
+        return null;
       case "delay":
         await abortableDelay(
           nonnegativeDuration(node.data.ms, node.id),
           signal,
         );
-        return;
+        return "next";
       case "ocr":
         throw new Error(
           `OCR node "${node.id}" is not supported by this runtime batch.`,
@@ -301,7 +469,98 @@ export class FlowRuntimeService {
       case "swipe":
       case "launch-app":
         await this.#driver.execute(node, context, signal);
-        return;
+        return "next";
+      case "set-variable": {
+        const name = variableName(node);
+        variables[name] = evaluateExpression(
+          requiredString(node, "expression"),
+          variables,
+        );
+        return "next";
+      }
+      case "if":
+        return expressionTruthy(
+          evaluateExpression(requiredString(node, "condition"), variables),
+        )
+          ? "true"
+          : "false";
+      case "merge":
+        return "next";
+      case "assert": {
+        const passed = expressionTruthy(
+          evaluateExpression(requiredString(node, "condition"), variables),
+        );
+        if (!passed) {
+          const message = node.data.message;
+          throw new Error(
+            typeof message === "string" && message.trim().length > 0
+              ? message.trim()
+              : `Assertion node "${node.id}" failed.`,
+          );
+        }
+        return "next";
+      }
+      case "for": {
+        let loop = forLoops.get(node.id);
+        if (arrivalPort === "in") {
+          const step = numericExpression(node, "step", variables);
+          if (step === 0) {
+            throw new Error(`For node "${node.id}" step cannot be zero.`);
+          }
+          loop = {
+            variable: variableName(node, "variable"),
+            current: numericExpression(node, "from", variables),
+            to: numericExpression(node, "to", variables),
+            step,
+            iterations: 0,
+            maximum: maximumIterations(node),
+          };
+          forLoops.set(node.id, loop);
+        } else if (arrivalPort === "loop" && loop !== undefined) {
+          loop.current += loop.step;
+        } else {
+          throw new Error(
+            `For node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
+          );
+        }
+        const continues =
+          loop.step > 0 ? loop.current < loop.to : loop.current > loop.to;
+        if (!continues) {
+          forLoops.delete(node.id);
+          return "done";
+        }
+        if (loop.iterations >= loop.maximum) {
+          throw new Error(
+            `For node "${node.id}" exceeded ${loop.maximum} iterations.`,
+          );
+        }
+        loop.iterations += 1;
+        variables[loop.variable] = loop.current;
+        return "body";
+      }
+      case "while": {
+        if (arrivalPort !== "in" && arrivalPort !== "loop") {
+          throw new Error(
+            `While node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
+          );
+        }
+        const continues = expressionTruthy(
+          evaluateExpression(requiredString(node, "condition"), variables),
+        );
+        if (!continues) {
+          whileIterations.delete(node.id);
+          return "done";
+        }
+        const iterations = whileIterations.get(node.id) ?? 0;
+        const maximum = maximumIterations(node);
+        if (iterations >= maximum) {
+          throw new Error(
+            `While node "${node.id}" exceeded ${maximum} iterations.`,
+          );
+        }
+        whileIterations.set(node.id, iterations + 1);
+        return "body";
+      }
     }
   }
 
