@@ -10,7 +10,7 @@ import { BlockInspectorTab } from "../inspector/block-inspector";
 import { useWorkbench } from "../use-workbench";
 
 export function UpperRightTabs() {
-  const { devices, flow } = useWorkbench();
+  const { devices, flow, upperRightTab, setUpperRightTab } = useWorkbench();
   const { session, sessionLoaded, disconnecting, disconnect } = devices;
   const navigate = useNavigate();
 
@@ -38,7 +38,15 @@ export function UpperRightTabs() {
   };
 
   return (
-    <Tabs defaultValue="debug" className="h-full min-h-0 gap-0">
+    <Tabs
+      value={upperRightTab}
+      onValueChange={(value) => {
+        if (value === "debug" || value === "block") {
+          setUpperRightTab(value);
+        }
+      }}
+      className="h-full min-h-0 gap-0"
+    >
       <TabsList className="h-8 w-full shrink-0 justify-start">
         <TabsTrigger value="debug">Debug</TabsTrigger>
         <TabsTrigger value="block">Block</TabsTrigger>

@@ -60,6 +60,114 @@ function NumberInput({
   );
 }
 
+function FieldEditor({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldDefinition;
+  value: JsonValue | undefined;
+  onChange: (value: JsonValue) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <Label className="text-[11px] text-muted-foreground">
+        {field.label}
+      </Label>
+      {field.kind === "textarea" ? (
+        <Textarea
+          rows={2}
+          placeholder={field.placeholder}
+          value={String(value ?? "")}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : field.kind === "number" ? (
+        <NumberInput
+          value={value}
+          min={field.min}
+          step={field.step}
+          placeholder={field.placeholder}
+          onChange={onChange}
+        />
+      ) : field.kind === "select" ? (
+        <Select
+          value={String(value ?? field.options[0]?.value ?? "")}
+          onValueChange={(next) => {
+            if (next !== null) onChange(next);
+          }}
+        >
+          <SelectTrigger size="sm" className="w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      ) : field.kind === "boolean" ? (
+        <Switch
+          checked={value === true}
+          onCheckedChange={onChange}
+          aria-label={field.label}
+        />
+      ) : (
+        <Input
+          placeholder={field.placeholder}
+          value={String(value ?? "")}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      )}
+    </div>
+  );
+}
+
+function FlowPorts({
+  inputPorts,
+  outputPorts,
+}: {
+  inputPorts: readonly string[];
+  outputPorts: readonly string[];
+}) {
+  const rows = [
+    { label: "Inputs", ports: inputPorts },
+    { label: "Outputs", ports: outputPorts },
+  ].filter((row) => row.ports.length > 0);
+
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border p-2">
+      <div>
+        <div className="text-[11px] font-medium">Flow ports</div>
+        <div className="text-[10px] text-muted-foreground">
+          Connect these handles to control execution order.
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="text-[11px] text-muted-foreground">
+          This block has no flow ports.
+        </p>
+      ) : (
+        rows.map((row) => (
+          <div key={row.label} className="flex min-w-0 items-center gap-2">
+            <span className="w-12 shrink-0 text-[10px] text-muted-foreground">
+              {row.label}
+            </span>
+            <div className="flex min-w-0 flex-wrap gap-1">
+              {row.ports.map((port) => (
+                <Badge key={port} size="sm" variant="outline">
+                  {port}
+                </Badge>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </section>
+  );
+}
+
 export function BlockInspectorTab() {
   const { library, flow } = useWorkbench();
   const { selectedScript } = library;
@@ -102,6 +210,8 @@ export function BlockInspectorTab() {
   const data = selectedNode.data;
   const definition = BLOCK_DEFINITIONS[data.kind];
   const fields: FieldDefinition[] = definition?.fields ?? [];
+  const inputFields = fields.filter((field) => field.direction !== "output");
+  const outputFields = fields.filter((field) => field.direction === "output");
   const Icon = definition?.icon;
 
   const commit = (name: string, value: JsonValue) => {
@@ -125,67 +235,56 @@ export function BlockInspectorTab() {
         </Badge>
       </div>
 
-      <div className="flex flex-col gap-2.5 rounded-lg border p-2">
-        {fields.length === 0 ? (
+      <FlowPorts
+        inputPorts={definition?.inputPorts ?? []}
+        outputPorts={definition?.outputPorts ?? []}
+      />
+
+      {inputFields.length > 0 && (
+        <section className="flex flex-col gap-2.5 rounded-lg border p-2">
+          <div>
+            <div className="text-[11px] font-medium">Inputs</div>
+            <div className="text-[10px] text-muted-foreground">
+              Values this block reads when it runs.
+            </div>
+          </div>
+          {inputFields.map((field) => (
+            <FieldEditor
+              key={field.name}
+              field={field}
+              value={data[field.name]}
+              onChange={(value) => commit(field.name, value)}
+            />
+          ))}
+        </section>
+      )}
+
+      {outputFields.length > 0 && (
+        <section className="flex flex-col gap-2.5 rounded-lg border p-2">
+          <div>
+            <div className="text-[11px] font-medium">Outputs</div>
+            <div className="text-[10px] text-muted-foreground">
+              Variables written after this block completes.
+            </div>
+          </div>
+          {outputFields.map((field) => (
+            <FieldEditor
+              key={field.name}
+              field={field}
+              value={data[field.name]}
+              onChange={(value) => commit(field.name, value)}
+            />
+          ))}
+        </section>
+      )}
+
+      {fields.length === 0 && (
+        <section className="flex flex-col gap-2.5 rounded-lg border p-2">
           <p className="text-[11px] text-muted-foreground">
             This block has no editable properties.
           </p>
-        ) : (
-          fields.map((field) => (
-            <div key={field.name} className="flex flex-col gap-1">
-              <Label className="text-[11px] text-muted-foreground">
-                {field.label}
-              </Label>
-              {field.kind === "textarea" ? (
-                <Textarea
-                  rows={2}
-                  placeholder={field.placeholder}
-                  value={String(data[field.name] ?? "")}
-                  onChange={(event) => commit(field.name, event.target.value)}
-                />
-              ) : field.kind === "number" ? (
-                <NumberInput
-                  value={data[field.name]}
-                  min={field.min}
-                  step={field.step}
-                  placeholder={field.placeholder}
-                  onChange={(next) => commit(field.name, next)}
-                />
-              ) : field.kind === "select" ? (
-                <Select
-                  value={String(data[field.name] ?? field.options[0]?.value ?? "")}
-                  onValueChange={(value) => {
-                    if (value !== null) commit(field.name, value);
-                  }}
-                >
-                  <SelectTrigger size="sm" className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {field.options.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : field.kind === "boolean" ? (
-                <Switch
-                  checked={data[field.name] === true}
-                  onCheckedChange={(checked) => commit(field.name, checked)}
-                  aria-label={field.label}
-                />
-              ) : (
-                <Input
-                  placeholder={field.placeholder}
-                  value={String(data[field.name] ?? "")}
-                  onChange={(event) => commit(field.name, event.target.value)}
-                />
-              )}
-            </div>
-          ))
-        )}
-      </div>
+        </section>
+      )}
 
       <div className="flex items-center justify-between rounded-lg border px-2 py-1.5">
         <span className="text-[11px] text-muted-foreground">

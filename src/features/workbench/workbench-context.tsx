@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import type { RevisionDto } from "@/shared/project-contracts";
 
@@ -11,6 +11,7 @@ import { useFlowRun } from "./run/use-flow-run";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
+  type UpperRightTab,
 } from "./use-workbench";
 
 export function WorkbenchProvider({
@@ -23,6 +24,7 @@ export function WorkbenchProvider({
   const screens = useScreens(devices);
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
   const runs = useFlowRun();
+  const [upperRightTab, setUpperRightTab] = useState<UpperRightTab>("debug");
 
   const {
     selectedProjectId,
@@ -97,6 +99,8 @@ export function WorkbenchProvider({
     screens,
     flow,
     runs,
+    upperRightTab,
+    setUpperRightTab,
     selectProjectSafe,
     selectScriptSafe,
     restoreRevisionSafe,

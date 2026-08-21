@@ -25,35 +25,33 @@ export type WorkbenchNodeData = AutomationData | StartData | EndData;
 export type WorkbenchNode = Node<WorkbenchNodeData, FlowBlockKind>;
 export type WorkbenchEdge = Edge<Record<string, unknown>>;
 
-export type FieldDefinition =
-  | {
-      name: string;
-      label: string;
-      kind: "text";
-      placeholder?: string;
-    }
-  | {
-      name: string;
-      label: string;
-      kind: "textarea";
-      placeholder?: string;
-    }
-  | {
-      name: string;
-      label: string;
-      kind: "number";
-      placeholder?: string;
-      min?: number;
-      step?: number;
-    }
-  | {
-      name: string;
-      label: string;
-      kind: "select";
-      options: ReadonlyArray<{ value: string; label: string }>;
-    }
-  | {
-      name: string;
-      label: string;
-      kind: "boolean";
-    };
+interface FieldDefinitionBase {
+  name: string;
+  label: string;
+  direction?: "input" | "output";
+}
+
+export type FieldDefinition = FieldDefinitionBase &
+  (
+    | {
+        kind: "text";
+        placeholder?: string;
+      }
+    | {
+        kind: "textarea";
+        placeholder?: string;
+      }
+    | {
+        kind: "number";
+        placeholder?: string;
+        min?: number;
+        step?: number;
+      }
+    | {
+        kind: "select";
+        options: ReadonlyArray<{ value: string; label: string }>;
+      }
+    | {
+        kind: "boolean";
+      }
+  );

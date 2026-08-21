@@ -8,12 +8,16 @@ import type { ScriptLibrary } from "./library/use-script-library";
 import type { ScreenManager } from "./screen/use-screens";
 import type { FlowRunManager } from "./run/use-flow-run";
 
+export type UpperRightTab = "debug" | "block";
+
 export interface WorkbenchContextValue {
   library: ScriptLibrary;
   devices: DeviceManager;
   screens: ScreenManager;
   flow: FlowEditor;
   runs: FlowRunManager;
+  upperRightTab: UpperRightTab;
+  setUpperRightTab: (tab: UpperRightTab) => void;
   selectProjectSafe: (projectId: string) => void;
   selectScriptSafe: (scriptId: string | null) => void;
   restoreRevisionSafe: (revision: RevisionDto) => Promise<boolean>;
