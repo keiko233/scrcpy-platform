@@ -266,7 +266,7 @@ body,
 }
 
 .wb-flow-node {
-  @apply min-w-40 rounded-md border bg-card px-2 py-1.5 text-foreground shadow-xs transition-shadow;
+  @apply min-w-64 rounded-md border bg-card px-2 py-1.5 text-foreground shadow-xs transition-shadow;
 }
 
 .wb-flow-node:focus-visible {

@@ -13,7 +13,12 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BlocksIcon, Trash2Icon } from "lucide-react";
-import type { JsonValue } from "@/shared/project-contracts";
+import {
+  FLOW_NODE_DATA_PORTS,
+  type FlowDataType,
+  type JsonValue,
+} from "@/shared/project-contracts";
+import { cn } from "@/lib/utils";
 
 import { BLOCK_DEFINITIONS } from "../blocks";
 import type { FieldDefinition } from "../types";
@@ -25,18 +30,21 @@ function NumberInput({
   placeholder,
   min,
   step,
+  disabled,
 }: {
   value: unknown;
   onChange: (value: number | null) => void;
   placeholder?: string;
   min?: number;
   step?: number;
+  disabled?: boolean;
 }) {
   return (
     <Input
       type="number"
       min={min}
       step={step}
+      disabled={disabled}
       placeholder={placeholder}
       defaultValue={value === undefined || value === null ? "" : String(value)}
       key={`number-${String(value)}`}
@@ -64,21 +72,34 @@ function FieldEditor({
   field,
   value,
   onChange,
+  dataType,
+  connected = false,
 }: {
   field: FieldDefinition;
   value: JsonValue | undefined;
   onChange: (value: JsonValue) => void;
+  dataType?: FlowDataType;
+  connected?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <Label className="text-[11px] text-muted-foreground">
-        {field.label}
-      </Label>
+      <div className="flex items-center gap-1.5">
+        <Label className="text-[11px] text-muted-foreground">
+          {field.label}
+        </Label>
+        {dataType && <DataTypeBadge type={dataType} />}
+        {connected && (
+          <Badge size="sm" variant="secondary" className="ml-auto">
+            connected
+          </Badge>
+        )}
+      </div>
       {field.kind === "textarea" ? (
         <Textarea
           rows={2}
           placeholder={field.placeholder}
           value={String(value ?? "")}
+          disabled={connected}
           onChange={(event) => onChange(event.target.value)}
         />
       ) : field.kind === "number" ? (
@@ -87,10 +108,12 @@ function FieldEditor({
           min={field.min}
           step={field.step}
           placeholder={field.placeholder}
+          disabled={connected}
           onChange={onChange}
         />
       ) : field.kind === "select" ? (
         <Select
+          disabled={connected}
           value={String(value ?? field.options[0]?.value ?? "")}
           onValueChange={(next) => {
             if (next !== null) onChange(next);
@@ -110,6 +133,7 @@ function FieldEditor({
       ) : field.kind === "boolean" ? (
         <Switch
           checked={value === true}
+          disabled={connected}
           onCheckedChange={onChange}
           aria-label={field.label}
         />
@@ -117,10 +141,56 @@ function FieldEditor({
         <Input
           placeholder={field.placeholder}
           value={String(value ?? "")}
+          disabled={connected}
           onChange={(event) => onChange(event.target.value)}
         />
       )}
     </div>
+  );
+}
+
+function DataTypeBadge({ type }: { type: FlowDataType }) {
+  return (
+    <span
+      className={cn(
+        "rounded px-1 py-px text-[8px] font-medium uppercase leading-none",
+        type === "any" && "bg-zinc-500/12 text-zinc-500",
+        type === "string" && "bg-emerald-500/12 text-emerald-600",
+        type === "number" && "bg-sky-500/12 text-sky-600",
+        type === "boolean" && "bg-violet-500/12 text-violet-600",
+      )}
+    >
+      {type}
+    </span>
+  );
+}
+
+function DataOutputs({
+  outputs,
+}: {
+  outputs: readonly { id: string; label: string; dataType: FlowDataType }[];
+}) {
+  if (outputs.length === 0) {
+    return null;
+  }
+  return (
+    <section className="flex flex-col gap-2 rounded-lg border p-2">
+      <div>
+        <div className="text-[11px] font-medium">Data outputs</div>
+        <div className="text-[10px] text-muted-foreground">
+          Connect these typed values to compatible downstream inputs.
+        </div>
+      </div>
+      {outputs.map((output) => (
+        <div key={output.id} className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-[11px]">
+            {output.label}
+          </span>
+          <code className="text-[9px] text-muted-foreground">{output.id}</code>
+          <DataTypeBadge type={output.dataType} />
+        </div>
+      ))}
+    </section>
   );
 }
 
@@ -171,7 +241,7 @@ function FlowPorts({
 export function BlockInspectorTab() {
   const { library, flow } = useWorkbench();
   const { selectedScript } = library;
-  const { selectedNodes, selectedNode, deleteNode, updateNodeData } = flow;
+  const { selectedNodes, selectedNode, deleteNode, updateNodeData, edges } = flow;
 
   if (selectedScript === null) {
     return (
@@ -210,8 +280,18 @@ export function BlockInspectorTab() {
   const data = selectedNode.data;
   const definition = BLOCK_DEFINITIONS[data.kind];
   const fields: FieldDefinition[] = definition?.fields ?? [];
-  const inputFields = fields.filter((field) => field.direction !== "output");
-  const outputFields = fields.filter((field) => field.direction === "output");
+  const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
+  const inputPortByField = new Map(
+    dataPorts.inputs.map((port) => [port.field ?? port.id, port]),
+  );
+  const inputFields = fields.filter((field) => inputPortByField.has(field.name));
+  const settingFields = fields.filter((field) => !inputPortByField.has(field.name));
+  const connectedInputIds = new Set(
+    edges
+      .filter((edge) => edge.target === selectedNode.id)
+      .map((edge) => edge.targetHandle)
+      .filter((handle): handle is string => typeof handle === "string"),
+  );
   const Icon = definition?.icon;
 
   const commit = (name: string, value: JsonValue) => {
@@ -243,31 +323,38 @@ export function BlockInspectorTab() {
       {inputFields.length > 0 && (
         <section className="flex flex-col gap-2.5 rounded-lg border p-2">
           <div>
-            <div className="text-[11px] font-medium">Inputs</div>
+            <div className="text-[11px] font-medium">Data inputs</div>
             <div className="text-[10px] text-muted-foreground">
-              Values this block reads when it runs.
+              Use a local value, or connect a compatible upstream output.
             </div>
           </div>
-          {inputFields.map((field) => (
-            <FieldEditor
-              key={field.name}
-              field={field}
-              value={data[field.name]}
-              onChange={(value) => commit(field.name, value)}
-            />
-          ))}
+          {inputFields.map((field) => {
+            const port = inputPortByField.get(field.name);
+            return (
+              <FieldEditor
+                key={field.name}
+                field={field}
+                value={data[field.name]}
+                dataType={port?.dataType}
+                connected={port ? connectedInputIds.has(port.id) : false}
+                onChange={(value) => commit(field.name, value)}
+              />
+            );
+          })}
         </section>
       )}
 
-      {outputFields.length > 0 && (
+      <DataOutputs outputs={dataPorts.outputs} />
+
+      {settingFields.length > 0 && (
         <section className="flex flex-col gap-2.5 rounded-lg border p-2">
           <div>
-            <div className="text-[11px] font-medium">Outputs</div>
+            <div className="text-[11px] font-medium">Settings</div>
             <div className="text-[10px] text-muted-foreground">
-              Variables written after this block completes.
+              Node options that are not connectable data inputs.
             </div>
           </div>
-          {outputFields.map((field) => (
+          {settingFields.map((field) => (
             <FieldEditor
               key={field.name}
               field={field}

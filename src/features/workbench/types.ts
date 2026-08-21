@@ -28,7 +28,6 @@ export type WorkbenchEdge = Edge<Record<string, unknown>>;
 interface FieldDefinitionBase {
   name: string;
   label: string;
-  direction?: "input" | "output";
 }
 
 export type FieldDefinition = FieldDefinitionBase &

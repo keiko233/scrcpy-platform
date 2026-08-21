@@ -142,12 +142,12 @@ export function useFlowEditor(
         return next;
       });
     },
-    [setEdges],
+    [setEdges, nodesRef],
   );
 
   const isValidConnection = useCallback<IsValidConnection<WorkbenchEdge>>(
     (connection) => canConnectPorts(nodesRef.current, connection),
-    [],
+    [nodesRef],
   );
 
   const onViewportChange = useCallback((nextViewport: Viewport) => {
