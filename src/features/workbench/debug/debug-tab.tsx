@@ -1,9 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import useAsync from "react-use/lib/useAsync";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Badge } from "@/components/ui/badge";
-import { BugIcon, InfoIcon, SearchIcon, Trash2Icon } from "lucide-react";
+import { BugIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -11,10 +8,6 @@ import type { LogEntry, LogLevel } from "@/shared/electron-api";
 import { LogMessage } from "./log-message";
 
 export function DebugSettingsTab() {
-  const { value: system } = useAsync(
-    () => window.androidPlatform.getSystemInfo(),
-    [],
-  );
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [level, setLevel] = useState<LogLevel | "all">("all");
   const [query, setQuery] = useState("");
