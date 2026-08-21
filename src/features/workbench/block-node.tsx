@@ -84,12 +84,12 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
       >
         <div
           className={cn(
-            "wb-flow-node overflow-hidden !p-0",
+            "wb-flow-node !p-0",
             selected && "selected",
             definition?.kind && `wb-block-${definition.kind}`,
           )}
         >
-          <div className="flex items-center gap-2 border-b bg-muted/50 px-2 py-1.5">
+          <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
             {Icon && (
               <Icon
                 aria-hidden="true"
@@ -123,7 +123,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                           type="target"
                           position={Position.Left}
                           className={cn(
-                            "!-left-[5px] !top-1/2 !size-2.5 !-translate-y-1/2",
+                            "!left-0 !top-1/2 !size-3",
                             PORT_TYPE_CLASS_NAMES[row.input.dataType],
                           )}
                           title={`${row.input.label}: ${row.input.dataType}`}
@@ -148,7 +148,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                           type="source"
                           position={Position.Right}
                           className={cn(
-                            "!-right-[5px] !top-1/2 !size-2.5 !-translate-y-1/2",
+                            "!right-0 !top-1/2 !size-3",
                             PORT_TYPE_CLASS_NAMES[row.output.dataType],
                           )}
                           title={`${row.output.label}: ${row.output.dataType}`}

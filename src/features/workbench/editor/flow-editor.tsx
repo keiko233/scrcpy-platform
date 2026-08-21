@@ -161,6 +161,7 @@ function FlowCanvas() {
               onMoveEnd={onMoveEnd}
               onPaneContextMenu={(event) => event.preventDefault()}
               deleteKeyCode={["Backspace", "Delete"]}
+              connectionRadius={20}
               minZoom={0.2}
               maxZoom={2}
             >
