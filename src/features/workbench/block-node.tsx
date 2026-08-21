@@ -33,7 +33,15 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             definition?.kind && `wb-block-${definition.kind}`,
           )}
         >
-          <Handle className="!-left-[5px]" type="target" position={Position.Left} />
+          {definition?.inputPorts.map((port) => (
+            <Handle
+              key={port}
+              id={port}
+              type="target"
+              position={Position.Left}
+              className="!-left-[5px]"
+            />
+          ))}
           <div className="flex items-center gap-2">
             {Icon && (
               <Icon
@@ -53,11 +61,15 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               </div>
             </div>
           </div>
-          <Handle
-            className="!-right-[5px]"
-            type="source"
-            position={Position.Right}
-          />
+          {definition?.outputPorts.map((port) => (
+            <Handle
+              key={port}
+              id={port}
+              type="source"
+              position={Position.Right}
+              className="!-right-[5px]"
+            />
+          ))}
         </div>
       </ContextMenuTrigger>
       <ContextMenuPopup align="center" sideOffset={4}>

@@ -18,7 +18,7 @@ import type {
 } from "@/shared/project-contracts";
 
 import { BLOCK_DEFINITIONS } from "../blocks";
-import type { AutomationBlockKind, WorkbenchEdge, WorkbenchNode } from "../types";
+import type { FlowBlockKind, WorkbenchEdge, WorkbenchNode } from "../types";
 import {
   applyNodesChange,
   defaultViewport,
@@ -50,7 +50,7 @@ export interface FlowEditor {
   onConnect: OnConnect;
   onViewportChange: (viewport: Viewport) => void;
   onMoveEnd: () => void;
-  addBlock: (kind: AutomationBlockKind, position?: XYPosition) => string;
+  addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
   loadDocument: (document: FlowDocument) => void;
@@ -149,7 +149,7 @@ export function useFlowEditor(
   }, []);
 
   const addBlock = useCallback(
-    (kind: AutomationBlockKind, position?: XYPosition): string => {
+    (kind: FlowBlockKind, position?: XYPosition): string => {
       const definition = BLOCK_DEFINITIONS[kind];
       const id = `node-${crypto.randomUUID()}`;
       const last = nodesRef.current[nodesRef.current.length - 1];

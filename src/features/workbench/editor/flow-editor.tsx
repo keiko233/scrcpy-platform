@@ -36,9 +36,9 @@ import {
   Trash2Icon,
 } from "lucide-react";
 
-import { BLOCK_DEFINITIONS, BLOCK_KIND_ORDER } from "../blocks";
+import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { AUTOMATION_NODE_TYPES } from "../node-types";
-import type { AutomationBlockKind } from "../types";
+import type { FlowBlockKind } from "../types";
 import { useWorkbench } from "../use-workbench";
 
 function EditorEmptyState() {
@@ -85,7 +85,7 @@ function FlowCanvas() {
     );
   };
 
-  const addBlockAtPane = (kind: AutomationBlockKind) => {
+  const addBlockAtPane = (kind: FlowBlockKind) => {
     addBlock(kind, panePosition ?? undefined);
     setPanePosition(null);
   };
@@ -168,7 +168,7 @@ function FlowCanvas() {
           <ContextMenuPopup align="center" sideOffset={6}>
             <ContextMenuGroup>
               <ContextMenuGroupLabel>Add block at pointer</ContextMenuGroupLabel>
-              {BLOCK_KIND_ORDER.map((kind) => {
+              {FLOW_BLOCK_KIND_ORDER.map((kind) => {
                 const definition = BLOCK_DEFINITIONS[kind];
                 const Icon = definition.icon;
                 return (

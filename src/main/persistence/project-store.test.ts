@@ -14,7 +14,16 @@ import { PersistenceDatabase } from "./database";
 import { NotFoundError, ProjectStore, StaleDraftError } from "./project-store";
 
 function documentOf(nodeIds: string[]): FlowDocument {
-  return { schemaVersion: 1, nodes: nodeIds.map((id) => ({ id })), edges: [] };
+  return {
+    schemaVersion: 1,
+    nodes: nodeIds.map((id, index) => ({
+      id,
+      type: "delay",
+      position: { x: index * 200, y: 0 },
+      data: { kind: "delay", ms: 0 },
+    })),
+    edges: [],
+  };
 }
 
 function nodeIdsOf(document: FlowDocument): string[] {
@@ -445,11 +454,18 @@ describe("ProjectStore", () => {
 });
 
 describe("project contracts", () => {
-  test("flow documents reject non-JSON node and edge payloads", () => {
+  test("flow documents enforce strict JSON-safe node and edge structures", () => {
     assert.equal(
       FlowDocumentSchema.safeParse({
         schemaVersion: 1,
-        nodes: [{ id: "n1", payload: 1n }],
+        nodes: [
+          {
+            id: "n1",
+            type: "delay",
+            position: { x: 0, y: 0 },
+            data: { kind: "delay", payload: 1n },
+          },
+        ],
         edges: [],
       }).success,
       false,
@@ -458,7 +474,14 @@ describe("project contracts", () => {
     assert.equal(
       FlowDocumentSchema.safeParse({
         schemaVersion: 1,
-        nodes: [{ id: "n1", payload: { nested: [1n] } }],
+        nodes: [
+          {
+            id: "n1",
+            type: "delay",
+            position: { x: 0, y: 0 },
+            data: { kind: "delay", payload: { nested: [1n] } },
+          },
+        ],
         edges: [],
       }).success,
       false,
@@ -467,7 +490,14 @@ describe("project contracts", () => {
     assert.equal(
       FlowDocumentSchema.safeParse({
         schemaVersion: 1,
-        nodes: [{ id: "n1", at: new Date() }],
+        nodes: [
+          {
+            id: "n1",
+            type: "delay",
+            position: { x: 0, y: 0 },
+            data: { kind: "delay", at: new Date() },
+          },
+        ],
         edges: [],
       }).success,
       false,
@@ -476,7 +506,14 @@ describe("project contracts", () => {
     assert.equal(
       FlowDocumentSchema.safeParse({
         schemaVersion: 1,
-        nodes: [{ id: "n1", payload: Infinity }],
+        nodes: [
+          {
+            id: "n1",
+            type: "delay",
+            position: { x: 0, y: 0 },
+            data: { kind: "delay", payload: Infinity },
+          },
+        ],
         edges: [],
       }).success,
       false,
@@ -485,8 +522,8 @@ describe("project contracts", () => {
     assert.equal(
       FlowDocumentSchema.safeParse({
         schemaVersion: 1,
-        nodes: [{ id: "n1", payload: 1 }],
-        edges: [{ id: "e1", payload: 1n }],
+        nodes: [],
+        edges: [{ id: "e1", source: "n1", target: "n2", payload: 1n }],
       }).success,
       false,
       "BigInt edge payloads are rejected",
@@ -497,15 +534,20 @@ describe("project contracts", () => {
       nodes: [
         {
           id: "n1",
-          payload: { deep: [1, -2.5, "x", true, null, { ok: false }] },
+          type: "delay",
+          position: { x: 0, y: 0 },
+          data: {
+            kind: "delay",
+            payload: { deep: [1, -2.5, "x", true, null, { ok: false }] },
+          },
         },
       ],
-      edges: [{ id: "e1", source: "n1" }],
+      edges: [],
       viewport: { x: 0, y: 12.5, zoom: 1 },
     });
     assert.equal(valid.success, true);
     if (valid.success) {
-      assert.deepEqual(valid.data.nodes[0].payload, {
+      assert.deepEqual(valid.data.nodes[0].data.payload, {
         deep: [1, -2.5, "x", true, null, { ok: false }],
       });
     }

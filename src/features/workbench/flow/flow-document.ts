@@ -14,7 +14,7 @@ import type {
 } from "@/shared/project-contracts";
 
 import type { WorkbenchEdge, WorkbenchNode } from "../types";
-import { BLOCK_DEFINITIONS, isAutomationBlockKind } from "../blocks";
+import { BLOCK_DEFINITIONS, isFlowBlockKind } from "../blocks";
 
 export function toFlowDocument(
   nodes: WorkbenchNode[],
@@ -52,22 +52,22 @@ export function toFlowDocument(
 
 export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
   return document.nodes.map((node) => {
-    const rawData =
+    const rawData: Record<string, JsonValue> =
       typeof node.data === "object" &&
       node.data !== null &&
       !Array.isArray(node.data)
-        ? node.data
+        ? (node.data as Record<string, JsonValue>)
         : {};
-    const kind = isAutomationBlockKind(node.type)
+    const kind = isFlowBlockKind(node.type)
       ? node.type
-      : isAutomationBlockKind(rawData.kind)
+      : isFlowBlockKind(rawData.kind)
         ? rawData.kind
         : "delay";
-    const rawPosition =
+    const rawPosition: Record<string, unknown> =
       typeof node.position === "object" &&
       node.position !== null &&
       !Array.isArray(node.position)
-        ? node.position
+        ? (node.position as Record<string, unknown>)
         : {};
     const position: XYPosition = {
       x: typeof rawPosition.x === "number" ? rawPosition.x : 0,
@@ -94,12 +94,10 @@ export function edgesFromDocument(document: FlowDocument): WorkbenchEdge[] {
       source: edge.source as string,
       target: edge.target as string,
     };
-    if (typeof edge.sourceHandle === "string") {
-      next.sourceHandle = edge.sourceHandle;
-    }
-    if (typeof edge.targetHandle === "string") {
-      next.targetHandle = edge.targetHandle;
-    }
+    next.sourceHandle =
+      typeof edge.sourceHandle === "string" ? edge.sourceHandle : "next";
+    next.targetHandle =
+      typeof edge.targetHandle === "string" ? edge.targetHandle : "in";
     if (typeof edge.type === "string") {
       next.type = edge.type;
     }
@@ -134,12 +132,37 @@ export function patchNodeData(
   node: WorkbenchNode,
   patch: Record<string, JsonValue>,
 ): WorkbenchNode {
-  return { ...node, data: { ...node.data, ...patch } };
+  return { ...node, data: { ...node.data, ...patch } as WorkbenchNode["data"] };
 }
 
 export function mergeEdge(
   edges: WorkbenchEdge[],
   connection: Parameters<OnConnect>[0],
 ): WorkbenchEdge[] {
-  return [...edges, { ...connection, id: `edge-${crypto.randomUUID()}` }];
+  const sourceHandle = connection.sourceHandle ?? null;
+  const targetHandle = connection.targetHandle ?? null;
+  const isExactDuplicate = (edge: WorkbenchEdge) =>
+    edge.source === connection.source &&
+    edge.target === connection.target &&
+    (edge.sourceHandle ?? null) === sourceHandle &&
+    (edge.targetHandle ?? null) === targetHandle;
+  if (edges.some(isExactDuplicate)) {
+    return edges;
+  }
+  const next: WorkbenchEdge = {
+    ...connection,
+    id: `edge-${crypto.randomUUID()}`,
+  };
+  return [
+    ...edges.filter(
+      (edge) =>
+        !(
+          (edge.target === next.target &&
+            (edge.targetHandle ?? null) === targetHandle) ||
+          (edge.source === next.source &&
+            (edge.sourceHandle ?? null) === sourceHandle)
+        ),
+    ),
+    next,
+  ];
 }

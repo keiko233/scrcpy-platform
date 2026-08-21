@@ -21,28 +21,88 @@ export const JsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
 
-export const FlowNodeSchema = z.intersection(
-  z.object({ id: z.string().min(1) }),
+export const FLOW_NODE_KINDS = [
+  "start",
+  "end",
+  "click",
+  "swipe",
+  "ocr",
+  "delay",
+  "launch-app",
+] as const;
+
+export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
+
+export const FLOW_NODE_PORTS = {
+  start: { inputs: [], outputs: ["next"] },
+  end: { inputs: ["in"], outputs: [] },
+  click: { inputs: ["in"], outputs: ["next"] },
+  swipe: { inputs: ["in"], outputs: ["next"] },
+  ocr: { inputs: ["in"], outputs: ["next"] },
+  delay: { inputs: ["in"], outputs: ["next"] },
+  "launch-app": { inputs: ["in"], outputs: ["next"] },
+} as const satisfies Record<
+  FlowNodeKind,
+  { inputs: readonly string[]; outputs: readonly string[] }
+>;
+
+const FlowPositionSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+  })
+  .strict();
+
+const FlowNodeDataSchema = z.intersection(
+  z.object({ kind: z.enum(FLOW_NODE_KINDS) }),
   JsonObjectSchema,
 );
 
-export const FlowEdgeSchema = z.intersection(
-  z.object({ id: z.string().min(1) }),
-  JsonObjectSchema,
-);
+export const FlowNodeSchema = z
+  .object({
+    id: z.string().min(1),
+    type: z.enum(FLOW_NODE_KINDS),
+    position: FlowPositionSchema,
+    data: FlowNodeDataSchema,
+  })
+  .strict()
+  .superRefine((node, ctx) => {
+    if (node.data.kind !== node.type) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["data", "kind"],
+        message: `Node data kind "${node.data.kind}" does not match node type "${node.type}".`,
+      });
+    }
+  });
 
-export const FlowViewportSchema = z.object({
-  x: z.number().finite(),
-  y: z.number().finite(),
-  zoom: z.number().finite(),
-});
+export const FlowEdgeSchema = z
+  .object({
+    id: z.string().min(1),
+    source: z.string().min(1),
+    target: z.string().min(1),
+    sourceHandle: z.string().min(1).optional(),
+    targetHandle: z.string().min(1).optional(),
+    type: z.string().min(1).optional(),
+  })
+  .strict();
 
-export const FlowDocumentSchema = z.object({
-  schemaVersion: z.literal(1),
-  nodes: z.array(FlowNodeSchema),
-  edges: z.array(FlowEdgeSchema),
-  viewport: FlowViewportSchema.optional(),
-});
+export const FlowViewportSchema = z
+  .object({
+    x: z.number().finite(),
+    y: z.number().finite(),
+    zoom: z.number().finite().positive(),
+  })
+  .strict();
+
+export const FlowDocumentSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    nodes: z.array(FlowNodeSchema),
+    edges: z.array(FlowEdgeSchema),
+    viewport: FlowViewportSchema.optional(),
+  })
+  .strict();
 
 export type FlowNode = z.infer<typeof FlowNodeSchema>;
 export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
@@ -51,8 +111,29 @@ export type FlowDocument = z.infer<typeof FlowDocumentSchema>;
 
 export const EMPTY_FLOW_DOCUMENT: FlowDocument = {
   schemaVersion: 1,
-  nodes: [],
-  edges: [],
+  nodes: [
+    {
+      id: "start",
+      type: "start",
+      position: { x: 0, y: 0 },
+      data: { kind: "start" },
+    },
+    {
+      id: "end",
+      type: "end",
+      position: { x: 320, y: 0 },
+      data: { kind: "end" },
+    },
+  ],
+  edges: [
+    {
+      id: "start-end",
+      source: "start",
+      target: "end",
+      sourceHandle: "next",
+      targetHandle: "in",
+    },
+  ],
 };
 
 export const CreateProjectInputSchema = z.object({

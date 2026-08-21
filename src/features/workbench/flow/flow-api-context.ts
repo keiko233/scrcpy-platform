@@ -3,10 +3,10 @@ import { createContext, useContext } from "react";
 import type { XYPosition } from "@xyflow/react";
 import type { JsonValue } from "@/shared/project-contracts";
 
-import type { AutomationBlockKind } from "../types";
+import type { FlowBlockKind } from "../types";
 
 export interface FlowApi {
-  addBlock: (kind: AutomationBlockKind, position?: XYPosition) => string;
+  addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
 }

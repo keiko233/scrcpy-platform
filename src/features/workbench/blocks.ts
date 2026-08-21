@@ -1,17 +1,24 @@
 import {
   ClockIcon,
+  FlagIcon,
   HandIcon,
   MousePointerClickIcon,
+  PlayIcon,
   RocketIcon,
   ScanTextIcon,
   type LucideIcon,
 } from "lucide-react";
 
-import type { JsonValue } from "@/shared/project-contracts";
+import {
+  FLOW_NODE_KINDS,
+  FLOW_NODE_PORTS,
+} from "../../shared/project-contracts";
+import type { JsonValue } from "../../shared/project-contracts";
 
 import type {
   AutomationBlockKind,
-  AutomationData,
+  FlowBlockKind,
+  WorkbenchNodeData,
   FieldDefinition,
 } from "./types";
 
@@ -20,16 +27,40 @@ function text(value: JsonValue | undefined): string {
 }
 
 export interface BlockDefinition {
-  kind: AutomationBlockKind;
+  kind: FlowBlockKind;
   label: string;
   description: string;
   icon: LucideIcon;
-  defaults: AutomationData;
-  summarize: (data: AutomationData) => string;
+  defaults: WorkbenchNodeData;
+  summarize: (data: WorkbenchNodeData) => string;
   fields: FieldDefinition[];
+  inputPorts: readonly string[];
+  outputPorts: readonly string[];
 }
 
-export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
+export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
+  start: {
+    kind: "start",
+    label: "Start",
+    description: "Entry point of the flow. Execution begins here.",
+    icon: PlayIcon,
+    defaults: { kind: "start" },
+    summarize: () => "Flow entry point",
+    fields: [],
+    inputPorts: FLOW_NODE_PORTS.start.inputs,
+    outputPorts: FLOW_NODE_PORTS.start.outputs,
+  },
+  end: {
+    kind: "end",
+    label: "End",
+    description: "Terminal point of the flow. Execution stops here.",
+    icon: FlagIcon,
+    defaults: { kind: "end" },
+    summarize: () => "Flow terminal",
+    fields: [],
+    inputPorts: FLOW_NODE_PORTS.end.inputs,
+    outputPorts: FLOW_NODE_PORTS.end.outputs,
+  },
   click: {
     kind: "click",
     label: "Click",
@@ -47,6 +78,8 @@ export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
         placeholder: "Optional description",
       },
     ],
+    inputPorts: FLOW_NODE_PORTS.click.inputs,
+    outputPorts: FLOW_NODE_PORTS.click.outputs,
   },
   swipe: {
     kind: "swipe",
@@ -70,6 +103,8 @@ export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
       { name: "toY", label: "To Y", kind: "number", step: 1 },
       { name: "durationMs", label: "Duration (ms)", kind: "number", step: 50, min: 0 },
     ],
+    inputPorts: FLOW_NODE_PORTS.swipe.inputs,
+    outputPorts: FLOW_NODE_PORTS.swipe.outputs,
   },
   ocr: {
     kind: "ocr",
@@ -93,6 +128,8 @@ export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
         min: 0,
       },
     ],
+    inputPorts: FLOW_NODE_PORTS.ocr.inputs,
+    outputPorts: FLOW_NODE_PORTS.ocr.outputs,
   },
   delay: {
     kind: "delay",
@@ -104,6 +141,8 @@ export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
     fields: [
       { name: "ms", label: "Duration (ms)", kind: "number", step: 100, min: 0 },
     ],
+    inputPorts: FLOW_NODE_PORTS.delay.inputs,
+    outputPorts: FLOW_NODE_PORTS.delay.outputs,
   },
   "launch-app": {
     kind: "launch-app",
@@ -126,6 +165,8 @@ export const BLOCK_DEFINITIONS: Record<AutomationBlockKind, BlockDefinition> = {
         placeholder: ".MainActivity (optional)",
       },
     ],
+    inputPorts: FLOW_NODE_PORTS["launch-app"].inputs,
+    outputPorts: FLOW_NODE_PORTS["launch-app"].outputs,
   },
 };
 
@@ -137,11 +178,24 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "launch-app",
 ];
 
+export const FLOW_BLOCK_KIND_ORDER: FlowBlockKind[] = [
+  "start",
+  "end",
+  ...BLOCK_KIND_ORDER,
+];
+
 export function isAutomationBlockKind(
   value: unknown,
 ): value is AutomationBlockKind {
   return (
     typeof value === "string" &&
     BLOCK_KIND_ORDER.includes(value as AutomationBlockKind)
+  );
+}
+
+export function isFlowBlockKind(value: unknown): value is FlowBlockKind {
+  return (
+    typeof value === "string" &&
+    (FLOW_NODE_KINDS as readonly string[]).includes(value)
   );
 }

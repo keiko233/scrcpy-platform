@@ -8,7 +8,7 @@ import {
   SaveIcon,
   ShieldAlertIcon,
 } from "lucide-react";
-import { BLOCK_DEFINITIONS, BLOCK_KIND_ORDER } from "../blocks";
+import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { useWorkbench } from "../use-workbench";
 
 export function WorkbenchToolbar() {
@@ -74,7 +74,7 @@ export function WorkbenchToolbar() {
           }
         />
         <MenuPopup align="end">
-          {BLOCK_KIND_ORDER.map((kind) => {
+          {FLOW_BLOCK_KIND_ORDER.map((kind) => {
             const definition = BLOCK_DEFINITIONS[kind];
             const Icon = definition.icon;
             return (
