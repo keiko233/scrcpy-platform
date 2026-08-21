@@ -1,4 +1,5 @@
 import type { QueryClient } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { ThemeProvider } from "tanstack-theme-kit";
 
@@ -22,19 +23,21 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootComponent() {
+  const { queryClient } = Route.useRouteContext();
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
-      <ToastProvider>
-        <AnchoredToastProvider>
-          <Outlet />
-        </AnchoredToastProvider>
-      </ToastProvider>
-
-    </ThemeProvider>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <ToastProvider>
+          <AnchoredToastProvider>
+            <Outlet />
+          </AnchoredToastProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
   );
 }

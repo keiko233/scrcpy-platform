@@ -1,9 +1,7 @@
-import { useState, type FormEvent } from "react";
 import {
   ChevronLeftIcon,
   CircleIcon,
   MonitorIcon,
-  PlusIcon,
   PowerIcon,
   RefreshCwIcon,
   SmartphoneIcon,
@@ -16,7 +14,6 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import type { DeviceButton } from "@/shared/screen-contracts";
@@ -37,32 +34,8 @@ const DEVICE_BUTTONS: Array<{
 
 export function ScreenManagerTab() {
   const { screens, devices } = useWorkbench();
-  const [width, setWidth] = useState("1280");
-  const [height, setHeight] = useState("720");
-  const [dpi, setDpi] = useState("320");
-  const [packageName, setPackageName] = useState("");
   const connected = devices.session?.state === "connected";
   const streaming = screens.screen?.streamId != null;
-
-  const createVirtual = (event: FormEvent) => {
-    event.preventDefault();
-    const parsedWidth = Number.parseInt(width, 10);
-    const parsedHeight = Number.parseInt(height, 10);
-    const parsedDpi = Number.parseInt(dpi, 10);
-    if (
-      !Number.isFinite(parsedWidth) ||
-      !Number.isFinite(parsedHeight) ||
-      !Number.isFinite(parsedDpi)
-    ) {
-      return;
-    }
-    void screens.createVirtualDisplay({
-      width: parsedWidth,
-      height: parsedHeight,
-      dpi: parsedDpi,
-      packageName: packageName.trim() || undefined,
-    });
-  };
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-y-auto p-2.5 text-xs">
@@ -148,81 +121,17 @@ export function ScreenManagerTab() {
         ))}
       </div>
 
-      <form className="mt-auto rounded-lg border p-2.5" onSubmit={createVirtual}>
-        <div className="mb-2 flex items-center gap-2 font-medium">
-          <PlusIcon className="size-3.5" />
-          Virtual display
-        </div>
-        <div className="grid grid-cols-3 gap-1.5">
-          <label className="grid gap-1 text-[10px] text-muted-foreground">
-            Width
-            <Input
-              max={7680}
-              min={320}
-              nativeInput
-              onChange={(event) => setWidth(event.target.value)}
-              size="sm"
-              type="number"
-              value={width}
-            />
-          </label>
-          <label className="grid gap-1 text-[10px] text-muted-foreground">
-            Height
-            <Input
-              max={7680}
-              min={320}
-              nativeInput
-              onChange={(event) => setHeight(event.target.value)}
-              size="sm"
-              type="number"
-              value={height}
-            />
-          </label>
-          <label className="grid gap-1 text-[10px] text-muted-foreground">
-            DPI
-            <Input
-              max={960}
-              min={72}
-              nativeInput
-              onChange={(event) => setDpi(event.target.value)}
-              size="sm"
-              type="number"
-              value={dpi}
-            />
-          </label>
-        </div>
-        <label className="mt-2 grid gap-1 text-[10px] text-muted-foreground">
-          App package (optional)
-          <Input
-            nativeInput
-            onChange={(event) => setPackageName(event.target.value)}
-            placeholder="com.example.app"
-            size="sm"
-            value={packageName}
-          />
-        </label>
-        <div className="mt-2 flex gap-1.5">
-          <Button
-            className="flex-1"
-            disabled={!connected || screens.screen?.ownedVirtualDisplayId !== null}
-            loading={screens.busy}
-            size="xs"
-            type="submit"
-          >
-            Create and open
-          </Button>
-          <Button
-            aria-label="Destroy session virtual display"
-            disabled={screens.screen?.ownedVirtualDisplayId == null || screens.busy}
-            onClick={() => void screens.destroyVirtualDisplay()}
-            size="icon-xs"
-            title="Destroy virtual display"
-            variant="destructive-outline"
-          >
-            <Trash2Icon />
-          </Button>
-        </div>
-      </form>
+      <Button
+        className="mt-auto"
+        disabled={screens.screen?.ownedVirtualDisplayId == null || screens.busy}
+        onClick={() => void screens.destroyVirtualDisplay()}
+        size="xs"
+        variant="destructive-outline"
+      >
+        <Trash2Icon />
+        Destroy virtual display
+      </Button>
+
     </div>
   );
 }

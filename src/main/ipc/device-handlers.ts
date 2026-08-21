@@ -4,6 +4,7 @@ import {
   ConnectDeviceInputSchema,
   type ConnectDeviceResult,
   type DisconnectDeviceResult,
+  type InstalledAppDto,
   type ListDevicesResult,
 } from "../../shared/device-contracts";
 import type { DeviceSessionService } from "../adb/device-session";
@@ -15,6 +16,11 @@ export function registerDeviceHandlers(service: DeviceSessionService): void {
   );
 
   ipcMain.handle(ELECTRON_CHANNELS.devicesSession, () => service.getSession());
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.devicesPackages,
+    (): Promise<InstalledAppDto[]> => service.listInstalledApps(),
+  );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.devicesConnect,

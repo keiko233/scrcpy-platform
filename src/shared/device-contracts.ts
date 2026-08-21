@@ -44,6 +44,15 @@ export const DeviceSessionDtoSchema = z.object({
 
 export type DeviceSessionDto = z.infer<typeof DeviceSessionDtoSchema>;
 
+export const InstalledAppDtoSchema = z.object({
+  packageName: z.string().min(1),
+  name: z.string().min(1),
+  iconUrl: z.string().min(1).nullable(),
+  system: z.boolean(),
+});
+
+export type InstalledAppDto = z.infer<typeof InstalledAppDtoSchema>;
+
 export const ConnectDeviceInputSchema = z.object({
   transportId: z
     .string()

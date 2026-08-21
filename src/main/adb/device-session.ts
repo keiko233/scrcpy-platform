@@ -1,4 +1,6 @@
 import type { Adb } from "@yume-chan/adb";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type {
   AdbDeviceDto,
   ConnectDeviceFailure,
@@ -6,8 +8,10 @@ import type {
   DeviceSessionDto,
   DeviceSessionState,
   DisconnectDeviceResult,
+  InstalledAppDto,
   ListDevicesResult,
 } from "../../shared/device-contracts";
+import { readInstalledApp } from "./installed-app-parser";
 
 /**
  * A device reported by the underlying ADB transport.
@@ -62,6 +66,37 @@ function randomSessionId(): string {
   return `session-${crypto.randomUUID()}`;
 }
 
+function parsePackageNames(output: string): string[] {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim().replace(/^package:/, ""))
+    .filter((packageName) => packageName.length > 0);
+}
+
+function parsePackageRecords(
+  output: string,
+  userPackages: ReadonlySet<string>,
+): Array<{ packageName: string; apkPath: string; system: boolean }> {
+  return output
+    .split(/\r?\n/)
+    .map((line) => {
+      const match = /^package:(.+\.apk)=([^=]+)$/.exec(line.trim());
+      if (match === null) {
+        return null;
+      }
+      return {
+        apkPath: match[1],
+        packageName: match[2],
+        system: !userPackages.has(match[2]),
+      };
+    })
+    .filter((record) => record !== null);
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -82,10 +117,16 @@ export class DeviceSessionService {
   #queue: Promise<void> = Promise.resolve();
   #disposePromise: Promise<void> | null = null;
   readonly #beforeDisconnectHooks = new Set<BeforeDeviceDisconnectHook>();
+  readonly #userDataPath: string | null;
 
-  constructor(gateway: DeviceGateway, sessionId: string = randomSessionId()) {
+  constructor(
+    gateway: DeviceGateway,
+    sessionId: string = randomSessionId(),
+    userDataPath: string | null = null,
+  ) {
     this.#gateway = gateway;
     this.sessionId = sessionId;
+    this.#userDataPath = userDataPath;
   }
 
   #enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -112,6 +153,63 @@ export class DeviceSessionService {
 
   getConnection(): DeviceConnection | null {
     return this.#state === "connected" ? this.#connection : null;
+  }
+
+  async listInstalledApps(): Promise<InstalledAppDto[]> {
+    const connection = this.getConnection();
+    if (connection === null) {
+      return [];
+    }
+    const [allOutput, userOutput] = await Promise.all([
+      connection.adb.subprocess.noneProtocol.spawnWaitText([
+        "pm",
+        "list",
+        "packages",
+        "-f",
+      ]),
+      connection.adb.subprocess.noneProtocol.spawnWaitText([
+        "pm",
+        "list",
+        "packages",
+        "-3",
+      ]),
+    ]);
+    const userPackages = new Set(parsePackageNames(userOutput));
+    const iconDirectory = this.#userDataPath === null
+      ? null
+      : join(this.#userDataPath, "installed-app-icons");
+    if (iconDirectory !== null) {
+      await mkdir(iconDirectory, { recursive: true });
+    }
+    const apps = await Promise.all(
+      parsePackageRecords(allOutput, userPackages).map(async (record) => {
+        try {
+          const apk = await connection.adb.subprocess.noneProtocol.spawnWait([
+            "cat",
+            shellQuote(record.apkPath),
+          ]);
+          if (iconDirectory === null) {
+            return {
+              packageName: record.packageName,
+              name: record.packageName,
+              iconUrl: null,
+              system: record.system,
+            } satisfies InstalledAppDto;
+          }
+          return await readInstalledApp(record, apk, iconDirectory);
+        } catch {
+          return {
+            packageName: record.packageName,
+            name: record.packageName,
+            iconUrl: null,
+            system: record.system,
+          } satisfies InstalledAppDto;
+        }
+      }),
+    );
+    return apps.sort((left, right) =>
+      left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+    );
   }
 
   registerBeforeDisconnect(hook: BeforeDeviceDisconnectHook): () => void {

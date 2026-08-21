@@ -3,6 +3,7 @@ import type {
   ConnectDeviceResult,
   DisconnectDeviceResult,
   DeviceSessionDto,
+  InstalledAppDto,
   ListDevicesResult,
 } from "./device-contracts";
 import type {
@@ -51,6 +52,7 @@ export const ELECTRON_CHANNELS = {
   devicesSession: "devices:session",
   devicesConnect: "devices:connect",
   devicesDisconnect: "devices:disconnect",
+  devicesPackages: "devices:packages",
   screensSession: "screens:session",
   screensSettingsGet: "screens:settings:get",
   screensSettingsSet: "screens:settings:set",
@@ -117,6 +119,7 @@ export interface ElectronAPI {
   getDeviceSession(): Promise<DeviceSessionDto>;
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
   disconnectDevice(): Promise<DisconnectDeviceResult>;
+  listInstalledApps(): Promise<InstalledAppDto[]>;
 
   getScreenSession(): Promise<ScreenSessionDto>;
   getScrcpySettings(): Promise<ScrcpySettings>;

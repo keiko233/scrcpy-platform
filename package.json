@@ -9,7 +9,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "fetch-scrcpy-server 3.3.3",
-    "test": "node --import tsx --test src/main/persistence/project-store.test.ts src/main/adb/device-session.test.ts src/main/adb/display-catalog.test.ts src/main/adb/display-id-message.test.ts src/features/workbench/flow/flow-document.test.ts",
+    "test": "node --import tsx --test src/main/persistence/project-store.test.ts src/main/adb/device-session.test.ts src/main/adb/display-catalog.test.ts src/main/adb/display-id-message.test.ts src/main/adb/installed-app-parser.test.ts src/features/workbench/flow/flow-document.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.electron.json",
     "lint": "oxlint"
   },
@@ -20,6 +20,7 @@
     "@jridgewell/trace-mapping": "^0.3.31",
     "@tailwindcss/vite": "^4.3.3",
     "@tanstack/react-devtools": "^0.10.10",
+    "@tanstack/react-form": "^1.33.5",
     "@tanstack/react-query": "^5.101.4",
     "@tanstack/react-router": "^1.170.31",
     "@tanstack/react-router-devtools": "^1.167.1",
@@ -32,6 +33,7 @@
     "@yume-chan/scrcpy-decoder-webcodecs": "^2.5.3",
     "@yume-chan/stream-extra": "^2.6.1",
     "@yume-chan/struct": "^2.3.2",
+    "adm-zip": "^0.6.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.32.0",
@@ -49,6 +51,7 @@
   "devDependencies": {
     "@tanstack/devtools-vite": "^0.8.3",
     "@tanstack/router-plugin": "^1.168.34",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "^24.13.3",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",

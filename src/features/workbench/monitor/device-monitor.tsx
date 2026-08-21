@@ -1,8 +1,10 @@
 import {
+  useState,
   useEffect,
   useRef,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useForm } from "@tanstack/react-form";
 import {
   ChevronLeftIcon,
   CircleIcon,
@@ -18,28 +20,256 @@ import {
 
 import { EmptyMedia } from "@/components/ui/empty";
 
-import type { DeviceButton, TouchAction } from "@/shared/screen-contracts";
+import {
+  CreateVirtualDisplayInputSchema,
+  type DeviceButton,
+  type TouchAction,
+} from "@/shared/screen-contracts";
+import { useInstalledApps } from "../device/use-installed-apps";
 import { useScreenVideo } from "../screen/use-screen-video";
 import { useWorkbench } from "../use-workbench";
 import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import {
   Menu,
-  MenuCheckboxItem,
-  MenuGroup,
-  MenuGroupLabel,
-  MenuItem,
   MenuPopup,
-  MenuRadioGroup,
-  MenuRadioItem,
-  MenuSeparator,
-  MenuSub,
-  MenuSubPopup,
-  MenuSubTrigger,
   MenuTrigger,
 } from "@/components/ui/menu";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Combobox,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxPopup,
+  ComboboxPrimitive,
+  ComboboxStatus,
+} from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+
+type VirtualDisplayFormValues = {
+  width: string;
+  height: string;
+  dpi: string;
+  packageName: string;
+};
+
+const DEFAULT_VIRTUAL_DISPLAY_VALUES: VirtualDisplayFormValues = {
+  width: "1280",
+  height: "720",
+  dpi: "320",
+  packageName: "",
+};
+
+function VirtualDisplayMenu({ connected }: { connected: boolean }) {
+  const { devices, screens } = useWorkbench();
+  const [open, setOpen] = useState(false);
+  const [showSystemApps, setShowSystemApps] = useState(false);
+  const appsQuery = useInstalledApps(open && connected, devices.session?.sessionId ?? null);
+  const allApps = appsQuery.data ?? [];
+  const apps = showSystemApps
+    ? allApps
+    : allApps.filter((app) => !app.system);
+  const form = useForm({
+    defaultValues: DEFAULT_VIRTUAL_DISPLAY_VALUES,
+    onSubmit: async ({ value }) => {
+      const result = CreateVirtualDisplayInputSchema.safeParse({
+        width: Number.parseInt(value.width, 10),
+        height: Number.parseInt(value.height, 10),
+        dpi: Number.parseInt(value.dpi, 10),
+        packageName: value.packageName.trim() || undefined,
+      });
+      if (!result.success) {
+        return;
+      }
+      await screens.createVirtualDisplay(result.data);
+      setOpen(false);
+    },
+  });
+
+  return (
+    <Menu open={open} onOpenChange={setOpen}>
+      <MenuTrigger render={<Button size="icon" variant="secondary" />}>
+        <PlusIcon />
+      </MenuTrigger>
+
+      <MenuPopup align="start" className="w-64 p-2">
+        <form
+          className="grid gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
+          <div className="flex items-center gap-2 text-xs font-medium">
+            <PlusIcon className="size-3.5" />
+            Virtual display
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5">
+            <form.Field name="width">
+              {(field) => (
+                <label className="grid gap-1 text-[10px] text-muted-foreground">
+                  Width
+                  <Input
+                    nativeInput
+                    max={7680}
+                    min={320}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    size="sm"
+                    type="number"
+                    value={field.state.value}
+                  />
+                </label>
+              )}
+            </form.Field>
+            <form.Field name="height">
+              {(field) => (
+                <label className="grid gap-1 text-[10px] text-muted-foreground">
+                  Height
+                  <Input
+                    nativeInput
+                    max={7680}
+                    min={320}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    size="sm"
+                    type="number"
+                    value={field.state.value}
+                  />
+                </label>
+              )}
+            </form.Field>
+            <form.Field name="dpi">
+              {(field) => (
+                <label className="grid gap-1 text-[10px] text-muted-foreground">
+                  DPI
+                  <Input
+                    nativeInput
+                    max={960}
+                    min={72}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    size="sm"
+                    type="number"
+                    value={field.state.value}
+                  />
+                </label>
+              )}
+            </form.Field>
+          </div>
+
+          <form.Field name="packageName">
+            {(field) => {
+              const selectedApp =
+                allApps.find((app) => app.packageName === field.state.value) ?? null;
+              const query = field.state.value.trim().toLowerCase();
+              const visibleApps = apps.filter(
+                (app) =>
+                  query.length === 0 ||
+                  app.name.toLowerCase().includes(query) ||
+                  app.packageName.toLowerCase().includes(query),
+              );
+              return (
+                <div className="grid gap-1">
+                  <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
+                    <span>App package (optional)</span>
+                    <label className="flex items-center gap-1.5">
+                      <Checkbox
+                        checked={showSystemApps}
+                        onCheckedChange={(checked) =>
+                          setShowSystemApps(checked === true)
+                        }
+                      />
+                      Show system apps
+                    </label>
+                  </div>
+                  <Combobox
+                    autoComplete="none"
+                    inputValue={field.state.value}
+                    itemToStringLabel={(app) => app.name}
+                    itemToStringValue={(app) => app.packageName}
+                    items={visibleApps}
+                    onInputValueChange={(value) => field.handleChange(value)}
+                    onValueChange={(app) => field.handleChange(app?.packageName ?? "")}
+                    value={selectedApp}
+                  >
+                    <ComboboxInput
+                      placeholder={appsQuery.isPending ? "Loading apps..." : "com.example.app"}
+                      showClear
+                      size="sm"
+                    />
+                    <ComboboxPopup className="w-72">
+                      <ComboboxStatus>
+                        {appsQuery.isPending
+                          ? "Loading installed apps..."
+                          : apps.length === 0 && !showSystemApps && allApps.length > 0
+                            ? "No user apps found. Enable system apps to see more."
+                            : `${apps.length} apps`}
+                      </ComboboxStatus>
+                      <ScrollArea
+                        className="max-h-64"
+                        overscrollContain
+                        scrollFade
+                        scrollbarGutter
+                      >
+                        <ComboboxPrimitive.List className="not-empty:px-1 not-empty:py-1">
+                          {visibleApps.length === 0 && (
+                            <ComboboxEmpty>No apps found.</ComboboxEmpty>
+                          )}
+                          {visibleApps.map((item) => (
+                            <ComboboxItem key={item.packageName} value={item}>
+                              <div className="flex min-w-0 items-center gap-2">
+                                {item.iconUrl !== null ? (
+                                  <img
+                                    alt=""
+                                    className="size-5 rounded-md object-cover"
+                                    src={item.iconUrl}
+                                  />
+                                ) : (
+                                  <SmartphoneIcon className="size-4 text-muted-foreground" />
+                                )}
+                                <span className="min-w-0">
+                                  <span className="block truncate text-xs font-medium">
+                                    {item.name}
+                                  </span>
+                                  <span className="block truncate text-[10px] text-muted-foreground">
+                                    {item.packageName}
+                                  </span>
+                                </span>
+                                {item.system && (
+                                  <Badge size="sm" variant="outline">System</Badge>
+                                )}
+                              </div>
+                            </ComboboxItem>
+                          ))}
+                        </ComboboxPrimitive.List>
+                      </ScrollArea>
+                    </ComboboxPopup>
+                  </Combobox>
+                </div>
+              );
+            }}
+          </form.Field>
+
+          <div>
+            <Button
+              className="flex-1"
+              disabled={
+                !connected || screens.screen?.ownedVirtualDisplayId !== null
+              }
+              loading={screens.busy}
+              size="xs"
+              type="submit"
+            >
+              Create and open
+            </Button>
+          </div>
+        </form>
+      </MenuPopup>
+    </Menu>
+  );
+}
 
 type DeviceButtonConfig = {
   button: DeviceButton;
@@ -187,49 +417,9 @@ export function DeviceMonitor() {
             </TabsList>
           </ScrollArea>
 
-          <Menu>
-            <MenuTrigger render={<Button size="icon" variant="secondary" />}>
-              <PlusIcon />
-            </MenuTrigger>
-
-            <MenuPopup align="start">
-              <MenuItem>Profile</MenuItem>
-              <MenuSeparator />
-
-              <MenuGroup>
-                <MenuGroupLabel>Playback</MenuGroupLabel>
-                <MenuItem>Play</MenuItem>
-                <MenuItem>Pause</MenuItem>
-              </MenuGroup>
-
-              <MenuSeparator />
-
-              <MenuCheckboxItem>Shuffle</MenuCheckboxItem>
-              <MenuCheckboxItem>Repeat</MenuCheckboxItem>
-              <MenuCheckboxItem variant="switch">Auto save</MenuCheckboxItem>
-
-              <MenuSeparator />
-
-              <MenuGroup>
-                <MenuGroupLabel>Sort by</MenuGroupLabel>
-                <MenuRadioGroup>
-                  <MenuRadioItem value="artist">Artist</MenuRadioItem>
-                  <MenuRadioItem value="album">Album</MenuRadioItem>
-                  <MenuRadioItem value="title">Title</MenuRadioItem>
-                </MenuRadioGroup>
-              </MenuGroup>
-
-              <MenuSeparator />
-
-              <MenuSub>
-                <MenuSubTrigger>Add to playlist</MenuSubTrigger>
-                <MenuSubPopup>
-                  <MenuItem>Jazz</MenuItem>
-                  <MenuItem>Rock</MenuItem>
-                </MenuSubPopup>
-              </MenuSub>
-            </MenuPopup>
-          </Menu>
+          <VirtualDisplayMenu
+            connected={devices.session?.state === "connected"}
+          />
         </Tabs>
       )}
 
