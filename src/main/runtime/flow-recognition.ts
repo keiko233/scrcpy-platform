@@ -34,6 +34,11 @@ export interface ScreenCaptureSource {
 
 export interface FlowRecognitionResult {
   assignments: Record<string, JsonValue>;
+  outputs: {
+    text: string;
+    confidence: number;
+    matched: boolean;
+  };
 }
 
 export interface FlowRecognitionDriver {
@@ -266,6 +271,13 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
             ? latest.confidence
             : 0,
           [matchedVariable]: matched,
+        },
+        outputs: {
+          text: latest.text.trim(),
+          confidence: Number.isFinite(latest.confidence)
+            ? latest.confidence
+            : 0,
+          matched,
         },
       };
     };

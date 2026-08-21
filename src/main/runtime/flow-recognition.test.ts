@@ -97,6 +97,11 @@ describe("OcrRecognitionDriver", () => {
       screenConfidence: 96,
       screenMatched: true,
     });
+    assert.deepEqual(result.outputs, {
+      text: "Ready",
+      confidence: 96,
+      matched: true,
+    });
     assert.deepEqual(engine.calls, [
       {
         languages: ["eng", "chi_sim"],

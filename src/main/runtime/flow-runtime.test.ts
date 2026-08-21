@@ -94,7 +94,11 @@ class FakeDriver implements FlowActionDriver {
     deviceId: "device-1",
     sessionId: "session-1",
   };
-  readonly calls: Array<{ nodeId: string; context: FlowActionContext }> = [];
+  readonly calls: Array<{
+    nodeId: string;
+    context: FlowActionContext;
+    data: FlowNode["data"];
+  }> = [];
   error: Error | null = null;
 
   getTarget(): FlowRunTarget | null {
@@ -106,7 +110,11 @@ class FakeDriver implements FlowActionDriver {
     context: FlowActionContext,
     signal: AbortSignal,
   ): Promise<void> {
-    this.calls.push({ nodeId: action.id, context });
+    this.calls.push({
+      nodeId: action.id,
+      context,
+      data: structuredClone(action.data),
+    });
     if (signal.aborted) {
       throw new Error("aborted");
     }
@@ -123,11 +131,16 @@ class FakeRecognition implements FlowRecognitionDriver {
     ocrConfidence: 96,
     ocrMatched: true,
   };
+  outputs: FlowRecognitionResult["outputs"] = {
+    text: "Ready",
+    confidence: 96,
+    matched: true,
+  };
   disposed = false;
 
   async recognize(node: FlowNode): Promise<FlowRecognitionResult> {
     this.calls.push(node.id);
-    return { assignments: this.assignments };
+    return { assignments: this.assignments, outputs: this.outputs };
   }
 
   async dispose(): Promise<void> {
@@ -314,6 +327,101 @@ describe("FlowRuntimeService", () => {
     assert.deepEqual(recognition.calls, ["ocr"]);
     await service.dispose();
     assert.equal(recognition.disposed, true);
+  });
+
+  test("routes typed OCR outputs into connected downstream inputs", async () => {
+    const recognition = new FakeRecognition();
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("ocr", "ocr"),
+        node("if", "if", { condition: "false" }),
+        node("true-value", "set-variable", {
+          name: "branch",
+          expression: '"true"',
+        }),
+        node("false-value", "set-variable", {
+          name: "branch",
+          expression: '"false"',
+        }),
+        node("merge", "merge"),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "ocr", "next", "in"],
+        ["e2", "ocr", "if", "next", "in"],
+        ["data-1", "ocr", "if", "matched", "condition"],
+        ["e3", "if", "true-value", "true", "in"],
+        ["e4", "if", "false-value", "false", "in"],
+        ["e5", "true-value", "merge", "next", "a"],
+        ["e6", "false-value", "merge", "next", "b"],
+        ["e7", "merge", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.branch, "true");
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "false-value")?.state,
+      "skipped",
+    );
+  });
+
+  test("passes any-typed node outputs as raw connected values", async () => {
+    const document = linearDocument([
+      node("source", "set-variable", { name: "source", expression: "6 * 7" }),
+      node("target", "set-variable", { name: "target", expression: "0" }),
+      node("assert", "assert", { condition: "$target == 42" }),
+    ]);
+    document.edges.push({
+      id: "data-1",
+      source: "source",
+      target: "target",
+      sourceHandle: "value",
+      targetHandle: "expression",
+    });
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.target, 42);
+  });
+
+  test("overrides action fields with connected typed input values", async () => {
+    const document = linearDocument([
+      node("source", "set-variable", { name: "coordinate", expression: "17" }),
+      node("click", "click", { x: 1, y: 2 }),
+    ]);
+    document.edges.push(
+      {
+        id: "data-x",
+        source: "source",
+        target: "click",
+        sourceHandle: "value",
+        targetHandle: "x",
+      },
+      {
+        id: "data-y",
+        source: "source",
+        target: "click",
+        sourceHandle: "value",
+        targetHandle: "y",
+      },
+    );
+    const { service, driver } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(driver.calls[0]?.data.x, 17);
+    assert.equal(driver.calls[0]?.data.y, 17);
   });
 
   test("evaluates variables, takes one If branch, merges, and asserts", async () => {
