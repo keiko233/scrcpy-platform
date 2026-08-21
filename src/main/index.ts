@@ -10,10 +10,13 @@ import { ProjectStore } from "./persistence/project-store";
 import { registerProjectHandlers } from "./ipc/project-handlers";
 import { registerDeviceHandlers } from "./ipc/device-handlers";
 import { registerScreenHandlers } from "./ipc/screen-handlers";
+import { registerRunHandlers } from "./ipc/run-handlers";
 import { DeviceSessionService } from "./adb/device-session";
 import { ScreenSessionService } from "./adb/screen-session";
 import { TangoAdbGateway } from "./adb/tango-adb-gateway";
 import { Logger } from "./logging/logger";
+import { AdbFlowActionDriver } from "./runtime/adb-flow-driver";
+import { FlowRuntimeService } from "./runtime/flow-runtime";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
 const APP_FILE_SCHEME = "android-platform-file";
@@ -33,6 +36,7 @@ protocol.registerSchemesAsPrivileged([
 let persistence: PersistenceDatabase | null = null;
 let deviceSession: DeviceSessionService | null = null;
 let screenSession: ScreenSessionService | null = null;
+let flowRuntime: FlowRuntimeService | null = null;
 let shuttingDown = false;
 let logger: Logger | null = null;
 
@@ -155,6 +159,10 @@ void app.whenReady().then(() => {
   const screens = new ScreenSessionService(session);
   screenSession = screens;
   registerScreenHandlers(screens);
+  const runtime = new FlowRuntimeService(store, new AdbFlowActionDriver(session));
+  flowRuntime = runtime;
+  registerRunHandlers(runtime);
+  session.registerBeforeDisconnect(() => runtime.cancelCurrent());
 
   createWindow();
 
@@ -178,6 +186,7 @@ app.on("before-quit", (event) => {
 
 async function shutdownDeviceSession(): Promise<void> {
   try {
+    await flowRuntime?.dispose();
     await screenSession?.dispose();
     await deviceSession?.dispose();
   } catch (error) {
@@ -190,6 +199,7 @@ app.on("will-quit", () => {
   logger = null;
   persistence?.close();
   persistence = null;
+  flowRuntime = null;
 });
 
 app.on("window-all-closed", () => {

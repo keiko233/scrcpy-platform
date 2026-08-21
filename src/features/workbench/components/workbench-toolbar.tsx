@@ -7,12 +7,13 @@ import {
   PlusIcon,
   SaveIcon,
   ShieldAlertIcon,
+  SquareIcon,
 } from "lucide-react";
 import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { useWorkbench } from "../use-workbench";
 
 export function WorkbenchToolbar() {
-  const { library, flow } = useWorkbench();
+  const { library, flow, devices, screens, runs } = useWorkbench();
   const { selectedProject, selectedScript } = library;
 
   const canSave =
@@ -20,6 +21,51 @@ export function WorkbenchToolbar() {
     flow.dirty &&
     flow.saveState === "idle" &&
     flow.error === null;
+  const running = runs.run?.state === "running";
+  const session = devices.session;
+  const displayId = screens.screen?.activeDisplayId ?? null;
+  const canRun =
+    selectedScript !== null &&
+    !flow.dirty &&
+    !runs.busy &&
+    session?.state === "connected" &&
+    session.transportId !== null &&
+    displayId !== null;
+
+  const runTooltip = running
+    ? "Stop the active flow run"
+    : runs.error ??
+      (selectedScript === null
+        ? "Select a script to run"
+        : flow.dirty
+          ? "Save the draft before running it"
+          : session?.state !== "connected"
+            ? "Connect an Android device before running"
+            : displayId === null
+              ? "Select an Android display before running"
+              : "Run the saved flow in the background");
+
+  const toggleRun = () => {
+    if (running) {
+      void runs.stop();
+      return;
+    }
+    if (
+      !canRun ||
+      selectedScript === null ||
+      session?.transportId === null ||
+      session?.transportId === undefined ||
+      displayId === null
+    ) {
+      return;
+    }
+    void runs.start({
+      scriptId: selectedScript.id,
+      deviceId: session.transportId,
+      sessionId: session.sessionId,
+      displayId,
+    });
+  };
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-1.5 border-b bg-card px-2">
@@ -118,14 +164,21 @@ export function WorkbenchToolbar() {
       <Tooltip>
         <TooltipTrigger
           render={
-            <Button size="sm" variant="outline" disabled aria-label="Run flow">
-              <PlayIcon />
-              Run
+            <Button
+              size="sm"
+              variant={running ? "destructive-outline" : "outline"}
+              loading={runs.busy}
+              disabled={running ? runs.busy : !canRun}
+              aria-label={running ? "Stop flow" : "Run flow"}
+              onClick={toggleRun}
+            >
+              {running ? <SquareIcon /> : <PlayIcon />}
+              {running ? "Stop" : "Run"}
             </Button>
           }
         />
         <TooltipContent>
-          Run is unavailable: the background runtime is not implemented yet.
+          {runTooltip}
         </TooltipContent>
       </Tooltip>
     </div>

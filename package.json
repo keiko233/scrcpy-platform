@@ -9,7 +9,7 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "postinstall": "fetch-scrcpy-server 3.3.3",
-    "test": "node --import tsx --test src/main/persistence/project-store.test.ts src/main/adb/device-session.test.ts src/main/adb/display-catalog.test.ts src/main/adb/display-id-message.test.ts src/main/adb/installed-app-parser.test.ts src/features/workbench/flow/flow-document.test.ts src/features/workbench/flow/flow-validation.test.ts",
+    "test": "node --import tsx --test src/main/persistence/project-store.test.ts src/main/adb/device-session.test.ts src/main/adb/display-catalog.test.ts src/main/adb/display-id-message.test.ts src/main/adb/installed-app-parser.test.ts src/main/runtime/flow-runtime.test.ts src/main/runtime/adb-flow-driver.test.ts src/features/workbench/flow/flow-document.test.ts src/features/workbench/flow/flow-validation.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.app.json && tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.electron.json",
     "lint": "oxlint"
   },

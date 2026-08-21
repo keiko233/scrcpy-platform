@@ -66,6 +66,20 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensInjectTouch, input),
   requestScreenVideo: (input) =>
     ipcRenderer.send(ELECTRON_CHANNELS.screensRequestVideo, input),
+
+  getFlowRun: () => ipcRenderer.invoke(ELECTRON_CHANNELS.runsGet),
+  startFlowRun: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.runsStart, input),
+  stopFlowRun: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.runsStop, input),
+  onFlowRun: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      run: Parameters<typeof listener>[0],
+    ) => listener(run);
+    ipcRenderer.on(ELECTRON_CHANNELS.runsEvent, handler);
+    return () => ipcRenderer.removeListener(ELECTRON_CHANNELS.runsEvent, handler);
+  },
 };
 
 ipcRenderer.on(ELECTRON_CHANNELS.screensVideoPort, (event, payload) => {

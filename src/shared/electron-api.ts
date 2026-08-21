@@ -33,6 +33,14 @@ import type {
   SaveScriptDraftResult,
   ScriptDto,
 } from "./project-contracts";
+import type {
+  FlowRunDto,
+  FlowRunListener,
+  StartFlowRunInput,
+  StartFlowRunResult,
+  StopFlowRunInput,
+  StopFlowRunResult,
+} from "./run-contracts";
 
 export const ELECTRON_CHANNELS = {
   systemInfo: "system:get-info",
@@ -64,6 +72,10 @@ export const ELECTRON_CHANNELS = {
   screensInjectTouch: "screens:inject-touch",
   screensRequestVideo: "screens:request-video",
   screensVideoPort: "screens:video-port",
+  runsGet: "runs:get",
+  runsStart: "runs:start",
+  runsStop: "runs:stop",
+  runsEvent: "runs:event",
 } as const;
 
 export const SCREEN_VIDEO_WINDOW_EVENT = "android-platform:screen-video-port";
@@ -137,4 +149,9 @@ export interface ElectronAPI {
     input: InjectScreenTouchInput,
   ): Promise<ScreenOperationResult>;
   requestScreenVideo(input: RequestScreenVideoInput): void;
+
+  getFlowRun(): Promise<FlowRunDto | null>;
+  startFlowRun(input: StartFlowRunInput): Promise<StartFlowRunResult>;
+  stopFlowRun(input: StopFlowRunInput): Promise<StopFlowRunResult>;
+  onFlowRun(listener: FlowRunListener): () => void;
 }

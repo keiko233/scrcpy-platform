@@ -7,6 +7,7 @@ import { FlowApiContext } from "./flow/flow-api-context";
 import { useFlowEditor } from "./flow/use-flow-editor";
 import { useScriptLibrary } from "./library/use-script-library";
 import { useScreens } from "./screen/use-screens";
+import { useFlowRun } from "./run/use-flow-run";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
@@ -21,6 +22,7 @@ export function WorkbenchProvider({
   const devices = useDevices();
   const screens = useScreens(devices);
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
+  const runs = useFlowRun();
 
   const {
     selectedProjectId,
@@ -94,6 +96,7 @@ export function WorkbenchProvider({
     devices,
     screens,
     flow,
+    runs,
     selectProjectSafe,
     selectScriptSafe,
     restoreRevisionSafe,

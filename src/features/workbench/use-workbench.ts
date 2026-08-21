@@ -6,12 +6,14 @@ import type { DeviceManager } from "./device/use-devices";
 import type { FlowEditor } from "./flow/use-flow-editor";
 import type { ScriptLibrary } from "./library/use-script-library";
 import type { ScreenManager } from "./screen/use-screens";
+import type { FlowRunManager } from "./run/use-flow-run";
 
 export interface WorkbenchContextValue {
   library: ScriptLibrary;
   devices: DeviceManager;
   screens: ScreenManager;
   flow: FlowEditor;
+  runs: FlowRunManager;
   selectProjectSafe: (projectId: string) => void;
   selectScriptSafe: (scriptId: string | null) => void;
   restoreRevisionSafe: (revision: RevisionDto) => Promise<boolean>;
