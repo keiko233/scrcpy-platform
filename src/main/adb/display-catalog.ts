@@ -116,6 +116,32 @@ export function mergeDisplayCatalog(
   return result;
 }
 
+const SCRCPY_DISPLAY_NAME = "scrcpy";
+
+/**
+ * Keeps only displays this app can actually stream: physical displays and
+ * scrcpy-owned virtual displays. Android exposes system-reserved virtual
+ * displays (e.g. Miracast/presentation screens) that exist before any scrcpy
+ * session and cannot be mirrored, so they are hidden to avoid a tab that never
+ * switches.
+ *
+ * While a virtual-display owner is alive (`keepScrcpyNamed`), a scrcpy-named
+ * display is also kept so it can be discovered before ownership is recorded.
+ * Once the owner is gone, any scrcpy-named display is a stale leftover and is
+ * dropped from the list.
+ */
+export function filterManageableDisplays(
+  displays: readonly AndroidDisplayDto[],
+  keepScrcpyNamed: boolean,
+): AndroidDisplayDto[] {
+  return displays.filter(
+    (display) =>
+      display.kind === "physical" ||
+      display.ownedBySession ||
+      (keepScrcpyNamed && display.name === SCRCPY_DISPLAY_NAME),
+  );
+}
+
 export function findAddedVirtualDisplayId(
   before: readonly AndroidDisplayDto[],
   after: readonly AndroidDisplayDto[],

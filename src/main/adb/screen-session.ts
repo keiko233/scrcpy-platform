@@ -33,6 +33,7 @@ import type {
 import { DEFAULT_SCRCPY_SETTINGS } from "../../shared/screen-contracts";
 import type { DeviceSessionService } from "./device-session";
 import {
+  filterManageableDisplays,
   findAddedVirtualDisplayId,
   mergeDisplayCatalog,
   parseDisplayDetails,
@@ -975,11 +976,14 @@ export class ScreenSessionService {
         .filter((display) => display.virtual)
         .map((display) => display.displayId);
     }
-    return mergeDisplayCatalog(
-      details,
-      displayIds,
-      new Set(virtualIds),
-      this.#ownedVirtualDisplayId,
+    return filterManageableDisplays(
+      mergeDisplayCatalog(
+        details,
+        displayIds,
+        new Set(virtualIds),
+        this.#ownedVirtualDisplayId,
+      ),
+      this.#displayOwner !== null,
     );
   }
 

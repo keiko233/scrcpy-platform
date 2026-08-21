@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  filterManageableDisplays,
   findAddedVirtualDisplayId,
   mergeDisplayCatalog,
   parseDisplayDetails,
@@ -60,5 +61,64 @@ Display 7:
 
     assert.equal(findAddedVirtualDisplayId([main], [main, virtual]), 9);
     assert.equal(findAddedVirtualDisplayId([main, virtual], [main, virtual]), undefined);
+  });
+
+  it("hides system-reserved virtual displays", () => {
+    const main = {
+      displayId: 0,
+      name: "Built-in Screen",
+      kind: "physical" as const,
+      primary: true,
+      ownedBySession: false,
+    };
+    const systemVirtual = {
+      displayId: 2,
+      name: "Miracast",
+      kind: "virtual" as const,
+      primary: false,
+      ownedBySession: false,
+    };
+    const scrcpyVirtual = {
+      displayId: 7,
+      name: "scrcpy",
+      kind: "virtual" as const,
+      primary: false,
+      ownedBySession: true,
+    };
+
+    assert.deepEqual(
+      filterManageableDisplays([main, systemVirtual, scrcpyVirtual], true),
+      [main, scrcpyVirtual],
+    );
+    assert.deepEqual(
+      filterManageableDisplays([main, systemVirtual, scrcpyVirtual], false),
+      [main, scrcpyVirtual],
+    );
+  });
+
+  it("drops a scrcpy-named display once its owner is gone", () => {
+    const main = {
+      displayId: 0,
+      name: "Built-in Screen",
+      kind: "physical" as const,
+      primary: true,
+      ownedBySession: false,
+    };
+    const leftoverScrcpy = {
+      displayId: 7,
+      name: "scrcpy",
+      kind: "virtual" as const,
+      primary: false,
+      ownedBySession: false,
+    };
+
+    assert.deepEqual(
+      filterManageableDisplays([main, leftoverScrcpy], true),
+      [main, leftoverScrcpy],
+    );
+    assert.deepEqual(
+      filterManageableDisplays([main, leftoverScrcpy], false),
+      [main],
+    );
   });
 });

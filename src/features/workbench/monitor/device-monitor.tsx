@@ -16,6 +16,7 @@ import {
   VideoOffIcon,
   Volume1Icon,
   Volume2Icon,
+  XIcon,
 } from "lucide-react";
 
 import { EmptyMedia } from "@/components/ui/empty";
@@ -412,6 +413,30 @@ export function DeviceMonitor() {
                   <Badge size="sm" className="font-mono font-bold">
                     {display.kind}
                   </Badge>
+
+                  {display.ownedBySession && (
+                    <span
+                      aria-label="Destroy virtual display"
+                      className="ml-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        event.preventDefault();
+                        void screens.destroyVirtualDisplay();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.stopPropagation();
+                          event.preventDefault();
+                          void screens.destroyVirtualDisplay();
+                        }
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      title="Destroy virtual display"
+                    >
+                      <XIcon className="size-3.5" />
+                    </span>
+                  )}
                 </TabsTab>
               ))}
             </TabsList>
