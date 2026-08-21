@@ -53,4 +53,8 @@ export type FieldDefinition = FieldDefinitionBase &
     | {
         kind: "boolean";
       }
+    | {
+        kind: "package";
+        placeholder?: string;
+      }
   );

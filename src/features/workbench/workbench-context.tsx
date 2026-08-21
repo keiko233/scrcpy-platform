@@ -11,7 +11,6 @@ import { useFlowRun } from "./run/use-flow-run";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
-  type UpperRightTab,
 } from "./use-workbench";
 
 export function WorkbenchProvider({
@@ -24,7 +23,6 @@ export function WorkbenchProvider({
   const screens = useScreens(devices);
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
   const runs = useFlowRun();
-  const [upperRightTab, setUpperRightTab] = useState<UpperRightTab>("debug");
   const [screenRegionNodeId, setScreenRegionNodeId] = useState<string | null>(
     null,
   );
@@ -129,8 +127,6 @@ export function WorkbenchProvider({
     screens,
     flow,
     runs,
-    upperRightTab,
-    setUpperRightTab,
     screenRegionSelection: {
       nodeId: activeScreenRegionNodeId,
       start: startScreenRegionSelection,

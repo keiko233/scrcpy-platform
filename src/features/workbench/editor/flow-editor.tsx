@@ -56,7 +56,7 @@ function EditorEmptyState() {
 }
 
 function FlowCanvas() {
-  const { flow, setUpperRightTab } = useWorkbench();
+  const { flow } = useWorkbench();
   const { screenToFlowPosition } = useReactFlow();
   const [panePosition, setPanePosition] = useState<XYPosition | null>(null);
 
@@ -88,7 +88,6 @@ function FlowCanvas() {
 
   const addBlockAtPane = (kind: FlowBlockKind) => {
     addBlock(kind, panePosition ?? undefined);
-    setUpperRightTab("block");
     setPanePosition(null);
   };
 
@@ -155,7 +154,6 @@ function FlowCanvas() {
               onEdgesChange={onEdgesChange}
               onConnect={onConnect}
               isValidConnection={isValidConnection}
-              onNodeClick={() => setUpperRightTab("block")}
               viewport={viewport}
               onViewportChange={onViewportChange}
               onMoveEnd={onMoveEnd}

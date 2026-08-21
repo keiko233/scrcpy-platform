@@ -229,7 +229,7 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       {
         name: "packageName",
         label: "Package",
-        kind: "text",
+        kind: "package",
         placeholder: "com.example.app",
       },
       {

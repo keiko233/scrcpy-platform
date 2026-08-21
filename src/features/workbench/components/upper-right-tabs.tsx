@@ -3,14 +3,12 @@ import { UnplugIcon } from "lucide-react";
 import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsList, TabsPanel, TabsTrigger } from "@/components/ui/tabs";
 
 import { DebugSettingsTab } from "../debug/debug-tab";
-import { BlockInspectorTab } from "../inspector/block-inspector";
 import { useWorkbench } from "../use-workbench";
 
 export function UpperRightTabs() {
-  const { devices, flow, upperRightTab, setUpperRightTab } = useWorkbench();
+  const { devices, flow } = useWorkbench();
   const { session, sessionLoaded, disconnecting, disconnect } = devices;
   const navigate = useNavigate();
 
@@ -38,18 +36,9 @@ export function UpperRightTabs() {
   };
 
   return (
-    <Tabs
-      value={upperRightTab}
-      onValueChange={(value) => {
-        if (value === "debug" || value === "block") {
-          setUpperRightTab(value);
-        }
-      }}
-      className="h-full min-h-0 gap-0"
-    >
-      <TabsList className="h-8 w-full shrink-0 justify-start">
-        <TabsTrigger value="debug">Debug</TabsTrigger>
-        <TabsTrigger value="block">Block</TabsTrigger>
+    <div className="flex h-full min-h-0 flex-col gap-0">
+      <div className="flex h-8 w-full shrink-0 items-center justify-start gap-1 border-b px-2">
+        <span className="text-xs font-medium">Debug</span>
         <div className="flex-1" />
         <Button
           size="sm"
@@ -63,14 +52,11 @@ export function UpperRightTabs() {
           <UnplugIcon />
           Disconnect
         </Button>
-      </TabsList>
+      </div>
 
-      <TabsPanel value="debug" className="min-h-0 flex-1">
+      <div className="min-h-0 flex-1">
         <DebugSettingsTab />
-      </TabsPanel>
-      <TabsPanel value="block" className="min-h-0 flex-1">
-        <BlockInspectorTab />
-      </TabsPanel>
-    </Tabs>
+      </div>
+    </div>
   );
 }

@@ -16,6 +16,7 @@ import {
 
 import { BLOCK_DEFINITIONS } from "./blocks";
 import { useFlowApi } from "./flow/flow-api-context";
+import { NodeConfigPopover } from "./node-config/node-config-popover";
 import type { WorkbenchNode } from "./types";
 
 type NodePort = {
@@ -110,6 +111,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                 {summary}
               </div>
             </div>
+            {definition.fields.length > 0 && (
+              <NodeConfigPopover nodeId={id} data={data} />
+            )}
           </div>
           {portRows.length > 0 && (
             <div className="py-1">
