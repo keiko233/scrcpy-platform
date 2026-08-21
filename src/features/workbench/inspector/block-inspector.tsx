@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { BlocksIcon, Trash2Icon } from "lucide-react";
+import { BlocksIcon, ScanLineIcon, Trash2Icon, XIcon } from "lucide-react";
 import {
   FLOW_DATA_TYPE_LABELS,
   FLOW_NODE_DATA_PORTS,
@@ -241,7 +241,7 @@ function FlowPorts({
 }
 
 export function BlockInspectorTab() {
-  const { library, flow } = useWorkbench();
+  const { library, flow, screens, screenRegionSelection } = useWorkbench();
   const { selectedScript } = library;
   const { selectedNodes, selectedNode, deleteNode, updateNodeData, edges } = flow;
 
@@ -295,6 +295,11 @@ export function BlockInspectorTab() {
       .filter((handle): handle is string => typeof handle === "string"),
   );
   const Icon = definition?.icon;
+  const selectingScreenRegion =
+    screenRegionSelection.nodeId === selectedNode.id;
+  const canSelectScreenRegion =
+    screens.screen?.streamId !== null &&
+    screens.screen?.streamId !== undefined;
 
   const commit = (name: string, value: JsonValue) => {
     updateNodeData(selectedNode.id, { [name]: value });
@@ -347,6 +352,37 @@ export function BlockInspectorTab() {
       )}
 
       <DataOutputs outputs={dataPorts.outputs} />
+
+      {data.kind === "screen-region" && (
+        <section className="flex flex-col gap-2 rounded-lg border p-2">
+          <div>
+            <div className="text-[11px] font-medium">Screen selection</div>
+            <div className="text-[10px] text-muted-foreground">
+              Drag over the live display to capture x, y, width, and height.
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant={selectingScreenRegion ? "secondary" : "outline"}
+            disabled={!canSelectScreenRegion && !selectingScreenRegion}
+            onClick={() => {
+              if (selectingScreenRegion) {
+                screenRegionSelection.cancel();
+              } else {
+                screenRegionSelection.start(selectedNode.id);
+              }
+            }}
+          >
+            {selectingScreenRegion ? <XIcon /> : <ScanLineIcon />}
+            {selectingScreenRegion ? "Cancel selection" : "Select on screen"}
+          </Button>
+          {!canSelectScreenRegion && (
+            <p className="text-[10px] text-muted-foreground">
+              Start a display stream before selecting a region.
+            </p>
+          )}
+        </section>
+      )}
 
       {settingFields.length > 0 && (
         <section className="flex flex-col gap-2.5 rounded-lg border p-2">

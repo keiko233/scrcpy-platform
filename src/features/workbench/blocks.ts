@@ -392,6 +392,7 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
 export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "click",
   "swipe",
+  "screen-region",
   "ocr",
   "delay",
   "launch-app",
@@ -401,7 +402,6 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "for",
   "while",
   "assert",
-  "screen-region",
 ];
 
 export const FLOW_BLOCK_KIND_ORDER: FlowBlockKind[] = [

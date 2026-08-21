@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 
-import type { RevisionDto } from "@/shared/project-contracts";
+import type { RevisionDto, ScreenRegion } from "@/shared/project-contracts";
 
 import { useDevices } from "./device/use-devices";
 import { FlowApiContext } from "./flow/flow-api-context";
@@ -25,6 +25,9 @@ export function WorkbenchProvider({
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
   const runs = useFlowRun();
   const [upperRightTab, setUpperRightTab] = useState<UpperRightTab>("debug");
+  const [screenRegionNodeId, setScreenRegionNodeId] = useState<string | null>(
+    null,
+  );
 
   const {
     selectedProjectId,
@@ -33,7 +36,34 @@ export function WorkbenchProvider({
     selectScript,
     restoreRevision,
   } = library;
-  const { reloadLatest } = flow;
+  const { reloadLatest, updateNodeData } = flow;
+  const activeScreenRegionNodeId =
+    screenRegionNodeId !== null &&
+    flow.nodes.some(
+      (node) =>
+        node.id === screenRegionNodeId && node.data.kind === "screen-region",
+    )
+      ? screenRegionNodeId
+      : null;
+
+  const startScreenRegionSelection = useCallback((nodeId: string) => {
+    setScreenRegionNodeId(nodeId);
+  }, []);
+
+  const cancelScreenRegionSelection = useCallback(() => {
+    setScreenRegionNodeId(null);
+  }, []);
+
+  const completeScreenRegionSelection = useCallback(
+    (region: ScreenRegion) => {
+      if (activeScreenRegionNodeId === null) {
+        return;
+      }
+      updateNodeData(activeScreenRegionNodeId, region);
+      setScreenRegionNodeId(null);
+    },
+    [activeScreenRegionNodeId, updateNodeData],
+  );
 
   const selectProjectSafe = useCallback(
     (projectId: string) => {
@@ -101,6 +131,12 @@ export function WorkbenchProvider({
     runs,
     upperRightTab,
     setUpperRightTab,
+    screenRegionSelection: {
+      nodeId: activeScreenRegionNodeId,
+      start: startScreenRegionSelection,
+      cancel: cancelScreenRegionSelection,
+      complete: completeScreenRegionSelection,
+    },
     selectProjectSafe,
     selectScriptSafe,
     restoreRevisionSafe,

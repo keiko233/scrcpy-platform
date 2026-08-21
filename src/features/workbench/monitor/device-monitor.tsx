@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useState,
   useEffect,
   useRef,
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 
 import { EmptyMedia } from "@/components/ui/empty";
+import { cn } from "@/lib/utils";
 
 import {
   CreateVirtualDisplayInputSchema,
@@ -49,6 +51,10 @@ import {
   ComboboxStatus,
 } from "@/components/ui/combobox";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  screenRegionFromDrag,
+  type NormalizedScreenPoint,
+} from "./screen-region-selection";
 
 type VirtualDisplayFormValues = {
   width: string;
@@ -290,13 +296,36 @@ const VOLUME_BUTTONS: Array<DeviceButtonConfig> = [
   { button: "power", label: "Power", icon: PowerIcon },
 ];
 
+interface ScreenRegionSelectionDraft {
+  start: NormalizedScreenPoint;
+  current: NormalizedScreenPoint;
+  startClient: { x: number; y: number };
+  currentClient: { x: number; y: number };
+}
+
 export function DeviceMonitor() {
-  const { devices, screens } = useWorkbench();
+  const { devices, screens, screenRegionSelection } = useWorkbench();
+  const {
+    nodeId: screenRegionNodeId,
+    cancel: cancelScreenRegionSelection,
+    complete: completeScreenRegionSelection,
+  } = screenRegionSelection;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const moveFrameRef = useRef<number | null>(null);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
+  const selectionDraftRef = useRef<ScreenRegionSelectionDraft | null>(null);
+  const [selectionDraft, setSelectionDraft] =
+    useState<ScreenRegionSelectionDraft | null>(null);
   const session = devices.session;
   const video = useScreenVideo(canvasRef, screens.screen?.streamId ?? null);
+
+  const updateSelectionDraft = useCallback(
+    (draft: ScreenRegionSelectionDraft | null) => {
+      selectionDraftRef.current = draft;
+      setSelectionDraft(draft);
+    },
+    [],
+  );
 
   const point = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -331,11 +360,34 @@ export function DeviceMonitor() {
       return;
     }
     event.currentTarget.setPointerCapture(event.pointerId);
-    sendTouch("down", point(event));
+    const position = point(event);
+    if (screenRegionNodeId !== null) {
+      updateSelectionDraft({
+        start: position,
+        current: position,
+        startClient: { x: event.clientX, y: event.clientY },
+        currentClient: { x: event.clientX, y: event.clientY },
+      });
+      return;
+    }
+    sendTouch("down", position);
   };
 
   const pointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+    if (selectionDraftRef.current !== null) {
+      if (screenRegionNodeId === null) {
+        updateSelectionDraft(null);
+        return;
+      }
+      const current = point(event);
+      updateSelectionDraft({
+        ...selectionDraftRef.current,
+        current,
+        currentClient: { x: event.clientX, y: event.clientY },
+      });
       return;
     }
     pendingMoveRef.current = point(event);
@@ -360,9 +412,49 @@ export function DeviceMonitor() {
       return;
     }
     pendingMoveRef.current = null;
-    sendTouch(action, point(event));
+    const end = point(event);
     event.currentTarget.releasePointerCapture(event.pointerId);
+    const draft = selectionDraftRef.current;
+    if (draft !== null) {
+      updateSelectionDraft(null);
+      if (screenRegionNodeId === null) {
+        return;
+      }
+      if (action === "cancel") {
+        cancelScreenRegionSelection();
+        return;
+      }
+      completeScreenRegionSelection(
+        screenRegionFromDrag(
+          draft.start,
+          end,
+          event.currentTarget.width,
+          event.currentTarget.height,
+        ),
+      );
+      return;
+    }
+    sendTouch(action, end);
   };
+
+  useEffect(() => {
+    if (screenRegionNodeId === null) {
+      return;
+    }
+    pendingMoveRef.current = null;
+    if (moveFrameRef.current !== null) {
+      window.cancelAnimationFrame(moveFrameRef.current);
+      moveFrameRef.current = null;
+    }
+    const cancelOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        updateSelectionDraft(null);
+        cancelScreenRegionSelection();
+      }
+    };
+    window.addEventListener("keydown", cancelOnEscape);
+    return () => window.removeEventListener("keydown", cancelOnEscape);
+  }, [cancelScreenRegionSelection, screenRegionNodeId, updateSelectionDraft]);
 
   useEffect(
     () => () => {
@@ -475,13 +567,46 @@ export function DeviceMonitor() {
         <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
           <canvas
             aria-label="Live Android display"
-            className="h-auto max-h-full w-auto max-w-full touch-none bg-black"
+            className={cn(
+              "h-auto max-h-full w-auto max-w-full touch-none bg-black",
+              screenRegionNodeId !== null && "cursor-crosshair",
+            )}
             onPointerCancel={(event) => pointerEnd("cancel", event)}
             onPointerDown={pointerDown}
             onPointerMove={pointerMove}
             onPointerUp={(event) => pointerEnd("up", event)}
             ref={canvasRef}
           />
+
+          {screenRegionNodeId !== null && video.connected && (
+            <div className="pointer-events-none absolute top-2 z-20 rounded-md border border-amber-400/60 bg-black/75 px-2 py-1 text-[11px] text-white shadow-sm">
+              Drag over the screen to select a region · Esc to cancel
+            </div>
+          )}
+
+          {screenRegionNodeId !== null && selectionDraft !== null && (
+            <div
+              className="pointer-events-none fixed z-50 border-2 border-amber-400 bg-amber-400/15 shadow-[0_0_0_1px_rgba(0,0,0,0.65)]"
+              style={{
+                left: Math.min(
+                  selectionDraft.startClient.x,
+                  selectionDraft.currentClient.x,
+                ),
+                top: Math.min(
+                  selectionDraft.startClient.y,
+                  selectionDraft.currentClient.y,
+                ),
+                width: Math.abs(
+                  selectionDraft.currentClient.x -
+                    selectionDraft.startClient.x,
+                ),
+                height: Math.abs(
+                  selectionDraft.currentClient.y -
+                    selectionDraft.startClient.y,
+                ),
+              }}
+            />
+          )}
 
           {!video.connected && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/30">

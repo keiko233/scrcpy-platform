@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 
-import type { RevisionDto } from "@/shared/project-contracts";
+import type { RevisionDto, ScreenRegion } from "@/shared/project-contracts";
 
 import type { DeviceManager } from "./device/use-devices";
 import type { FlowEditor } from "./flow/use-flow-editor";
@@ -10,6 +10,13 @@ import type { FlowRunManager } from "./run/use-flow-run";
 
 export type UpperRightTab = "debug" | "block";
 
+export interface ScreenRegionSelectionManager {
+  nodeId: string | null;
+  start: (nodeId: string) => void;
+  cancel: () => void;
+  complete: (region: ScreenRegion) => void;
+}
+
 export interface WorkbenchContextValue {
   library: ScriptLibrary;
   devices: DeviceManager;
@@ -18,6 +25,7 @@ export interface WorkbenchContextValue {
   runs: FlowRunManager;
   upperRightTab: UpperRightTab;
   setUpperRightTab: (tab: UpperRightTab) => void;
+  screenRegionSelection: ScreenRegionSelectionManager;
   selectProjectSafe: (projectId: string) => void;
   selectScriptSafe: (scriptId: string | null) => void;
   restoreRevisionSafe: (revision: RevisionDto) => Promise<boolean>;
