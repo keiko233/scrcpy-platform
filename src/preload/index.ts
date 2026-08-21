@@ -80,6 +80,22 @@ const api: ElectronAPI = {
     ipcRenderer.on(ELECTRON_CHANNELS.runsEvent, handler);
     return () => ipcRenderer.removeListener(ELECTRON_CHANNELS.runsEvent, handler);
   },
+
+  windowMinimize: () => ipcRenderer.invoke(ELECTRON_CHANNELS.windowMinimize),
+  windowToggleMaximize: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowToggleMaximize),
+  windowClose: () => ipcRenderer.invoke(ELECTRON_CHANNELS.windowClose),
+  windowIsMaximized: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowIsMaximized),
+  onWindowMaximized: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      maximized: boolean,
+    ) => listener(maximized);
+    ipcRenderer.on(ELECTRON_CHANNELS.windowMaximizedChanged, handler);
+    return () =>
+      ipcRenderer.removeListener(ELECTRON_CHANNELS.windowMaximizedChanged, handler);
+  },
 };
 
 ipcRenderer.on(ELECTRON_CHANNELS.screensVideoPort, (event, payload) => {

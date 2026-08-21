@@ -247,6 +247,16 @@ body,
   overflow: hidden;
 }
 
+/* Custom titlebar: the header is a draggable region; interactive children opt
+   back into pointer events with `.app-no-drag`. */
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
 /* Compact React Flow styling that follows the app theme. */
 .react-flow {
   --xy-background-color: transparent;

@@ -76,6 +76,11 @@ export const ELECTRON_CHANNELS = {
   runsStart: "runs:start",
   runsStop: "runs:stop",
   runsEvent: "runs:event",
+  windowMinimize: "window:minimize",
+  windowToggleMaximize: "window:toggle-maximize",
+  windowClose: "window:close",
+  windowIsMaximized: "window:is-maximized",
+  windowMaximizedChanged: "window:maximized-changed",
 } as const;
 
 export const SCREEN_VIDEO_WINDOW_EVENT = "android-platform:screen-video-port";
@@ -154,4 +159,10 @@ export interface ElectronAPI {
   startFlowRun(input: StartFlowRunInput): Promise<StartFlowRunResult>;
   stopFlowRun(input: StopFlowRunInput): Promise<StopFlowRunResult>;
   onFlowRun(listener: FlowRunListener): () => void;
+
+  windowMinimize(): Promise<void>;
+  windowToggleMaximize(): Promise<void>;
+  windowClose(): Promise<void>;
+  windowIsMaximized(): Promise<boolean>;
+  onWindowMaximized(listener: (maximized: boolean) => void): () => void;
 }

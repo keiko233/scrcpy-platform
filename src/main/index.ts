@@ -53,6 +53,9 @@ function createWindow(): void {
     height: 800,
     show: false,
     title: "Android Platform",
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" as const }
+      : { frame: false }),
     webPreferences: {
       preload: join(import.meta.dirname, "../preload/index.cjs"),
       contextIsolation: true,
@@ -64,6 +67,13 @@ function createWindow(): void {
 
   win.once("ready-to-show", () => {
     win.show();
+  });
+
+  win.on("maximize", () => {
+    win.webContents.send(ELECTRON_CHANNELS.windowMaximizedChanged, true);
+  });
+  win.on("unmaximize", () => {
+    win.webContents.send(ELECTRON_CHANNELS.windowMaximizedChanged, false);
   });
 
   win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
@@ -138,6 +148,27 @@ void app.whenReady().then(() => {
   });
 
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
+
+  ipcMain.handle(ELECTRON_CHANNELS.windowMinimize, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.minimize();
+  });
+  ipcMain.handle(ELECTRON_CHANNELS.windowToggleMaximize, (event) => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (window === null) {
+      return;
+    }
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+  });
+  ipcMain.handle(ELECTRON_CHANNELS.windowClose, (event) => {
+    BrowserWindow.fromWebContents(event.sender)?.close();
+  });
+  ipcMain.handle(ELECTRON_CHANNELS.windowIsMaximized, (event) => {
+    return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
+  });
 
   const store = openPersistence();
   logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
