@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { BlocksIcon, Trash2Icon } from "lucide-react";
 import {
+  FLOW_DATA_TYPE_LABELS,
   FLOW_NODE_DATA_PORTS,
   type FlowDataType,
   type JsonValue,
@@ -158,9 +159,10 @@ function DataTypeBadge({ type }: { type: FlowDataType }) {
         type === "string" && "bg-emerald-500/12 text-emerald-600",
         type === "number" && "bg-sky-500/12 text-sky-600",
         type === "boolean" && "bg-violet-500/12 text-violet-600",
+        type === "screen-region" && "bg-amber-500/12 text-amber-600",
       )}
     >
-      {type}
+      {FLOW_DATA_TYPE_LABELS[type]}
     </span>
   );
 }

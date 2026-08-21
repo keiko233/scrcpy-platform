@@ -9,6 +9,7 @@ import {
   PlayIcon,
   RefreshCwIcon,
   RocketIcon,
+  ScanSquareIcon,
   ScanTextIcon,
   ShieldCheckIcon,
   VariableIcon,
@@ -369,6 +370,23 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.assert.inputs,
     outputPorts: FLOW_NODE_PORTS.assert.outputs,
   },
+  "screen-region": {
+    kind: "screen-region",
+    label: "Screen region",
+    description: "Define a composite x, y, width, height region on the display.",
+    icon: ScanSquareIcon,
+    defaults: { kind: "screen-region", x: 0, y: 0, width: 500, height: 200 },
+    summarize: (data) =>
+      `(${text(data.x)}, ${text(data.y)}) ${text(data.width)}x${text(data.height)}`,
+    fields: [
+      { name: "x", label: "Region X", kind: "number", min: 0, step: 1 },
+      { name: "y", label: "Region Y", kind: "number", min: 0, step: 1 },
+      { name: "width", label: "Region width", kind: "number", min: 1, step: 1 },
+      { name: "height", label: "Region height", kind: "number", min: 1, step: 1 },
+    ],
+    inputPorts: FLOW_NODE_PORTS["screen-region"].inputs,
+    outputPorts: FLOW_NODE_PORTS["screen-region"].outputs,
+  },
 };
 
 export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
@@ -383,6 +401,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "for",
   "while",
   "assert",
+  "screen-region",
 ];
 
 export const FLOW_BLOCK_KIND_ORDER: FlowBlockKind[] = [

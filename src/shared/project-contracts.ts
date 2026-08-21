@@ -35,6 +35,7 @@ export const FLOW_NODE_KINDS = [
   "for",
   "while",
   "assert",
+  "screen-region",
 ] as const;
 
 export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
@@ -53,6 +54,7 @@ export const FLOW_NODE_PORTS = {
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   assert: { inputs: ["in"], outputs: ["next"] },
+  "screen-region": { inputs: [], outputs: [] },
 } as const satisfies Record<
   FlowNodeKind,
   { inputs: readonly string[]; outputs: readonly string[] }
@@ -63,9 +65,29 @@ export const FLOW_DATA_TYPES = [
   "string",
   "number",
   "boolean",
+  "screen-region",
 ] as const;
 
 export type FlowDataType = (typeof FLOW_DATA_TYPES)[number];
+
+export const FLOW_DATA_TYPE_LABELS: Record<FlowDataType, string> = {
+  any: "Any",
+  string: "String",
+  number: "Number",
+  boolean: "Boolean",
+  "screen-region": "ScreenRegion",
+};
+
+export const ScreenRegionSchema = z
+  .object({
+    x: z.number().finite().nonnegative(),
+    y: z.number().finite().nonnegative(),
+    width: z.number().finite().positive(),
+    height: z.number().finite().positive(),
+  })
+  .strict();
+
+export type ScreenRegion = z.infer<typeof ScreenRegionSchema>;
 
 export interface FlowDataPortDefinition {
   id: string;
@@ -111,10 +133,7 @@ export const FLOW_NODE_DATA_PORTS = {
   },
   ocr: {
     inputs: [
-      dataPort("x", "Region X", "number"),
-      dataPort("y", "Region Y", "number"),
-      dataPort("width", "Width", "number"),
-      dataPort("height", "Height", "number"),
+      dataPort("region", "Region", "screen-region"),
       dataPort("expectedText", "Expected text", "string"),
     ],
     outputs: [
@@ -161,6 +180,10 @@ export const FLOW_NODE_DATA_PORTS = {
       dataPort("message", "Message", "string"),
     ],
     outputs: [],
+  },
+  "screen-region": {
+    inputs: [],
+    outputs: [outputPort("region", "Region", "screen-region")],
   },
 } as const satisfies Record<FlowNodeKind, FlowNodeDataPorts>;
 

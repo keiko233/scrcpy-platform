@@ -21,10 +21,12 @@ describe("workbench block definitions", () => {
 
   it("declares typed OCR data inputs", () => {
     expect(FLOW_NODE_DATA_PORTS.ocr.inputs).toEqual([
-      { id: "x", label: "Region X", dataType: "number", field: "x" },
-      { id: "y", label: "Region Y", dataType: "number", field: "y" },
-      { id: "width", label: "Width", dataType: "number", field: "width" },
-      { id: "height", label: "Height", dataType: "number", field: "height" },
+      {
+        id: "region",
+        label: "Region",
+        dataType: "screen-region",
+        field: "region",
+      },
       {
         id: "expectedText",
         label: "Expected text",
@@ -72,7 +74,22 @@ describe("workbench block definitions", () => {
     ]);
   });
 
+  it("declares the composite screen-region data output and keeps OCR region fields local", () => {
+    expect(FLOW_NODE_DATA_PORTS["screen-region"].inputs).toEqual([]);
+    expect(FLOW_NODE_DATA_PORTS["screen-region"].outputs).toEqual([
+      { id: "region", label: "Region", dataType: "screen-region" },
+    ]);
+    const ocrFields = Object.fromEntries(
+      BLOCK_DEFINITIONS.ocr.fields.map((field) => [field.name, field]),
+    );
+    expect(ocrFields.x?.kind).toBe("number");
+    expect(ocrFields.y?.kind).toBe("number");
+    expect(ocrFields.width?.kind).toBe("number");
+    expect(ocrFields.height?.kind).toBe("number");
+  });
+
   it("maps every connectable data input to an editable fallback field", () => {
+    const connectionOnlyInputs = new Set(["ocr.region"]);
     for (const [kind, ports] of Object.entries(FLOW_NODE_DATA_PORTS)) {
       const fieldNames = new Set(
         BLOCK_DEFINITIONS[kind as keyof typeof BLOCK_DEFINITIONS].fields.map(
@@ -80,6 +97,9 @@ describe("workbench block definitions", () => {
         ),
       );
       for (const input of ports.inputs) {
+        if (connectionOnlyInputs.has(`${kind}.${input.id}`)) {
+          continue;
+        }
         expect(
           fieldNames.has(input.field ?? input.id),
           `${kind}.${input.id} fallback field`,

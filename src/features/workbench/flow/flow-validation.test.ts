@@ -312,6 +312,57 @@ describe("workbench flow validation", () => {
     );
   });
 
+  it("accepts a single data edge from screen-region.region into ocr.region", () => {
+    const nodes = [
+      node("start", "start"),
+      node("region", "screen-region"),
+      node("ocr", "ocr"),
+      node("end", "end"),
+    ];
+    const edges = [
+      edge("e1", "start", "ocr"),
+      edge("e2", "ocr", "end"),
+      edge("data-1", "region", "ocr", "region", "region"),
+    ];
+
+    const compiled = compileFlow(nodes, edges);
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+    assert.deepEqual(compiled.order, ["start", "ocr", "end"]);
+  });
+
+  it("rejects a data edge that feeds a non-region value into ocr.region", () => {
+    const nodes = [
+      node("start", "start"),
+      node("region", "screen-region"),
+      node("ocr", "ocr"),
+      node("ocr-2", "ocr"),
+      node("end", "end"),
+    ];
+    const base = [
+      edge("e1", "start", "ocr"),
+      edge("e2", "ocr", "ocr-2"),
+      edge("e3", "ocr-2", "end"),
+      edge("data-1", "region", "ocr", "region", "region"),
+    ];
+    const issues = validateFlow(nodes, [
+      ...base,
+      edge("data-2", "ocr", "ocr-2", "confidence", "region"),
+    ]);
+
+    assert.ok(issueKinds(issues).includes("incompatible-port-type"));
+  });
+
+  it("does not reject a data-only screen-region node as unreachable", () => {
+    const nodes = [
+      node("start", "start"),
+      node("region", "screen-region"),
+      node("end", "end"),
+    ];
+    const issues = validateFlow(nodes, [edge("e1", "start", "end")]);
+    assert.deepEqual(issues, []);
+  });
+
   it("compiles no order for an invalid graph", () => {
     const nodes = linearGraph().nodes;
     const compiled = compileFlow(nodes, []);

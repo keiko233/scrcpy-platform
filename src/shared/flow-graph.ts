@@ -307,7 +307,10 @@ export function validateFlow(
   if (starts.length === 1) {
     const reachable = reachableFrom(starts[0].id, outgoing);
     for (const node of nodes) {
-      if (node.type !== "start" && !reachable.has(node.id)) {
+      const hasFlowPorts =
+        FLOW_NODE_PORTS[node.type].inputs.length > 0 ||
+        FLOW_NODE_PORTS[node.type].outputs.length > 0;
+      if (node.type !== "start" && hasFlowPorts && !reachable.has(node.id)) {
         issues.push({
           kind: "unreachable-node",
           nodeId: node.id,

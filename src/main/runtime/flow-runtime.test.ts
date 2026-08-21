@@ -126,6 +126,7 @@ class FakeDriver implements FlowActionDriver {
 
 class FakeRecognition implements FlowRecognitionDriver {
   readonly calls: string[] = [];
+  readonly nodeData: FlowNode["data"][] = [];
   assignments: FlowRecognitionResult["assignments"] = {
     ocrText: "Ready",
     ocrConfidence: 96,
@@ -140,6 +141,7 @@ class FakeRecognition implements FlowRecognitionDriver {
 
   async recognize(node: FlowNode): Promise<FlowRecognitionResult> {
     this.calls.push(node.id);
+    this.nodeData.push(structuredClone(node.data));
     return { assignments: this.assignments, outputs: this.outputs };
   }
 
@@ -598,5 +600,105 @@ describe("FlowRuntimeService", () => {
     const failed = await waitForTerminal(service);
     assert.equal(failed.state, "failed");
     assert.match(failed.error ?? "", /invalid variable name/);
+  });
+
+  test("expands a connected screen-region into OCR x/y/width/height", async () => {
+    const recognition = new FakeRecognition();
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("region", "screen-region", { x: 10, y: 20, width: 300, height: 150 }),
+        node("ocr", "ocr", { x: 0, y: 0, width: 500, height: 200 }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "ocr", "next", "in"],
+        ["e2", "ocr", "end", "next", "in"],
+        ["data-1", "region", "ocr", "region", "region"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(recognition.calls, ["ocr"]);
+    const received = recognition.nodeData[0] as Record<string, unknown>;
+    assert.equal(received.x, 10);
+    assert.equal(received.y, 20);
+    assert.equal(received.width, 300);
+    assert.equal(received.height, 150);
+    assert.deepEqual(received.region, { x: 10, y: 20, width: 300, height: 150 });
+    assert.equal(
+      completed.steps.some((step) => step.nodeId === "region"),
+      false,
+    );
+  });
+
+  test("keeps stored OCR region fields when region input is not connected", async () => {
+    const recognition = new FakeRecognition();
+    const { service } = serviceFor(
+      linearDocument([node("ocr", "ocr", { x: 40, y: 50, width: 120, height: 80 })]),
+      new FakeDriver(),
+      recognition,
+    );
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    const received = recognition.nodeData[0] as Record<string, unknown>;
+    assert.equal(received.x, 40);
+    assert.equal(received.y, 50);
+    assert.equal(received.width, 120);
+    assert.equal(received.height, 80);
+    assert.equal(received.region, undefined);
+  });
+
+  test("pre-seeds screen-region outputs that are not consumed by any node", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("region", "screen-region", { x: 1, y: 2, width: 30, height: 40 }),
+        node("end", "end"),
+      ],
+      [["e1", "start", "end", "next", "in"]],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(
+      completed.steps.some((step) => step.nodeId === "region"),
+      false,
+    );
+  });
+
+  test("fails the run when a screen-region node stores an invalid region", async () => {
+    const recognition = new FakeRecognition();
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("region", "screen-region", { x: 10, y: 20, width: -5, height: 150 }),
+        node("ocr", "ocr"),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "ocr", "next", "in"],
+        ["e2", "ocr", "end", "next", "in"],
+        ["data-1", "region", "ocr", "region", "region"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const failed = await waitForTerminal(service);
+
+    assert.equal(failed.state, "failed");
+    assert.match(failed.error ?? "", /finite positive "width"/);
+    assert.deepEqual(recognition.calls, []);
   });
 });

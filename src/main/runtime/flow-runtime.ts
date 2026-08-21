@@ -3,12 +3,14 @@ import { evaluateExpression, expressionTruthy } from "../../shared/expression";
 import {
   FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
+  ScreenRegionSchema,
   resolveFlowPort,
   type FlowDocument,
   type FlowDataType,
   type FlowEdge,
   type FlowNode,
   type JsonValue,
+  type ScreenRegion,
   type ScriptDto,
 } from "../../shared/project-contracts";
 import type {
@@ -161,6 +163,49 @@ function finiteNumberInput(node: FlowNode, field: string): number {
   return value;
 }
 
+function finiteNonnegative(value: unknown, nodeId: string, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new Error(`Node "${nodeId}" requires a finite nonnegative "${field}" value.`);
+  }
+  return value;
+}
+
+function finitePositive(value: unknown, nodeId: string, field: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`Node "${nodeId}" requires a finite positive "${field}" value.`);
+  }
+  return value;
+}
+
+function screenRegionValue(node: FlowNode): ScreenRegion {
+  return {
+    x: finiteNonnegative(node.data.x, node.id, "x"),
+    y: finiteNonnegative(node.data.y, node.id, "y"),
+    width: finitePositive(node.data.width, node.id, "width"),
+    height: finitePositive(node.data.height, node.id, "height"),
+  };
+}
+
+function withExpandedRegion(node: FlowNode): FlowNode {
+  const parsed = ScreenRegionSchema.safeParse(node.data.region);
+  if (!parsed.success) {
+    throw new Error(
+      `Data input "region" on node "${node.id}" must be a region object.`,
+    );
+  }
+  const { x, y, width, height } = parsed.data;
+  return {
+    ...node,
+    data: {
+      ...node.data,
+      x: finiteNonnegative(x, node.id, "x"),
+      y: finiteNonnegative(y, node.id, "y"),
+      width: finitePositive(width, node.id, "width"),
+      height: finitePositive(height, node.id, "height"),
+    },
+  };
+}
+
 function resolvedPort(
   declared: readonly string[],
   persisted: string | undefined,
@@ -199,6 +244,8 @@ function matchesDataType(value: JsonValue, type: FlowDataType): boolean {
       return typeof value === "number" && Number.isFinite(value);
     case "boolean":
       return typeof value === "boolean";
+    case "screen-region":
+      return ScreenRegionSchema.safeParse(value).success;
   }
 }
 
@@ -498,6 +545,14 @@ export class FlowRuntimeService {
     let transitions = 0;
 
     try {
+      for (const node of document.nodes) {
+        if (node.type === "screen-region") {
+          dataValues.set(
+            dataValueKey(node.id, "region"),
+            screenRegionValue(node),
+          );
+        }
+      }
       while (currentNodeId !== null) {
         transitions += 1;
         if (transitions > 100_000) {
@@ -626,8 +681,11 @@ export class FlowRuntimeService {
         if (this.#recognition === null) {
           throw new Error(`OCR node "${node.id}" has no recognition driver.`);
         }
+        const recognitionNode = connectedInputs.has("region")
+          ? withExpandedRegion(node)
+          : node;
         const recognition = await this.#recognition.recognize(
-          node,
+          recognitionNode,
           context,
           signal,
         );
@@ -747,6 +805,10 @@ export class FlowRuntimeService {
         whileIterations.set(node.id, iterations + 1);
         return executionResult("body");
       }
+      case "screen-region":
+        throw new Error(
+          `Screen region node "${node.id}" has no control flow to execute.`,
+        );
     }
   }
 

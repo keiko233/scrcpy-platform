@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import {
+  FLOW_DATA_TYPE_LABELS,
   FLOW_NODE_DATA_PORTS,
   type FlowDataType,
 } from "@/shared/project-contracts";
@@ -29,6 +30,7 @@ const PORT_TYPE_CLASS_NAMES: Record<NodePort["dataType"], string> = {
   string: "!bg-emerald-500",
   number: "!bg-sky-500",
   boolean: "!bg-violet-500",
+  "screen-region": "!bg-amber-500",
 };
 
 function PortType({ type }: { type: NodePort["dataType"] }) {
@@ -41,9 +43,10 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
         type === "string" && "bg-emerald-500/12 text-emerald-600",
         type === "number" && "bg-sky-500/12 text-sky-600",
         type === "boolean" && "bg-violet-500/12 text-violet-600",
+        type === "screen-region" && "bg-amber-500/12 text-amber-600",
       )}
     >
-      {type}
+      {type === "flow" ? "Flow" : FLOW_DATA_TYPE_LABELS[type]}
     </span>
   );
 }
