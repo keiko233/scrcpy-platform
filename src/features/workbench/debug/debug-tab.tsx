@@ -11,6 +11,7 @@ import { BugIcon, InfoIcon, SearchIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { LogEntry, LogLevel } from "@/shared/electron-api";
+import { LogMessage } from "./log-message";
 
 export function DebugSettingsTab() {
   const { value: system } = useAsync(
@@ -149,9 +150,7 @@ export function DebugSettingsTab() {
                     </span>
                   )}
                 </div>
-                <div className="break-words whitespace-pre-wrap text-foreground">
-                  {entry.message}
-                </div>
+                <LogMessage message={entry.message} />
               </div>
             ))
           )}

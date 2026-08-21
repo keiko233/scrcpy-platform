@@ -308,3 +308,36 @@ body,
   min-height: 0;
   overflow: hidden;
 }
+
+/* Shiki log highlighting: render inline with a transparent background and
+   switch between light/dark tokens via the app's `.dark` class. */
+.log-message {
+  color: var(--shiki-light);
+  background-color: transparent;
+  white-space: pre-wrap;
+}
+
+.log-message pre {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.log-message pre code {
+  font: inherit;
+  background: transparent;
+}
+
+.log-message span {
+  color: var(--shiki-light);
+  background-color: transparent;
+}
+
+.dark .log-message,
+.dark .log-message span {
+  color: var(--shiki-dark);
+  background-color: transparent;
+}
