@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { assert, describe, expect, test } from "vitest";
 
 import type { DeviceSessionDto } from "../../shared/device-contracts";
 import type { FlowNode, FlowNodeKind } from "../../shared/project-contracts";
@@ -121,29 +120,27 @@ describe("AdbFlowActionDriver", () => {
 
   test("rejects invalid data, changed sessions, and aborted actions", async () => {
     const { driver, session } = fixture();
-    await assert.rejects(
+    await expect(
       driver.execute(
         node("click", { x: -1, y: 2 }),
         CONTEXT,
         new AbortController().signal,
       ),
-    );
+    ).rejects.toThrow();
 
     session.state = "disconnected";
-    await assert.rejects(
+    await expect(
       driver.execute(
         node("click", { x: 1, y: 2 }),
         CONTEXT,
         new AbortController().signal,
       ),
-      /session changed/,
-    );
+    ).rejects.toThrow(/session changed/);
 
     const controller = new AbortController();
     controller.abort();
-    await assert.rejects(
+    await expect(
       driver.execute(node("click", { x: 1, y: 2 }), CONTEXT, controller.signal),
-      { name: "AbortError" },
-    );
+    ).rejects.toMatchObject({ name: "AbortError" });
   });
 });

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { assert, describe, expect, it } from "vitest";
 
 import type { AsyncExactReadable } from "@yume-chan/struct";
 import { DisplayIdDeviceMessageParser } from "./display-id-message";
@@ -22,6 +21,6 @@ describe("scrcpy display ID message", () => {
   it("rejects when scrcpy closes before reporting an ID", async () => {
     const parser = new DisplayIdDeviceMessageParser();
     parser.close();
-    await assert.rejects(parser.displayId, /closed before reporting/);
+    await expect(parser.displayId).rejects.toThrow(/closed before reporting/);
   });
 });

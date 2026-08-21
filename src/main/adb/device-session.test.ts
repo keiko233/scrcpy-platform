@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { assert, describe, test } from "vitest";
 import type { Adb } from "@yume-chan/adb";
 import type { DeviceInfo } from "./device-session";
 import {

@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, test } from "node:test";
+import { assert, describe, test } from "vitest";
 import {
   CreateRevisionInputSchema,
   CreateScriptInputSchema,
@@ -49,6 +48,23 @@ function makeProjectWithScript(dbPath = ":memory:") {
     path: "/flows/main.json",
   });
   return { ...fixture, project, script };
+}
+
+function assertThrowsError(
+  fn: () => unknown,
+  predicate: (error: unknown) => boolean,
+  message?: string,
+): void {
+  let didThrow = false;
+  let caught: unknown;
+  try {
+    fn();
+  } catch (error) {
+    didThrow = true;
+    caught = error;
+  }
+  assert.ok(didThrow, message ?? "expected fn to throw");
+  assert.ok(predicate(caught), message);
 }
 
 describe("ProjectStore", () => {
@@ -102,7 +118,7 @@ describe("ProjectStore", () => {
   test("scripts cannot be created for a missing project or duplicate path", () => {
     const { db, store, project } = makeProjectWithScript();
     try {
-      assert.throws(
+      assertThrowsError(
         () => store.createScript({ projectId: "missing", name: "X", path: "/x.json" }),
         (error: unknown) =>
           error instanceof NotFoundError && error.kind === "project",
@@ -282,7 +298,7 @@ describe("ProjectStore", () => {
         "snapshot documents remain untouched",
       );
 
-      assert.throws(
+      assertThrowsError(
         () =>
           store.restoreRevision({
             scriptId: script.id,
@@ -292,7 +308,7 @@ describe("ProjectStore", () => {
         (error: unknown) =>
           error instanceof NotFoundError && error.kind === "revision",
       );
-      assert.throws(
+      assertThrowsError(
         () =>
           store.restoreRevision({
             scriptId: "missing-script",
@@ -308,7 +324,7 @@ describe("ProjectStore", () => {
         name: "Other Flow",
         path: "/flows/other.json",
       });
-      assert.throws(
+      assertThrowsError(
         () =>
           store.restoreRevision({
             scriptId: otherScript.id,
