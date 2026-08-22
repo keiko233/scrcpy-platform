@@ -464,6 +464,31 @@ describe("FlowRuntimeService", () => {
     assert.equal(completed.variables.n, 1);
   });
 
+  test("casts OCR text to a number before aggregating", async () => {
+    const recognition = new FakeRecognition();
+    recognition.assignments = {
+      ocrText: "96",
+      ocrConfidence: 96,
+      ocrMatched: true,
+    };
+    const document = linearDocument([
+      node("ocr", "ocr"),
+      node("calc", "calculate", {
+        operation: "max",
+        values: "number($ocrText), 10",
+        variable: "result",
+      }),
+      node("assert", "assert", { condition: "$result == 96" }),
+    ]);
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.result, 96);
+  });
+
   test("overrides action fields with connected typed input values", async () => {
     const document = linearDocument([
       node("source", "set-variable", { name: "coordinate", expression: "17" }),

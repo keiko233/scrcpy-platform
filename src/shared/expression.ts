@@ -465,6 +465,43 @@ function stringArgument(name: string, value: JsonValue): string {
   return value;
 }
 
+function coerceNumber(name: string, value: JsonValue): number {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw functionError(name, "requires a finite number");
+    }
+    return value;
+  }
+  if (typeof value === "boolean") {
+    return value ? 1 : 0;
+  }
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      throw functionError(name, "cannot convert an empty string to a number");
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) {
+      throw functionError(name, `cannot convert "${value}" to a number`);
+    }
+    return parsed;
+  }
+  throw functionError(name, "cannot convert the given value to a number");
+}
+
+function coerceString(name: string, value: JsonValue): string {
+  if (typeof value === "string") {
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value === null) {
+    return "";
+  }
+  throw functionError(name, "cannot convert the given value to a string");
+}
+
 export function aggregateValues(
   operation: AggregateOperation,
   values: JsonValue[],
@@ -511,6 +548,18 @@ function evaluateCall(name: string, args: JsonValue[]): JsonValue {
     case "ceil":
       requireArguments(name, args, 1);
       return Math.ceil(numericArgument(name, args[0]));
+    case "number":
+      requireArguments(name, args, 1);
+      return coerceNumber(name, args[0]);
+    case "int":
+      requireArguments(name, args, 1);
+      return Math.trunc(coerceNumber(name, args[0]));
+    case "string":
+      requireArguments(name, args, 1);
+      return coerceString(name, args[0]);
+    case "boolean":
+      requireArguments(name, args, 1);
+      return expressionTruthy(args[0]);
     case "len": {
       requireArguments(name, args, 1);
       const value = args[0];

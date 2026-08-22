@@ -78,4 +78,21 @@ describe("safe flow expressions", () => {
     assert.equal(aggregateValues("sum", [1, 2, 3]), 6);
     assert.equal(aggregateValues("avg", [1, 2, 3, 4]), 2.5);
   });
+
+  test("casts values between types", () => {
+    assert.equal(evaluateExpression("number('96')"), 96);
+    assert.equal(evaluateExpression("number(' 12.5 ')"), 12.5);
+    assert.equal(evaluateExpression("number(true)"), 1);
+    assert.equal(evaluateExpression("int('12.9')"), 12);
+    assert.equal(evaluateExpression("string(42)"), "42");
+    assert.equal(evaluateExpression("string(true)"), "true");
+    assert.equal(evaluateExpression("boolean(0)"), false);
+    assert.equal(evaluateExpression("boolean('x')"), true);
+    assert.equal(evaluateExpression("max(number('3'), number('9'))"), 9);
+  });
+
+  test("rejects invalid numeric casts", () => {
+    assert.throws(() => evaluateExpression("number('abc')"), /cannot convert/);
+    assert.throws(() => evaluateExpression("number('')"), /empty string/);
+  });
 });
