@@ -29,7 +29,6 @@ export const FLOW_NODE_KINDS = [
   "ocr",
   "delay",
   "launch-app",
-  "set-variable",
   "calculate",
   "convert",
   "compare",
@@ -39,6 +38,7 @@ export const FLOW_NODE_KINDS = [
   "while",
   "assert",
   "screen-region",
+  "constant",
 ] as const;
 
 export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
@@ -51,16 +51,16 @@ export const FLOW_NODE_PORTS = {
   ocr: { inputs: ["in"], outputs: ["next"] },
   delay: { inputs: ["in"], outputs: ["next"] },
   "launch-app": { inputs: ["in"], outputs: ["next"] },
-  "set-variable": { inputs: ["in"], outputs: ["next"] },
   calculate: { inputs: ["in"], outputs: ["next"] },
   convert: { inputs: ["in"], outputs: ["next"] },
-  compare: { inputs: ["in"], outputs: ["next"] },
+  compare: { inputs: [], outputs: [] },
   if: { inputs: ["in"], outputs: ["true", "false"] },
   merge: { inputs: [], outputs: ["next"] },
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   assert: { inputs: ["in"], outputs: ["next"] },
   "screen-region": { inputs: [], outputs: [] },
+  constant: { inputs: [], outputs: [] },
 } as const satisfies Record<
   FlowNodeKind,
   { inputs: readonly string[]; outputs: readonly string[] }
@@ -159,10 +159,6 @@ export const FLOW_NODE_DATA_PORTS = {
     ],
     outputs: [],
   },
-  "set-variable": {
-    inputs: [dataPort("expression", "Value", "any")],
-    outputs: [outputPort("value", "Value", "any")],
-  },
   calculate: {
     inputs: [],
     outputs: [outputPort("value", "Value", "number")],
@@ -196,15 +192,16 @@ export const FLOW_NODE_DATA_PORTS = {
     outputs: [],
   },
   assert: {
-    inputs: [
-      dataPort("condition", "Condition", "boolean"),
-      dataPort("message", "Message", "string"),
-    ],
+    inputs: [dataPort("condition", "Condition", "boolean")],
     outputs: [],
   },
   "screen-region": {
     inputs: [],
     outputs: [outputPort("region", "Region", "screen-region")],
+  },
+  constant: {
+    inputs: [],
+    outputs: [outputPort("value", "Value", "any")],
   },
 } as const satisfies Record<FlowNodeKind, FlowNodeDataPorts>;
 

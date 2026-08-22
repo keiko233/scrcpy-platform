@@ -90,7 +90,15 @@ describe("workbench block definitions", () => {
   });
 
   it("maps every connectable data input to an editable fallback field", () => {
-    const connectionOnlyInputs = new Set(["ocr.region", "convert.value"]);
+    const connectionOnlyInputs = new Set([
+      "ocr.region",
+      "convert.value",
+      "compare.left",
+      "compare.right",
+      "if.condition",
+      "while.condition",
+      "assert.condition",
+    ]);
     for (const [kind, ports] of Object.entries(FLOW_NODE_DATA_PORTS)) {
       const fieldNames = new Set(
         BLOCK_DEFINITIONS[kind as keyof typeof BLOCK_DEFINITIONS].fields.map(

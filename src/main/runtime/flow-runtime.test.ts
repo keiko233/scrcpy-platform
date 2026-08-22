@@ -89,6 +89,19 @@ function script(document: FlowDocument): ScriptDto {
   };
 }
 
+function constantNode(
+  id: string,
+  value: number | string | boolean,
+): FlowNode {
+  if (typeof value === "boolean") {
+    return node(id, "constant", { type: "boolean", booleanValue: value });
+  }
+  if (typeof value === "string") {
+    return node(id, "constant", { type: "string", stringValue: value });
+  }
+  return node(id, "constant", { type: "number", numberValue: value });
+}
+
 class FakeDriver implements FlowActionDriver {
   target: FlowRunTarget | null = {
     deviceId: "device-1",
@@ -127,11 +140,6 @@ class FakeDriver implements FlowActionDriver {
 class FakeRecognition implements FlowRecognitionDriver {
   readonly calls: string[] = [];
   readonly nodeData: FlowNode["data"][] = [];
-  assignments: FlowRecognitionResult["assignments"] = {
-    ocrText: "Ready",
-    ocrConfidence: 96,
-    ocrMatched: true,
-  };
   outputs: FlowRecognitionResult["outputs"] = {
     text: "Ready",
     confidence: 96,
@@ -142,7 +150,7 @@ class FakeRecognition implements FlowRecognitionDriver {
   async recognize(node: FlowNode): Promise<FlowRecognitionResult> {
     this.calls.push(node.id);
     this.nodeData.push(structuredClone(node.data));
-    return { assignments: this.assignments, outputs: this.outputs };
+    return { outputs: this.outputs };
   }
 
   async dispose(): Promise<void> {
@@ -332,43 +340,45 @@ describe("FlowRuntimeService", () => {
     assert.match(failed.error ?? "", /OCR node.*no recognition driver/);
   });
 
-  test("stores structured OCR assignments for later expressions", async () => {
-    const recognition = new FakeRecognition();
-    const { service } = serviceFor(
-      linearDocument([
-        node("ocr", "ocr"),
-        node("assert", "assert", {
-          condition: "$ocrMatched && $ocrConfidence >= 90",
-        }),
-      ]),
-      new FakeDriver(),
-      recognition,
-    );
-
-    service.start(RUN_INPUT);
-    const completed = await waitForTerminal(service);
-    assert.equal(completed.state, "completed");
-    assert.deepEqual(completed.variables, recognition.assignments);
-    assert.deepEqual(recognition.calls, ["ocr"]);
-    await service.dispose();
-    assert.equal(recognition.disposed, true);
-  });
-
-  test("routes typed OCR outputs into connected downstream inputs", async () => {
+  test("routes OCR outputs through a compare into an assert", async () => {
     const recognition = new FakeRecognition();
     const document = graphDocument(
       [
         node("start", "start"),
         node("ocr", "ocr"),
-        node("if", "if", { condition: "false" }),
-        node("true-value", "set-variable", {
-          name: "branch",
-          expression: '"true"',
-        }),
-        node("false-value", "set-variable", {
-          name: "branch",
-          expression: '"false"',
-        }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-ready", "Ready"),
+        node("assert", "assert"),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "ocr", "next", "in"],
+        ["e2", "ocr", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
+        ["data-1", "ocr", "cmp", "text", "left"],
+        ["data-2", "const-ready", "cmp", "value", "right"],
+        ["data-3", "cmp", "assert", "result", "condition"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(recognition.calls, ["ocr"]);
+    await service.dispose();
+    assert.equal(recognition.disposed, true);
+  });
+
+  test("routes typed OCR outputs into an If condition and branches", async () => {
+    const recognition = new FakeRecognition();
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("ocr", "ocr"),
+        node("if", "if"),
+        node("true-action", "click", { x: 1, y: 2 }),
+        node("false-action", "click", { x: 3, y: 4 }),
         node("merge", "merge"),
         node("end", "end"),
       ],
@@ -376,73 +386,47 @@ describe("FlowRuntimeService", () => {
         ["e1", "start", "ocr", "next", "in"],
         ["e2", "ocr", "if", "next", "in"],
         ["data-1", "ocr", "if", "matched", "condition"],
-        ["e3", "if", "true-value", "true", "in"],
-        ["e4", "if", "false-value", "false", "in"],
-        ["e5", "true-value", "merge", "next", "a"],
-        ["e6", "false-value", "merge", "next", "b"],
+        ["e3", "if", "true-action", "true", "in"],
+        ["e4", "if", "false-action", "false", "in"],
+        ["e5", "true-action", "merge", "next", "a"],
+        ["e6", "false-action", "merge", "next", "b"],
         ["e7", "merge", "end", "next", "in"],
       ],
     );
-    const { service } = serviceFor(document, new FakeDriver(), recognition);
+    const { service, driver } = serviceFor(document, new FakeDriver(), recognition);
 
     service.start(RUN_INPUT);
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.branch, "true");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["true-action"]);
     assert.equal(
-      completed.steps.find((step) => step.nodeId === "false-value")?.state,
+      completed.steps.find((step) => step.nodeId === "false-action")?.state,
       "skipped",
     );
   });
 
-  test("passes any-typed node outputs as raw connected values", async () => {
-    const document = linearDocument([
-      node("source", "set-variable", { name: "source", expression: "6 * 7" }),
-      node("target", "set-variable", { name: "target", expression: "0" }),
-      node("assert", "assert", { condition: "$target == 42" }),
-    ]);
-    document.edges.push({
-      id: "data-1",
-      source: "source",
-      target: "target",
-      sourceHandle: "value",
-      targetHandle: "expression",
-    });
-    const { service } = serviceFor(document);
-
-    service.start(RUN_INPUT);
-    const completed = await waitForTerminal(service);
-
-    assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.target, 42);
-  });
-
-  test("aggregates connected values and stores the result variable", async () => {
+  test("computes a value and compares it downstream", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("seed-a", "set-variable", { name: "a", expression: "4" }),
-        node("seed-b", "set-variable", { name: "b", expression: "9" }),
-        node("seed-c", "set-variable", { name: "c", expression: "2" }),
         node("calc", "calculate", {
-          operation: "max",
-          inputCount: 3,
-          variable: "result",
+          operation: "expression",
+          inputCount: 0,
+          expression: "6 * 7",
         }),
-        node("assert", "assert", { condition: "$result == 9" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-42", 42),
+        node("assert", "assert"),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "seed-a", "next", "in"],
-        ["e2", "seed-a", "seed-b", "next", "in"],
-        ["e3", "seed-b", "seed-c", "next", "in"],
-        ["e4", "seed-c", "calc", "next", "in"],
-        ["data-1", "seed-a", "calc", "value", "a"],
-        ["data-2", "seed-b", "calc", "value", "b"],
-        ["data-3", "seed-c", "calc", "value", "c"],
-        ["e5", "calc", "assert", "next", "in"],
-        ["e6", "assert", "end", "next", "in"],
+        ["e1", "start", "calc", "next", "in"],
+        ["e2", "calc", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
+        ["data-1", "calc", "cmp", "value", "left"],
+        ["data-2", "const-42", "cmp", "value", "right"],
+        ["data-3", "cmp", "assert", "result", "condition"],
       ],
     );
     const { service } = serviceFor(document);
@@ -451,28 +435,66 @@ describe("FlowRuntimeService", () => {
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.deepEqual(completed.variables, { a: 4, b: 9, c: 2, result: 9 });
+  });
+
+  test("aggregates connected values and asserts the result", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        constantNode("seed-a", 4),
+        constantNode("seed-b", 9),
+        constantNode("seed-c", 2),
+        node("calc", "calculate", {
+          operation: "max",
+          inputCount: 3,
+        }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-9", 9),
+        node("assert", "assert"),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "calc", "next", "in"],
+        ["e2", "calc", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
+        ["data-1", "seed-a", "calc", "value", "a"],
+        ["data-2", "seed-b", "calc", "value", "b"],
+        ["data-3", "seed-c", "calc", "value", "c"],
+        ["data-4", "calc", "cmp", "value", "left"],
+        ["data-5", "const-9", "cmp", "value", "right"],
+        ["data-6", "cmp", "assert", "result", "condition"],
+      ],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
   });
 
   test("counts values supplied through connected data inputs", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("source", "set-variable", { name: "raw", expression: "1" }),
+        constantNode("source", 1),
         node("calc", "calculate", {
           operation: "count",
           inputCount: 1,
-          variable: "n",
         }),
-        node("assert", "assert", { condition: "$n == 1" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-1", 1),
+        node("assert", "assert"),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "source", "next", "in"],
-        ["e2", "source", "calc", "next", "in"],
+        ["e1", "start", "calc", "next", "in"],
+        ["e2", "calc", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
         ["data-1", "source", "calc", "value", "a"],
-        ["e3", "calc", "assert", "next", "in"],
-        ["e4", "assert", "end", "next", "in"],
+        ["data-2", "calc", "cmp", "value", "left"],
+        ["data-3", "const-1", "cmp", "value", "right"],
+        ["data-4", "cmp", "assert", "result", "condition"],
       ],
     );
     const { service } = serviceFor(document);
@@ -481,31 +503,32 @@ describe("FlowRuntimeService", () => {
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.n, 1);
   });
 
   test("sums multiple connected values", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("seed-a", "set-variable", { name: "a", expression: "4" }),
-        node("seed-b", "set-variable", { name: "b", expression: "9" }),
+        constantNode("seed-a", 4),
+        constantNode("seed-b", 9),
         node("calc", "calculate", {
           operation: "sum",
           inputCount: 2,
-          variable: "total",
         }),
-        node("assert", "assert", { condition: "$total == 13" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-13", 13),
+        node("assert", "assert"),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "seed-a", "next", "in"],
-        ["e2", "seed-a", "seed-b", "next", "in"],
-        ["e3", "seed-b", "calc", "next", "in"],
+        ["e1", "start", "calc", "next", "in"],
+        ["e2", "calc", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
         ["data-1", "seed-a", "calc", "value", "a"],
         ["data-2", "seed-b", "calc", "value", "b"],
-        ["e4", "calc", "assert", "next", "in"],
-        ["e5", "assert", "end", "next", "in"],
+        ["data-3", "calc", "cmp", "value", "left"],
+        ["data-4", "const-13", "cmp", "value", "right"],
+        ["data-5", "cmp", "assert", "result", "condition"],
       ],
     );
     const { service } = serviceFor(document);
@@ -514,35 +537,35 @@ describe("FlowRuntimeService", () => {
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.total, 13);
   });
 
   test("evaluates a custom expression over connected inputs", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("seed-a", "set-variable", { name: "a", expression: "10" }),
-        node("seed-b", "set-variable", { name: "b", expression: "4" }),
-        node("seed-c", "set-variable", { name: "c", expression: "2" }),
+        constantNode("seed-a", 10),
+        constantNode("seed-b", 4),
+        constantNode("seed-c", 2),
         node("calc", "calculate", {
           operation: "expression",
           inputCount: 3,
-          variable: "result",
           expression: "(a - b) / c",
         }),
-        node("assert", "assert", { condition: "$result == 3" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-3", 3),
+        node("assert", "assert"),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "seed-a", "next", "in"],
-        ["e2", "seed-a", "seed-b", "next", "in"],
-        ["e3", "seed-b", "seed-c", "next", "in"],
-        ["e4", "seed-c", "calc", "next", "in"],
+        ["e1", "start", "calc", "next", "in"],
+        ["e2", "calc", "assert", "next", "in"],
+        ["e3", "assert", "end", "next", "in"],
         ["data-1", "seed-a", "calc", "value", "a"],
         ["data-2", "seed-b", "calc", "value", "b"],
         ["data-3", "seed-c", "calc", "value", "c"],
-        ["e5", "calc", "assert", "next", "in"],
-        ["e6", "assert", "end", "next", "in"],
+        ["data-4", "calc", "cmp", "value", "left"],
+        ["data-5", "const-3", "cmp", "value", "right"],
+        ["data-6", "cmp", "assert", "result", "condition"],
       ],
     );
     const { service } = serviceFor(document);
@@ -551,16 +574,10 @@ describe("FlowRuntimeService", () => {
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.result, 3);
   });
 
   test("converts a connected OCR text value before calculating", async () => {
     const recognition = new FakeRecognition();
-    recognition.assignments = {
-      ocrText: "96",
-      ocrConfidence: 96,
-      ocrMatched: true,
-    };
     recognition.outputs = {
       text: "96",
       confidence: 96,
@@ -574,9 +591,10 @@ describe("FlowRuntimeService", () => {
         node("calc", "calculate", {
           operation: "max",
           inputCount: 1,
-          variable: "result",
         }),
-        node("assert", "assert", { condition: "$result == 96" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("const-96", 96),
+        node("assert", "assert"),
         node("end", "end"),
       ],
       [
@@ -586,6 +604,9 @@ describe("FlowRuntimeService", () => {
         ["e3", "convert", "calc", "next", "in"],
         ["data-2", "convert", "calc", "value", "a"],
         ["e4", "calc", "assert", "next", "in"],
+        ["data-3", "calc", "cmp", "value", "left"],
+        ["data-4", "const-96", "cmp", "value", "right"],
+        ["data-5", "cmp", "assert", "result", "condition"],
         ["e5", "assert", "end", "next", "in"],
       ],
     );
@@ -595,14 +616,14 @@ describe("FlowRuntimeService", () => {
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.result, 96);
   });
 
   test("overrides action fields with connected typed input values", async () => {
     const document = linearDocument([
-      node("source", "set-variable", { name: "coordinate", expression: "17" }),
       node("click", "click", { x: 1, y: 2 }),
     ]);
+    const source = constantNode("source", 17);
+    document.nodes.push(source);
     document.edges.push(
       {
         id: "data-x",
@@ -629,91 +650,66 @@ describe("FlowRuntimeService", () => {
     assert.equal(driver.calls[0]?.data.y, 17);
   });
 
-  test("evaluates variables, takes one If branch, merges, and asserts", async () => {
+  test("compares constants, takes one If branch, and merges", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("seed", "set-variable", { name: "count", expression: "3" }),
-        node("if", "if", { condition: "$count >= 3" }),
-        node("true-value", "set-variable", {
-          name: "result",
-          expression: "$count * 14",
-        }),
-        node("false-value", "set-variable", {
-          name: "result",
-          expression: "0",
-        }),
+        node("cmp", "compare", { operator: ">=" }),
+        constantNode("const-3", 3),
+        node("if", "if"),
+        node("true-action", "click", { x: 1, y: 2 }),
+        node("false-action", "click", { x: 3, y: 4 }),
         node("merge", "merge"),
-        node("assert", "assert", {
-          condition: "$result == 42",
-          message: "unexpected result",
-        }),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "seed", "next", "in"],
-        ["e2", "seed", "if", "next", "in"],
-        ["e3", "if", "true-value", "true", "in"],
-        ["e4", "if", "false-value", "false", "in"],
-        ["e5", "true-value", "merge", "next", "a"],
-        ["e6", "false-value", "merge", "next", "b"],
-        ["e7", "merge", "assert", "next", "in"],
-        ["e8", "assert", "end", "next", "in"],
+        ["e1", "start", "if", "next", "in"],
+        ["e2", "if", "true-action", "true", "in"],
+        ["e3", "if", "false-action", "false", "in"],
+        ["e4", "true-action", "merge", "next", "a"],
+        ["e5", "false-action", "merge", "next", "b"],
+        ["e6", "merge", "end", "next", "in"],
+        ["data-1", "const-3", "cmp", "value", "left"],
+        ["data-2", "const-3", "cmp", "value", "right"],
+        ["data-3", "cmp", "if", "result", "condition"],
       ],
     );
-    const { service } = serviceFor(document);
+    const { service, driver } = serviceFor(document);
 
     service.start(RUN_INPUT);
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.deepEqual(completed.variables, { count: 3, result: 42 });
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["true-action"]);
     assert.equal(
-      completed.steps.find((step) => step.nodeId === "false-value")?.state,
+      completed.steps.find((step) => step.nodeId === "false-action")?.state,
       "skipped",
-    );
-    assert.equal(
-      completed.steps.find((step) => step.nodeId === "true-value")
-        ?.executionCount,
-      1,
     );
   });
 
-  test("runs a guarded For range and exposes its final variables", async () => {
+  test("runs a guarded For range and exposes its index via connected output", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
-        node("seed", "set-variable", { name: "sum", expression: "0" }),
-        node("for", "for", {
-          variable: "i",
-          from: "0",
-          to: "4",
-          step: "1",
-          maxIterations: 10,
-        }),
-        node("body", "set-variable", {
-          name: "sum",
-          expression: "$sum + $i",
-        }),
-        node("assert", "assert", { condition: "$sum == 6" }),
+        node("for", "for", { from: 0, to: 4, step: 1, maxIterations: 10 }),
+        node("body", "click", { x: 0, y: 0 }),
         node("end", "end"),
       ],
       [
-        ["e1", "start", "seed", "next", "in"],
-        ["e2", "seed", "for", "next", "in"],
-        ["e3", "for", "body", "body", "in"],
-        ["e4", "body", "for", "next", "loop"],
-        ["e5", "for", "assert", "done", "in"],
-        ["e6", "assert", "end", "next", "in"],
+        ["e1", "start", "for", "next", "in"],
+        ["e2", "for", "body", "body", "in"],
+        ["e3", "body", "for", "next", "loop"],
+        ["e4", "for", "end", "done", "in"],
+        ["data-1", "for", "body", "index", "x"],
       ],
     );
-    const { service } = serviceFor(document);
+    const { service, driver } = serviceFor(document);
 
     service.start(RUN_INPUT);
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.deepEqual(completed.variables, { sum: 6, i: 3 });
+    assert.deepEqual(driver.calls.map((call) => call.data.x), [0, 1, 2, 3]);
     assert.equal(
       completed.steps.find((step) => step.nodeId === "for")?.executionCount,
       5,
@@ -725,43 +721,34 @@ describe("FlowRuntimeService", () => {
   });
 
   test("runs While and fails clearly when its iteration guard is exceeded", async () => {
-    const whileDocument = (condition: string, maximum: number) =>
+    const whileDocument = (condition: boolean, maximum: number) =>
       graphDocument(
         [
           node("start", "start"),
-          node("seed", "set-variable", { name: "count", expression: "0" }),
-          node("while", "while", {
-            condition,
-            maxIterations: maximum,
-          }),
-          node("body", "set-variable", {
-            name: "count",
-            expression: "$count + 1",
-          }),
-          node("assert", "assert", { condition: "$count == 3" }),
+          constantNode("cond", condition),
+          node("while", "while", { maxIterations: maximum }),
+          node("body", "click", { x: 0, y: 0 }),
           node("end", "end"),
         ],
         [
-          ["e1", "start", "seed", "next", "in"],
-          ["e2", "seed", "while", "next", "in"],
-          ["e3", "while", "body", "body", "in"],
-          ["e4", "body", "while", "next", "loop"],
-          ["e5", "while", "assert", "done", "in"],
-          ["e6", "assert", "end", "next", "in"],
+          ["e1", "start", "while", "next", "in"],
+          ["e2", "while", "body", "body", "in"],
+          ["e3", "body", "while", "next", "loop"],
+          ["e4", "while", "end", "done", "in"],
+          ["data-1", "cond", "while", "value", "condition"],
         ],
       );
 
-    const successful = serviceFor(whileDocument("$count < 3", 10)).service;
+    const successful = serviceFor(whileDocument(false, 10)).service;
     successful.start(RUN_INPUT);
     const completed = await waitForTerminal(successful);
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.count, 3);
     assert.equal(
       completed.steps.find((step) => step.nodeId === "body")?.executionCount,
-      3,
+      0,
     );
 
-    const guarded = serviceFor(whileDocument("true", 2)).service;
+    const guarded = serviceFor(whileDocument(true, 2)).service;
     guarded.start(RUN_INPUT);
     const failed = await waitForTerminal(guarded);
     assert.equal(failed.state, "failed");
@@ -775,8 +762,9 @@ describe("FlowRuntimeService", () => {
   test("fails on unsafe or invalid expressions without invoking the driver", async () => {
     const { service, driver } = serviceFor(
       linearDocument([
-        node("set", "set-variable", {
-          name: "value",
+        node("calc", "calculate", {
+          operation: "expression",
+          inputCount: 0,
           expression: "process.exit()",
         }),
       ]),
@@ -787,22 +775,6 @@ describe("FlowRuntimeService", () => {
     assert.equal(failed.state, "failed");
     assert.match(failed.error ?? "", /Unexpected|not allowed|token/i);
     assert.deepEqual(driver.calls, []);
-  });
-
-  test("rejects variable names that could mutate an object prototype", async () => {
-    const { service } = serviceFor(
-      linearDocument([
-        node("set", "set-variable", {
-          name: "__proto__",
-          expression: "1",
-        }),
-      ]),
-    );
-
-    service.start(RUN_INPUT);
-    const failed = await waitForTerminal(service);
-    assert.equal(failed.state, "failed");
-    assert.match(failed.error ?? "", /invalid variable name/);
   });
 
   test("expands a connected screen-region into OCR x/y/width/height", async () => {
@@ -981,9 +953,13 @@ describe("FlowRuntimeService", () => {
   test("emits structured log entries for lifecycle, values, and OCR", async () => {
     const recognition = new FakeRecognition();
     const click = node("click", "click", { x: 1, y: 2 });
-    const set = node("set", "set-variable", { name: "answer", expression: "6 * 7" });
+    const calc = node("calc", "calculate", {
+      operation: "expression",
+      inputCount: 0,
+      expression: "6 * 7",
+    });
     const { service } = serviceFor(
-      linearDocument([click, set]),
+      linearDocument([click, calc]),
       new FakeDriver(),
       recognition,
     );
@@ -999,8 +975,8 @@ describe("FlowRuntimeService", () => {
     assert.ok(
       entries.some(
         (entry) =>
-          entry.nodeId === "set" &&
-          entry.message === "Set answer = 42" &&
+          entry.nodeId === "calc" &&
+          entry.message === "Calculated = 42" &&
           entry.data !== null &&
           (entry.data as { value: number }).value === 42,
       ),

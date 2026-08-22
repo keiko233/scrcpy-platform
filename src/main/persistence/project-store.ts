@@ -6,6 +6,7 @@ import {
   type RevisionDto,
   type ScriptDto,
 } from "../../shared/project-contracts";
+import { migrateFlowDocument } from "../../shared/flow-migration";
 import type { PersistenceDatabase } from "./database";
 
 const INITIAL_DRAFT_VERSION = 1;
@@ -297,7 +298,7 @@ function mapScript(row: ScriptRow): ScriptDto {
     name: row.name,
     path: row.path,
     draftVersion: row.draft_version,
-    draftDocument: JSON.parse(row.draft_document) as FlowDocument,
+    draftDocument: readDocument(row.draft_document, `script ${row.id}`),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -308,9 +309,18 @@ function mapRevision(row: RevisionRow): RevisionDto {
     id: row.id,
     scriptId: row.script_id,
     revisionNumber: row.revision_number,
-    draftDocument: JSON.parse(row.draft_document) as FlowDocument,
+    draftDocument: readDocument(row.draft_document, `revision ${row.id}`),
     draftVersion: row.draft_version,
     message: row.message,
     createdAt: row.created_at,
   };
+}
+
+function readDocument(raw: string, label: string): FlowDocument {
+  const parsed = JSON.parse(raw) as FlowDocument;
+  const result = migrateFlowDocument(parsed);
+  for (const warning of result.warnings) {
+    console.warn(`[flow-migration] ${label}: ${warning}`);
+  }
+  return result.document;
 }

@@ -69,7 +69,6 @@ export const FlowRunDtoSchema = z
     startedAt: z.string().datetime(),
     finishedAt: z.string().datetime().nullable(),
     error: z.string().nullable(),
-    variables: z.record(z.string(), JsonValueSchema),
     steps: z.array(FlowRunStepDtoSchema),
   })
   .strict();

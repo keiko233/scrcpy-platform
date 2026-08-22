@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { FlowNode, JsonValue } from "../../shared/project-contracts";
+import type { FlowNode } from "../../shared/project-contracts";
 import type { FlowActionContext } from "./flow-runtime";
 
 export interface OcrRectangle {
@@ -34,7 +34,6 @@ export interface ScreenCaptureSource {
 }
 
 export interface FlowRecognitionResult {
-  assignments: Record<string, JsonValue>;
   outputs: {
     text: string;
     confidence: number;
@@ -72,9 +71,6 @@ const OcrNodeDataSchema = z
     timeoutMs: z.number().finite().nonnegative().max(300_000).default(5_000),
     intervalMs: z.number().finite().min(100).max(10_000).default(500),
     failOnTimeout: z.boolean().default(true),
-    textVariable: z.string().default("ocrText"),
-    confidenceVariable: z.string().default("ocrConfidence"),
-    matchedVariable: z.string().default("ocrMatched"),
   })
   .passthrough();
 
@@ -84,11 +80,6 @@ interface PngSize {
 }
 
 const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
-const RESERVED_VARIABLE_NAMES = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
 
 function abortIfNeeded(signal: AbortSignal): void {
   if (signal.aborted) {
@@ -138,17 +129,6 @@ function rectangleOf(
     );
   }
   return { left, top, width, height };
-}
-
-function variableName(value: string, field: string): string {
-  const name = value.trim();
-  if (
-    !/^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) ||
-    RESERVED_VARIABLE_NAMES.has(name)
-  ) {
-    throw new Error(`OCR field "${field}" has invalid variable name "${name}".`);
-  }
-  return name;
 }
 
 function normalized(value: string, caseSensitive: boolean): string {
@@ -266,17 +246,6 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
       throw new Error(`Recognition driver cannot execute node type "${node.type}".`);
     }
     const data = OcrNodeDataSchema.parse(node.data);
-    const textVariable = variableName(data.textVariable, "textVariable");
-    const confidenceVariable = variableName(
-      data.confidenceVariable,
-      "confidenceVariable",
-    );
-    const matchedVariable = variableName(data.matchedVariable, "matchedVariable");
-    if (
-      new Set([textVariable, confidenceVariable, matchedVariable]).size !== 3
-    ) {
-      throw new Error("OCR output variable names must be unique.");
-    }
     const deadline = data.timeoutMs === 0 ? null : Date.now() + data.timeoutMs;
     let latest: OcrEngineResult = { text: "", confidence: 0 };
     let attempted = false;
@@ -286,13 +255,6 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
         throw timeoutError(data.timeoutMs, data.expectedText, latest.text);
       }
       return {
-        assignments: {
-          [textVariable]: latest.text.trim(),
-          [confidenceVariable]: Number.isFinite(latest.confidence)
-            ? latest.confidence
-            : 0,
-          [matchedVariable]: matched,
-        },
         outputs: {
           text: latest.text.trim(),
           confidence: Number.isFinite(latest.confidence)

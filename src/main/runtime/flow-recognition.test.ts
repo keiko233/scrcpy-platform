@@ -72,7 +72,7 @@ class FakeEngine implements OcrEngine {
 }
 
 describe("OcrRecognitionDriver", () => {
-  test("recognizes a display ROI and returns configurable variables", async () => {
+  test("recognizes a display ROI and returns typed outputs", async () => {
     const capture = new FakeCapture();
     const engine = new FakeEngine();
     const driver = new OcrRecognitionDriver(capture, engine);
@@ -86,19 +86,11 @@ describe("OcrRecognitionDriver", () => {
         languages: "eng+chi_sim",
         expectedText: "ready",
         matchMode: "exact",
-        textVariable: "screenText",
-        confidenceVariable: "screenConfidence",
-        matchedVariable: "screenMatched",
       }),
       CONTEXT,
       new AbortController().signal,
     );
 
-    assert.deepEqual(result.assignments, {
-      screenText: "Ready",
-      screenConfidence: 96,
-      screenMatched: true,
-    });
     assert.deepEqual(result.outputs, {
       text: "Ready",
       confidence: 96,
@@ -154,7 +146,7 @@ describe("OcrRecognitionDriver", () => {
       new AbortController().signal,
     );
 
-    assert.equal(result.assignments.ocrMatched, true);
+    assert.equal(result.outputs.matched, true);
     assert.equal(capture.calls, 2);
   });
 
@@ -169,10 +161,10 @@ describe("OcrRecognitionDriver", () => {
       CONTEXT,
       new AbortController().signal,
     );
-    assert.deepEqual(result.assignments, {
-      ocrText: "Loading",
-      ocrConfidence: 80,
-      ocrMatched: false,
+    assert.deepEqual(result.outputs, {
+      text: "Loading",
+      confidence: 80,
+      matched: false,
     });
 
     await expect(
@@ -184,7 +176,7 @@ describe("OcrRecognitionDriver", () => {
     ).rejects.toThrow(/OCR timed out.*ready.*Loading/);
   });
 
-  test("rejects invalid regions, regexes, variables, and cancellation", async () => {
+  test("rejects invalid regions, regexes, and cancellation", async () => {
     const capture = new FakeCapture();
     const engine = new FakeEngine();
     const driver = new OcrRecognitionDriver(capture, engine);
@@ -203,32 +195,11 @@ describe("OcrRecognitionDriver", () => {
         new AbortController().signal,
       ),
     ).rejects.toThrow(/not a valid regular expression/);
-    await expect(
-      driver.recognize(
-        ocrNode({ textVariable: "__proto__" }),
-        CONTEXT,
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow(/invalid variable name/);
     const controller = new AbortController();
     controller.abort();
     await expect(
       driver.recognize(ocrNode(), CONTEXT, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
-  });
-
-  test("rejects colliding output variables", async () => {
-    const driver = new OcrRecognitionDriver(new FakeCapture(), new FakeEngine());
-    await expect(
-      driver.recognize(
-        ocrNode({
-          textVariable: "ocrResult",
-          confidenceVariable: "ocrResult",
-        }),
-        CONTEXT,
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow(/must be unique/);
   });
 
   test("bounds a hanging recognition attempt by the node timeout", async () => {
@@ -245,7 +216,7 @@ describe("OcrRecognitionDriver", () => {
       new AbortController().signal,
     );
 
-    assert.equal(result.assignments.ocrMatched, false);
+    assert.equal(result.outputs.matched, false);
     assert.ok(Date.now() - startedAt < 500);
   });
 

@@ -2,6 +2,7 @@ import {
   ArrowRightLeftIcon,
   ClockIcon,
   CombineIcon,
+  EqualIcon,
   FlagIcon,
   GitBranchIcon,
   HandIcon,
@@ -15,7 +16,6 @@ import {
   ScaleIcon,
   ShieldCheckIcon,
   SigmaIcon,
-  VariableIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -233,9 +233,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       timeoutMs: 5000,
       intervalMs: 500,
       failOnTimeout: true,
-      textVariable: "ocrText",
-      confidenceVariable: "ocrConfidence",
-      matchedVariable: "ocrMatched",
     },
     summarize: (data) =>
       m.block_summarize_wait_for({ text: text(data.expectedText) || m.block_summarize_unset() }),
@@ -418,36 +415,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           },
           kind: "boolean",
         },
-        {
-          name: "textVariable",
-          get label() {
-            return m.block_field_ocr_text_variable_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_ocr_text_variable_placeholder();
-          },
-        },
-        {
-          name: "confidenceVariable",
-          get label() {
-            return m.block_field_ocr_confidence_variable_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_ocr_confidence_variable_placeholder();
-          },
-        },
-        {
-          name: "matchedVariable",
-          get label() {
-            return m.block_field_ocr_matched_variable_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_ocr_matched_variable_placeholder();
-          },
-        },
       ];
     },
     inputPorts: FLOW_NODE_PORTS.ocr.inputs,
@@ -518,45 +485,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS["launch-app"].inputs,
     outputPorts: FLOW_NODE_PORTS["launch-app"].outputs,
   },
-  "set-variable": {
-    kind: "set-variable",
-    get label() {
-      return m.block_set_variable_label();
-    },
-    get description() {
-      return m.block_set_variable_description();
-    },
-    icon: VariableIcon,
-    defaults: { kind: "set-variable", name: "value", expression: "0" },
-    summarize: (data) =>
-      `${text(data.name) || m.block_summarize_name_fallback()} = ${text(data.expression)}`,
-    get fields(): FieldDefinition[] {
-      return [
-        {
-          name: "name",
-          get label() {
-            return m.block_field_set_variable_name_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_set_variable_name_placeholder();
-          },
-        },
-        {
-          name: "expression",
-          get label() {
-            return m.block_field_set_variable_expression_label();
-          },
-          kind: "textarea",
-          get placeholder() {
-            return m.block_field_set_variable_expression_placeholder();
-          },
-        },
-      ];
-    },
-    inputPorts: FLOW_NODE_PORTS["set-variable"].inputs,
-    outputPorts: FLOW_NODE_PORTS["set-variable"].outputs,
-  },
   calculate: {
     kind: "calculate",
     get label() {
@@ -570,15 +498,13 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       kind: "calculate",
       operation: "max",
       inputCount: 2,
-      variable: "result",
       expression: "a + b",
     },
     summarize: (data) => {
-      const name = text(data.variable) || m.block_summarize_unset();
       if (data.operation === "expression") {
-        return `${name} = ${text(data.expression) || m.block_summarize_unset()}`;
+        return text(data.expression) || m.block_summarize_unset();
       }
-      return `${name} = ${text(data.operation)}(${calculateInputSummary(data)})`;
+      return `${text(data.operation)}(${calculateInputSummary(data)})`;
     },
     get fields(): FieldDefinition[] {
       return [
@@ -639,16 +565,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
             return m.block_field_calculate_expression_placeholder();
           },
           visible: (data) => data.operation === "expression",
-        },
-        {
-          name: "variable",
-          get label() {
-            return m.block_field_calculate_variable_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_calculate_variable_placeholder();
-          },
         },
       ];
     },
@@ -717,14 +633,8 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_compare_description();
     },
     icon: ScaleIcon,
-    defaults: { kind: "compare", operator: ">", left: "$a", right: "$b" },
-    summarize: (data) => {
-      const op = text(data.operator) || ">";
-      const l = text(data.left);
-      const r = text(data.right);
-      if (!l && !r) return m.block_summarize_condition_unset();
-      return `${l || "?"} ${op} ${r || "?"}`;
-    },
+    defaults: { kind: "compare", operator: ">" },
+    summarize: (data) => text(data.operator) || ">",
     get fields(): FieldDefinition[] {
       return [
         {
@@ -744,26 +654,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
               { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
               { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
             ];
-          },
-        },
-        {
-          name: "left",
-          get label() {
-            return m.block_field_compare_left_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_left_placeholder();
-          },
-        },
-        {
-          name: "right",
-          get label() {
-            return m.block_field_compare_right_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_right_placeholder();
           },
         },
       ];
@@ -780,73 +670,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_if_description();
     },
     icon: GitBranchIcon,
-    defaults: { kind: "if", condition: "true", operator: ">", left: "$count", right: "3" },
-    summarize: (data) => {
-      const op = text(data.operator);
-      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
-        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
-      }
-      return text(data.condition) || m.block_summarize_condition_unset();
-    },
+    defaults: { kind: "if" },
+    summarize: () => m.block_summarize_wired_condition(),
     get fields(): FieldDefinition[] {
-      return [
-        {
-          name: "operator",
-          get label() {
-            return m.block_field_compare_operator_label();
-          },
-          kind: "select",
-          get options() {
-            return [
-              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
-              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
-              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
-              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
-              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
-              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
-              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
-              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
-              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
-            ];
-          },
-        },
-        {
-          name: "left",
-          get label() {
-            return m.block_field_compare_left_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_left_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "right",
-          get label() {
-            return m.block_field_compare_right_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_right_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "condition",
-          get label() {
-            return m.block_field_if_condition_label();
-          },
-          kind: "textarea",
-          get placeholder() {
-            return m.block_field_if_condition_placeholder();
-          },
-          visible: (data) => {
-            const op = text(data.operator);
-            return op === "expression" || op === "";
-          },
-        },
-      ];
+      return [];
     },
     inputPorts: FLOW_NODE_PORTS.if.inputs,
     outputPorts: FLOW_NODE_PORTS.if.outputs,
@@ -879,55 +706,34 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     icon: ListRestartIcon,
     defaults: {
       kind: "for",
-      variable: "index",
-      from: "0",
-      to: "3",
-      step: "1",
+      from: 0,
+      to: 3,
+      step: 1,
       maxIterations: 1000,
     },
-    summarize: (data) =>
-      `${text(data.variable) || m.block_summarize_index_fallback()}: ${text(data.from)} .. ${text(data.to)}`,
+    summarize: (data) => `${text(data.from)} .. ${text(data.to)}`,
     get fields(): FieldDefinition[] {
       return [
-        {
-          name: "variable",
-          get label() {
-            return m.block_field_for_variable_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_for_variable_placeholder();
-          },
-        },
         {
           name: "from",
           get label() {
             return m.block_field_for_from_label();
           },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_for_from_placeholder();
-          },
+          kind: "number",
         },
         {
           name: "to",
           get label() {
             return m.block_field_for_to_label();
           },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_for_to_placeholder();
-          },
+          kind: "number",
         },
         {
           name: "step",
           get label() {
             return m.block_field_for_step_label();
           },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_for_step_placeholder();
-          },
+          kind: "number",
         },
         {
           name: "maxIterations",
@@ -952,72 +758,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_while_description();
     },
     icon: RefreshCwIcon,
-    defaults: { kind: "while", condition: "false", operator: ">", left: "$count", right: "10", maxIterations: 1000 },
-    summarize: (data) => {
-      const op = text(data.operator);
-      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
-        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
-      }
-      return text(data.condition) || m.block_summarize_condition_unset();
-    },
+    defaults: { kind: "while", maxIterations: 1000 },
+    summarize: () => m.block_summarize_wired_condition(),
     get fields(): FieldDefinition[] {
       return [
-        {
-          name: "operator",
-          get label() {
-            return m.block_field_compare_operator_label();
-          },
-          kind: "select",
-          get options() {
-            return [
-              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
-              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
-              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
-              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
-              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
-              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
-              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
-              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
-              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
-            ];
-          },
-        },
-        {
-          name: "left",
-          get label() {
-            return m.block_field_compare_left_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_left_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "right",
-          get label() {
-            return m.block_field_compare_right_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_right_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "condition",
-          get label() {
-            return m.block_field_while_condition_label();
-          },
-          kind: "textarea",
-          get placeholder() {
-            return m.block_field_while_condition_placeholder();
-          },
-          visible: (data) => {
-            const op = text(data.operator);
-            return op === "expression" || op === "";
-          },
-        },
         {
           name: "maxIterations",
           get label() {
@@ -1041,72 +785,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_assert_description();
     },
     icon: ShieldCheckIcon,
-    defaults: { kind: "assert", condition: "true", operator: "==", left: "$result", right: "true", message: "Assertion failed" },
-    summarize: (data) => {
-      const op = text(data.operator);
-      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
-        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
-      }
-      return text(data.condition) || m.block_summarize_condition_unset();
-    },
+    defaults: { kind: "assert", message: "Assertion failed" },
+    summarize: () => m.block_summarize_wired_condition(),
     get fields(): FieldDefinition[] {
       return [
-        {
-          name: "operator",
-          get label() {
-            return m.block_field_compare_operator_label();
-          },
-          kind: "select",
-          get options() {
-            return [
-              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
-              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
-              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
-              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
-              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
-              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
-              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
-              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
-              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
-            ];
-          },
-        },
-        {
-          name: "left",
-          get label() {
-            return m.block_field_compare_left_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_left_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "right",
-          get label() {
-            return m.block_field_compare_right_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_compare_right_placeholder();
-          },
-          visible: (data) => text(data.operator) !== "expression",
-        },
-        {
-          name: "condition",
-          get label() {
-            return m.block_field_assert_condition_label();
-          },
-          kind: "textarea",
-          get placeholder() {
-            return m.block_field_assert_condition_placeholder();
-          },
-          visible: (data) => {
-            const op = text(data.operator);
-            return op === "expression" || op === "";
-          },
-        },
         {
           name: "message",
           get label() {
@@ -1177,6 +859,88 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS["screen-region"].inputs,
     outputPorts: FLOW_NODE_PORTS["screen-region"].outputs,
   },
+  constant: {
+    kind: "constant",
+    get label() {
+      return m.block_constant_label();
+    },
+    get description() {
+      return m.block_constant_description();
+    },
+    icon: EqualIcon,
+    defaults: { kind: "constant", type: "number", numberValue: 0 },
+    summarize: (data) => {
+      if (data.type === "boolean") {
+        return data.booleanValue === true ? "true" : "false";
+      }
+      if (data.type === "string") {
+        return text(data.stringValue);
+      }
+      return text(data.numberValue);
+    },
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "type",
+          get label() {
+            return m.block_field_constant_type_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              {
+                value: "number",
+                get label() {
+                  return m.block_field_constant_type_option_number();
+                },
+              },
+              {
+                value: "string",
+                get label() {
+                  return m.block_field_constant_type_option_string();
+                },
+              },
+              {
+                value: "boolean",
+                get label() {
+                  return m.block_field_constant_type_option_boolean();
+                },
+              },
+            ];
+          },
+        },
+        {
+          name: "numberValue",
+          get label() {
+            return m.block_field_constant_value_label();
+          },
+          kind: "number",
+          visible: (data) => data.type === "number",
+        },
+        {
+          name: "stringValue",
+          get label() {
+            return m.block_field_constant_value_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_constant_value_placeholder();
+          },
+          visible: (data) => data.type === "string",
+        },
+        {
+          name: "booleanValue",
+          get label() {
+            return m.block_field_constant_value_label();
+          },
+          kind: "boolean",
+          visible: (data) => data.type === "boolean",
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.constant.inputs,
+    outputPorts: FLOW_NODE_PORTS.constant.outputs,
+  },
 };
 
 export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
@@ -1186,7 +950,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "ocr",
   "delay",
   "launch-app",
-  "set-variable",
+  "constant",
   "calculate",
   "convert",
   "compare",

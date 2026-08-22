@@ -245,7 +245,7 @@ describe("workbench flow validation", () => {
     const nodes = [
       node("start", "start"),
       node("for", "for"),
-      node("body", "set-variable"),
+      node("body", "click"),
       node("end", "end"),
     ];
     const loopEdges = [
@@ -294,7 +294,7 @@ describe("workbench flow validation", () => {
       node("start", "start"),
       node("if", "if"),
       node("for", "for"),
-      node("body", "set-variable"),
+      node("body", "click"),
       node("merge", "merge"),
       node("end", "end"),
     ];
@@ -378,8 +378,8 @@ describe("workbench flow validation", () => {
   it("accepts dynamic calculate data inputs", () => {
     const nodes = [
       node("start", "start"),
-      node("a", "set-variable"),
-      node("b", "set-variable"),
+      node("a", "calculate", { operation: "max", inputCount: 2 }),
+      node("b", "calculate", { operation: "max", inputCount: 2 }),
       node("calc", "calculate", {
         inputCount: 2,
         variable: "r",
@@ -404,7 +404,7 @@ describe("workbench flow validation", () => {
   it("rejects edges into undeclared dynamic calculate inputs", () => {
     const nodes = [
       node("start", "start"),
-      node("a", "set-variable"),
+      node("a", "calculate", { operation: "max", inputCount: 2 }),
       node("calc", "calculate", {
         inputCount: 1,
         variable: "r",

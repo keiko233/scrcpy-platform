@@ -97,10 +97,6 @@ function getPortDisplayLabel(
       return m.port_launch_app_package_name();
     case "launch-app:activity":
       return m.port_launch_app_activity();
-    case "set-variable:expression":
-      return m.port_set_variable_expression();
-    case "set-variable:value":
-      return m.port_set_variable_value();
     case "calculate:value":
       return m.port_calculate_value();
     case "compare:left":
@@ -123,10 +119,10 @@ function getPortDisplayLabel(
       return m.port_while_condition();
     case "assert:condition":
       return m.port_assert_condition();
-    case "assert:message":
-      return m.port_assert_message();
     case "screen-region:region":
       return m.port_screen_region_region();
+    case "constant:value":
+      return m.port_constant_value();
     default:
       return port.label;
   }

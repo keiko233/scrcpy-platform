@@ -3,7 +3,6 @@ import {
   aggregateValues,
   castValue,
   evaluateExpression,
-  expressionTruthy,
   type AggregateOperation,
   type CastTarget,
 } from "../../shared/expression";
@@ -89,7 +88,6 @@ function formatLogValue(value: JsonValue): string {
 function cloneRun(run: FlowRunDto): FlowRunDto {
   return {
     ...run,
-    variables: structuredClone(run.variables),
     steps: run.steps.map((step) => ({ ...step })),
   };
 }
@@ -123,29 +121,6 @@ function requiredString(
   return normalized;
 }
 
-const RESERVED_VARIABLE_NAMES = new Set([
-  "__proto__",
-  "constructor",
-  "prototype",
-]);
-
-function isSafeVariableName(name: string): boolean {
-  return (
-    /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name) &&
-    !RESERVED_VARIABLE_NAMES.has(name)
-  );
-}
-
-function variableName(node: FlowNode, field = "name"): string {
-  const name = requiredString(node, field, { trim: true });
-  if (!isSafeVariableName(name)) {
-    throw new Error(
-      `Node "${node.id}" has invalid variable name "${name}".`,
-    );
-  }
-  return name;
-}
-
 function maximumIterations(node: FlowNode): number {
   const value = node.data.maxIterations;
   if (
@@ -159,20 +134,6 @@ function maximumIterations(node: FlowNode): number {
     );
   }
   return value;
-}
-
-function numericExpression(
-  node: FlowNode,
-  field: string,
-  variables: Readonly<Record<string, JsonValue>>,
-): number {
-  const result = evaluateExpression(requiredString(node, field), variables);
-  if (typeof result !== "number" || !Number.isFinite(result)) {
-    throw new Error(
-      `Expression "${field}" on node "${node.id}" must return a finite number.`,
-    );
-  }
-  return result;
 }
 
 function finiteNumberInput(node: FlowNode, field: string): number {
@@ -237,33 +198,6 @@ function convertNodeValue(node: FlowNode): JsonValue {
     throw new Error(`Convert node "${node.id}" requires a connected value.`);
   }
   return castValue(toType as CastTarget, node.data.value);
-}
-
-function getFieldOrInputValue(
-  node: FlowNode,
-  field: string,
-  connectedInputs: ReadonlySet<string>,
-  variables: Readonly<Record<string, JsonValue>>,
-): JsonValue {
-  if (connectedInputs.has(field)) {
-    const value = node.data[field];
-    if (value === undefined) {
-      throw new Error(`Data input "${field}" on node "${node.id}" is missing.`);
-    }
-    return value as JsonValue;
-  }
-  const raw = node.data[field];
-  if (typeof raw === "number" || typeof raw === "boolean" || raw === null) {
-    return raw as JsonValue;
-  }
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (trimmed.length === 0) {
-      throw new Error(`Node "${node.id}" requires nonempty field "${field}".`);
-    }
-    return evaluateExpression(trimmed, variables);
-  }
-  throw new Error(`Node "${node.id}" requires field "${field}".`);
 }
 
 function compareWithOperator(
@@ -337,11 +271,6 @@ function compareWithOperator(
   }
 }
 
-function isCompareMode(node: FlowNode): boolean {
-  const op = node.data.operator;
-  return typeof op === "string" && op.trim() !== "" && op.trim() !== "expression";
-}
-
 function finiteNonnegative(value: unknown, nodeId: string, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new Error(`Node "${nodeId}" requires a finite nonnegative "${field}" value.`);
@@ -363,6 +292,18 @@ function screenRegionValue(node: FlowNode): ScreenRegion {
     width: finitePositive(node.data.width, node.id, "width"),
     height: finitePositive(node.data.height, node.id, "height"),
   };
+}
+
+function constantValue(node: FlowNode): JsonValue {
+  const type = node.data.type;
+  if (type === "boolean") {
+    return node.data.booleanValue === true;
+  }
+  if (type === "string") {
+    return typeof node.data.stringValue === "string" ? node.data.stringValue : "";
+  }
+  const value = node.data.numberValue;
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function withExpandedRegion(node: FlowNode): FlowNode {
@@ -432,7 +373,7 @@ function resolveNodeInputs(
   node: FlowNode,
   incomingEdges: readonly FlowEdge[],
   nodes: ReadonlyMap<string, FlowNode>,
-  values: ReadonlyMap<string, JsonValue>,
+  computeOutput: (source: FlowNode, portId: string) => JsonValue,
 ): ResolvedNodeInputs {
   const data = { ...node.data };
   const connected = new Set<string>();
@@ -456,13 +397,7 @@ function resolveNodeInputs(
     if (sourcePort?.role !== "data" || targetPort?.role !== "data") {
       throw new Error(`Data edge "${edge.id}" has invalid typed ports.`);
     }
-    const key = dataValueKey(source.id, sourcePort.id);
-    if (!values.has(key)) {
-      throw new Error(
-        `Data input "${node.id}.${targetPort.id}" was read before output "${source.id}.${sourcePort.id}" was produced.`,
-      );
-    }
-    const value = values.get(key) as JsonValue;
+    const value = computeOutput(source, sourcePort.id);
     if (!matchesDataType(value, targetPort.dataType)) {
       throw new Error(
         `Data input "${node.id}.${targetPort.id}" expected ${targetPort.dataType}, but "${source.id}.${sourcePort.id}" produced ${typeof value}.`,
@@ -500,7 +435,6 @@ function storeNodeOutputs(
 }
 
 interface ForLoopState {
-  variable: string;
   current: number;
   to: number;
   step: number;
@@ -639,7 +573,6 @@ export class FlowRuntimeService {
       startedAt,
       finishedAt: null,
       error: null,
-      variables: {},
       steps,
     };
     const controller = new AbortController();
@@ -758,21 +691,105 @@ export class FlowRuntimeService {
       }
     }
     const dataValues = new Map<string, JsonValue>();
+    const computingData = new Set<string>();
     const forLoops = new Map<string, ForLoopState>();
     const whileIterations = new Map<string, number>();
     let currentNodeId: string | null = startNodeId;
     let arrivalPort: string | null = null;
     let transitions = 0;
 
-    try {
-      for (const node of document.nodes) {
-        if (node.type === "screen-region") {
-          dataValues.set(
-            dataValueKey(node.id, "region"),
-            screenRegionValue(node),
+    const computePureDataNode = (node: FlowNode): void => {
+      if (computingData.has(node.id)) {
+        throw new Error(
+          `Data dependency cycle detected while evaluating "${node.id}".`,
+        );
+      }
+      computingData.add(node.id);
+      try {
+        switch (node.type) {
+          case "constant": {
+            dataValues.set(
+              dataValueKey(node.id, "value"),
+              structuredClone(constantValue(node)),
+            );
+            break;
+          }
+          case "screen-region": {
+            dataValues.set(
+              dataValueKey(node.id, "region"),
+              structuredClone(screenRegionValue(node)),
+            );
+            break;
+          }
+          case "compare": {
+            const resolved = resolveNodeInputs(
+              node,
+              incomingData.get(node.id) ?? [],
+              nodes,
+              computeDataOutput,
+            );
+            if (!resolved.connected.has("left")) {
+              throw new Error(
+                `Compare node "${node.id}" requires a connected "left" input.`,
+              );
+            }
+            if (!resolved.connected.has("right")) {
+              throw new Error(
+                `Compare node "${node.id}" requires a connected "right" input.`,
+              );
+            }
+            const operator = requiredString(resolved.node, "operator", {
+              trim: true,
+            });
+            const left = resolved.node.data.left as JsonValue;
+            const right = resolved.node.data.right as JsonValue;
+            const result = compareWithOperator(operator, left, right, node.id);
+            this.#emitLog(
+              node.id,
+              "info",
+              `Compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${result}`,
+              { operator, left, right, result },
+            );
+            dataValues.set(
+              dataValueKey(node.id, "result"),
+              structuredClone(result),
+            );
+            break;
+          }
+          default:
+            throw new Error(
+              `Node "${node.id}" cannot be evaluated as a data node.`,
+            );
+        }
+      } finally {
+        computingData.delete(node.id);
+      }
+    };
+
+    const computeDataOutput = (source: FlowNode, portId: string): JsonValue => {
+      const key = dataValueKey(source.id, portId);
+      if (dataValues.has(key)) {
+        return dataValues.get(key) as JsonValue;
+      }
+      if (
+        source.type === "constant" ||
+        source.type === "screen-region" ||
+        source.type === "compare"
+      ) {
+        computePureDataNode(source);
+        if (!dataValues.has(key)) {
+          throw new Error(
+            `Node "${source.id}" did not produce output "${portId}".`,
           );
         }
+        return dataValues.get(key) as JsonValue;
       }
+      throw new Error(
+        `Data input was read before output "${source.id}.${portId}" was produced.`,
+      );
+    };
+
+    try {
       while (currentNodeId !== null) {
         transitions += 1;
         if (transitions > 100_000) {
@@ -801,7 +818,7 @@ export class FlowRuntimeService {
           node,
           incomingData.get(node.id) ?? [],
           nodes,
-          dataValues,
+          computeDataOutput,
         );
         const result = await this.#executeNode(
           resolved.node,
@@ -809,7 +826,6 @@ export class FlowRuntimeService {
           arrivalPort,
           context,
           signal,
-          run.variables,
           forLoops,
           whileIterations,
         );
@@ -860,9 +876,7 @@ export class FlowRuntimeService {
       }
       run.state = "completed";
       run.finishedAt = finishedAt;
-      this.#emitLog(null, "info", "Flow run completed", {
-        variables: run.variables,
-      });
+      this.#emitLog(null, "info", "Flow run completed");
       this.#publish();
     } catch (error) {
       const cancelled = signal.aborted || error instanceof RunCancelledError;
@@ -931,7 +945,6 @@ export class FlowRuntimeService {
     arrivalPort: string | null,
     context: FlowActionContext,
     signal: AbortSignal,
-    variables: Record<string, JsonValue>,
     forLoops: Map<string, ForLoopState>,
     whileIterations: Map<string, number>,
   ): Promise<NodeExecutionResult> {
@@ -963,16 +976,6 @@ export class FlowRuntimeService {
           confidence: recognition.outputs.confidence,
           matched: recognition.outputs.matched,
         });
-        for (const [name, value] of Object.entries(
-          recognition.assignments,
-        )) {
-          if (!isSafeVariableName(name)) {
-            throw new Error(
-              `OCR node "${node.id}" returned invalid variable name "${name}".`,
-            );
-          }
-          variables[name] = value;
-        }
         return executionResult("next", recognition.outputs);
       }
       case "click":
@@ -980,25 +983,12 @@ export class FlowRuntimeService {
       case "launch-app":
         await this.#driver.execute(node, context, signal);
         return executionResult("next");
-      case "set-variable": {
-        const name = variableName(node);
-        const value = connectedInputs.has("expression")
-          ? node.data.expression
-          : evaluateExpression(requiredString(node, "expression"), variables);
-        variables[name] = value;
-        this.#emitLog(node.id, "info", `Set ${name} = ${formatLogValue(value)}`, {
-          name,
-          value,
-        });
-        return executionResult("next", { value });
-      }
       case "calculate": {
-        const name = variableName(node, "variable");
         const operation = calculateOperation(node);
         const values = calculateValues(node, connectedInputs);
         if (operation === "expression") {
           const expression = requiredString(node, "expression", { trim: true });
-          const scope: Record<string, JsonValue> = { ...variables };
+          const scope: Record<string, JsonValue> = {};
           for (const [id, value] of calculateInputEntries(node, connectedInputs)) {
             scope[id] = value;
           }
@@ -1008,8 +998,7 @@ export class FlowRuntimeService {
               `Calculate node "${node.id}" expression must return a finite number.`,
             );
           }
-          variables[name] = result;
-          this.#emitLog(node.id, "info", `Calculated ${name} = ${formatLogValue(result)}`, {
+          this.#emitLog(node.id, "info", `Calculated = ${formatLogValue(result)}`, {
             operation,
             expression,
             value: result,
@@ -1022,8 +1011,7 @@ export class FlowRuntimeService {
           );
         }
         const result = aggregateValues(operation, values);
-        variables[name] = result;
-        this.#emitLog(node.id, "info", `Calculated ${name} = ${formatLogValue(result)}`, {
+        this.#emitLog(node.id, "info", `Calculated = ${formatLogValue(result)}`, {
           operation,
           value: result,
           count: values.length,
@@ -1038,72 +1026,30 @@ export class FlowRuntimeService {
         });
         return executionResult("next", { value: result });
       }
-      case "compare": {
-        const operator = requiredString(node, "operator", { trim: true });
-        const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
-        const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
-        const result = compareWithOperator(operator, left, right, node.id);
-        this.#emitLog(node.id, "info", `Compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${result}`, {
-          operator,
-          left,
-          right,
-          result,
-        });
-        return executionResult("next", { result });
-      }
       case "if": {
-        let passed: boolean;
-        if (isCompareMode(node)) {
-          const operator = requiredString(node, "operator", { trim: true });
-          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
-          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
-          passed = compareWithOperator(operator, left, right, node.id);
-          this.#emitLog(node.id, "info", `Condition compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${passed}`, {
-            operator,
-            left,
-            right,
-            result: passed,
-          });
-        } else {
-          const condition = connectedInputs.has("condition")
-            ? node.data.condition
-            : evaluateExpression(requiredString(node, "condition"), variables);
-          passed = expressionTruthy(condition);
-          this.#emitLog(node.id, "info", `Condition evaluated to ${passed ? "true" : "false"}`, {
-            result: formatLogValue(condition),
-            branch: passed ? "true" : "false",
-          });
+        if (!connectedInputs.has("condition")) {
+          throw new Error(
+            `If node "${node.id}" requires a connected "condition" input.`,
+          );
         }
-        const branch = passed ? "true" : "false";
-        return executionResult(branch);
+        const passed = node.data.condition === true;
+        this.#emitLog(
+          node.id,
+          "info",
+          `Condition is ${passed ? "true" : "false"}`,
+          { branch: passed ? "true" : "false" },
+        );
+        return executionResult(passed ? "true" : "false");
       }
       case "merge":
         return executionResult("next");
       case "assert": {
-        let passed: boolean;
-        let rawCondition: JsonValue;
-        if (isCompareMode(node)) {
-          const operator = requiredString(node, "operator", { trim: true });
-          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
-          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
-          passed = compareWithOperator(operator, left, right, node.id);
-          rawCondition = passed;
-          this.#emitLog(node.id, "info", `Assertion compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${passed}`, {
-            operator,
-            left,
-            right,
-            result: passed,
-          });
-        } else {
-          const condition = connectedInputs.has("condition")
-            ? node.data.condition
-            : evaluateExpression(requiredString(node, "condition"), variables);
-          rawCondition = condition;
-          passed = expressionTruthy(condition);
-          this.#emitLog(node.id, "info", passed ? "Assertion passed" : "Assertion failed", {
-            result: formatLogValue(condition),
-          });
+        if (!connectedInputs.has("condition")) {
+          throw new Error(
+            `Assert node "${node.id}" requires a connected "condition" input.`,
+          );
         }
+        const passed = node.data.condition === true;
         if (!passed) {
           const message = node.data.message;
           throw new Error(
@@ -1112,28 +1058,19 @@ export class FlowRuntimeService {
               : `Assertion node "${node.id}" failed.`,
           );
         }
-        this.#emitLog(node.id, "info", "Assertion passed", {
-          result: formatLogValue(rawCondition),
-        });
+        this.#emitLog(node.id, "info", "Assertion passed");
         return executionResult("next");
       }
       case "for": {
         let loop = forLoops.get(node.id);
         if (arrivalPort === "in") {
-          const step = connectedInputs.has("step")
-            ? finiteNumberInput(node, "step")
-            : numericExpression(node, "step", variables);
+          const step = finiteNumberInput(node, "step");
           if (step === 0) {
             throw new Error(`For node "${node.id}" step cannot be zero.`);
           }
           loop = {
-            variable: variableName(node, "variable"),
-            current: connectedInputs.has("from")
-              ? finiteNumberInput(node, "from")
-              : numericExpression(node, "from", variables),
-            to: connectedInputs.has("to")
-              ? finiteNumberInput(node, "to")
-              : numericExpression(node, "to", variables),
+            current: finiteNumberInput(node, "from"),
+            to: finiteNumberInput(node, "to"),
             step,
             iterations: 0,
             maximum: maximumIterations(node),
@@ -1158,7 +1095,6 @@ export class FlowRuntimeService {
           );
         }
         loop.iterations += 1;
-        variables[loop.variable] = loop.current;
         return executionResult("body", { index: loop.current });
       }
       case "while": {
@@ -1167,27 +1103,18 @@ export class FlowRuntimeService {
             `While node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
           );
         }
-        let continues: boolean;
-        if (isCompareMode(node)) {
-          const operator = requiredString(node, "operator", { trim: true });
-          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
-          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
-          continues = compareWithOperator(operator, left, right, node.id);
-          this.#emitLog(node.id, "info", `While compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${continues}`, {
-            operator,
-            left,
-            right,
-            continues,
-          });
-        } else {
-          const condition = connectedInputs.has("condition")
-            ? node.data.condition
-            : evaluateExpression(requiredString(node, "condition"), variables);
-          continues = expressionTruthy(condition);
-          this.#emitLog(node.id, "info", `While condition evaluated to ${continues}`, {
-            result: formatLogValue(condition),
-          });
+        if (!connectedInputs.has("condition")) {
+          throw new Error(
+            `While node "${node.id}" requires a connected "condition" input.`,
+          );
         }
+        const continues = node.data.condition === true;
+        this.#emitLog(
+          node.id,
+          "info",
+          `While condition evaluated to ${continues}`,
+          { continues },
+        );
         if (!continues) {
           whileIterations.delete(node.id);
           return executionResult("done");
@@ -1205,6 +1132,14 @@ export class FlowRuntimeService {
       case "screen-region":
         throw new Error(
           `Screen region node "${node.id}" has no control flow to execute.`,
+        );
+      case "constant":
+        throw new Error(
+          `Constant node "${node.id}" has no control flow to execute.`,
+        );
+      case "compare":
+        throw new Error(
+          `Compare node "${node.id}" has no control flow to execute.`,
         );
     }
   }

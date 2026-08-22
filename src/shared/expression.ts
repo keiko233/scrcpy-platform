@@ -655,3 +655,29 @@ export function evaluateExpression(
   }
   return value;
 }
+
+export function collectExpressionVariables(source: string): string[] {
+  const ast = new Parser(tokenize(source.trim())).parse();
+  const names = new Set<string>();
+  const visit = (node: ExpressionNode): void => {
+    switch (node.type) {
+      case "variable":
+        names.add(node.name);
+        break;
+      case "unary":
+        visit(node.operand);
+        break;
+      case "binary":
+        visit(node.left);
+        visit(node.right);
+        break;
+      case "call":
+        node.args.forEach(visit);
+        break;
+      default:
+        break;
+    }
+  };
+  visit(ast);
+  return [...names];
+}
