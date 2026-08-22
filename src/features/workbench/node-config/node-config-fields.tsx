@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -124,6 +124,67 @@ export function Section({
   );
 }
 
+function useLiveTextValue(externalValue: string) {
+  const [localValue, setLocalValue] = useState(externalValue);
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    if (!focused) {
+      setLocalValue(externalValue);
+    }
+  }, [externalValue, focused]);
+  return {
+    value: localValue,
+    setValue: setLocalValue,
+    onFocus: () => setFocused(true),
+    onBlur: () => setFocused(false),
+  };
+}
+
+function LiveTextInput({
+  value,
+  onChange,
+  placeholder,
+  disabled,
+  multiline = false,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  disabled?: boolean;
+  multiline?: boolean;
+}) {
+  const live = useLiveTextValue(value);
+  const handleChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
+    live.setValue(event.target.value);
+    onChange(event.target.value);
+  };
+  if (multiline) {
+    return (
+      <Textarea
+        rows={2}
+        placeholder={placeholder}
+        value={live.value}
+        disabled={disabled}
+        onFocus={live.onFocus}
+        onBlur={live.onBlur}
+        onChange={handleChange}
+      />
+    );
+  }
+  return (
+    <Input
+      placeholder={placeholder}
+      value={live.value}
+      disabled={disabled}
+      onFocus={live.onFocus}
+      onBlur={live.onBlur}
+      onChange={handleChange}
+    />
+  );
+}
+
 export function FieldEditor({
   field,
   value,
@@ -153,12 +214,12 @@ export function FieldEditor({
         )}
       </div>
       {field.kind === "textarea" ? (
-        <Textarea
-          rows={2}
+        <LiveTextInput
+          multiline
           placeholder={field.placeholder}
           value={String(value ?? "")}
           disabled={connected}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
         />
       ) : field.kind === "number" ? (
         <NumberInput
@@ -204,11 +265,11 @@ export function FieldEditor({
           onChange={onChange}
         />
       ) : (
-        <Input
+        <LiveTextInput
           placeholder={field.placeholder}
           value={String(value ?? "")}
           disabled={connected}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={onChange}
         />
       )}
     </div>
