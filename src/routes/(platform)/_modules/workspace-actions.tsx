@@ -5,6 +5,11 @@ import { WORKSPACES } from "@/features/shell/tabs";
 import { useActiveTabId } from "@/features/shell/use-active-tab";
 import { m } from "@/paraglide/messages.js";
 
+const TAB_ROUTES: Record<string, "/debug" | "/settings"> = {
+  debug: "/debug",
+  settings: "/settings",
+};
+
 function getWorkspaceLabel(id: string): string {
   switch (id) {
     case "workbench":
@@ -36,9 +41,8 @@ export function WorkspaceActions() {
                 "flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
                 active && "bg-accent text-foreground",
               )}
-              params={{ tab: workspace.id }}
               title={label}
-              to="/$tab"
+              to={TAB_ROUTES[workspace.id]}
             >
               <Icon className="size-4" />
             </Link>

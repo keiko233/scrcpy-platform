@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { BugIcon, SearchIcon, Trash2Icon } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { LogEntry, LogLevel } from "@/shared/electron-api";
 import { LogMessage } from "@/features/workbench/debug/log-message";
 import { m } from "@/paraglide/messages.js";
+import type { LogEntry, LogLevel } from "@/shared/electron-api";
+
+import { Route, type DebugSearch } from "../index";
 
 export function DebugScreen() {
+  const search = Route.useSearch();
+  const navigate = Route.useNavigate();
   const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [level, setLevel] = useState<LogLevel | "all">("all");
-  const [query, setQuery] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -27,19 +30,28 @@ export function DebugScreen() {
     };
   }, []);
 
+  const query = search.q ?? "";
+
   const visibleLogs = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
     return logs.filter(
       (entry) =>
-        (level === "all" || entry.level === level) &&
+        (search.level === "all" || entry.level === search.level) &&
         (!normalizedQuery ||
           entry.message.toLowerCase().includes(normalizedQuery)),
     );
-  }, [level, logs, query]);
+  }, [logs, query, search.level]);
 
   async function clearLogs(): Promise<void> {
     await window.androidPlatform.clearLogs();
     setLogs([]);
+  }
+
+  function updateSearch(patch: Partial<DebugSearch>): void {
+    void navigate({
+      search: (prev) => ({ ...prev, ...patch }),
+      replace: true,
+    });
   }
 
   const levelClassName: Record<LogLevel, string> = {
@@ -77,9 +89,11 @@ export function DebugScreen() {
         <div className="ml-auto flex items-center gap-1">
           <select
             aria-label={m.debug_log_level_aria()}
-            value={level}
+            value={search.level}
             onChange={(event) =>
-              setLevel(event.target.value as LogLevel | "all")
+              updateSearch({
+                level: event.target.value as DebugSearch["level"],
+              })
             }
             className="h-7 rounded-md border bg-background px-1.5 text-[11px]"
           >
@@ -107,7 +121,7 @@ export function DebugScreen() {
 
           <Input
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => updateSearch({ q: event.target.value })}
             placeholder={m.debug_filter_placeholder()}
             className="h-7 pl-7 text-[11px]"
           />

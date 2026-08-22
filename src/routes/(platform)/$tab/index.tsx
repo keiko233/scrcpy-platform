@@ -1,13 +1,11 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { isTabId } from "@/features/shell/tabs";
-
-import { ScreenHost } from "./_modules/screen-host";
+import { WorkbenchScreen } from "./_modules/workbench-screen";
 
 export const Route = createFileRoute("/(platform)/$tab/")({
-  component: ScreenHost,
+  component: WorkbenchScreen,
   beforeLoad: ({ params }) => {
-    if (!isTabId(params.tab)) {
+    if (params.tab !== "workbench") {
       throw redirect({ to: "/$tab", params: { tab: "workbench" } });
     }
   },

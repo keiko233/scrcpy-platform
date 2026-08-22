@@ -12,6 +12,8 @@ import { Route as deviceRouteRouteImport } from './routes/(device)/route'
 import { Route as platformRouteRouteImport } from './routes/(platform)/route'
 import { Route as devicePairIndexRouteImport } from './routes/(device)/pair/index'
 import { Route as platformTabIndexRouteImport } from './routes/(platform)/$tab/index'
+import { Route as platformDebugIndexRouteImport } from './routes/(platform)/debug/index'
+import { Route as platformSettingsIndexRouteImport } from './routes/(platform)/settings/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -36,16 +38,30 @@ const platformTabIndexRoute = platformTabIndexRouteImport.update({
   path: '/$tab/',
   getParentRoute: () => platformRouteRoute,
 } as any)
+const platformDebugIndexRoute = platformDebugIndexRouteImport.update({
+  id: '/debug/',
+  path: '/debug/',
+  getParentRoute: () => platformRouteRoute,
+} as any)
+const platformSettingsIndexRoute = platformSettingsIndexRouteImport.update({
+  id: '/settings/',
+  path: '/settings/',
+  getParentRoute: () => platformRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/pair/': typeof devicePairIndexRoute
   '/$tab/': typeof platformTabIndexRoute
+  '/debug/': typeof platformDebugIndexRoute
+  '/settings/': typeof platformSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/pair': typeof devicePairIndexRoute
   '/$tab': typeof platformTabIndexRoute
+  '/debug': typeof platformDebugIndexRoute
+  '/settings': typeof platformSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -54,12 +70,14 @@ export interface FileRoutesById {
   '/(platform)': typeof platformRouteRouteWithChildren
   '/(device)/pair/': typeof devicePairIndexRoute
   '/(platform)/$tab/': typeof platformTabIndexRoute
+  '/(platform)/debug/': typeof platformDebugIndexRoute
+  '/(platform)/settings/': typeof platformSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pair/' | '/$tab/'
+  fullPaths: '/' | '/pair/' | '/$tab/' | '/debug/' | '/settings/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pair' | '/$tab'
+  to: '/' | '/pair' | '/$tab' | '/debug' | '/settings'
   id:
     | '__root__'
     | '/'
@@ -67,6 +85,8 @@ export interface FileRouteTypes {
     | '/(platform)'
     | '/(device)/pair/'
     | '/(platform)/$tab/'
+    | '/(platform)/debug/'
+    | '/(platform)/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -112,6 +132,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof platformTabIndexRouteImport
       parentRoute: typeof platformRouteRoute
     }
+    '/(platform)/debug/': {
+      id: '/(platform)/debug/'
+      path: '/debug'
+      fullPath: '/debug/'
+      preLoaderRoute: typeof platformDebugIndexRouteImport
+      parentRoute: typeof platformRouteRoute
+    }
+    '/(platform)/settings/': {
+      id: '/(platform)/settings/'
+      path: '/settings'
+      fullPath: '/settings/'
+      preLoaderRoute: typeof platformSettingsIndexRouteImport
+      parentRoute: typeof platformRouteRoute
+    }
   }
 }
 
@@ -129,10 +163,14 @@ const deviceRouteRouteWithChildren = deviceRouteRoute._addFileChildren(
 
 interface platformRouteRouteChildren {
   platformTabIndexRoute: typeof platformTabIndexRoute
+  platformDebugIndexRoute: typeof platformDebugIndexRoute
+  platformSettingsIndexRoute: typeof platformSettingsIndexRoute
 }
 
 const platformRouteRouteChildren: platformRouteRouteChildren = {
   platformTabIndexRoute: platformTabIndexRoute,
+  platformDebugIndexRoute: platformDebugIndexRoute,
+  platformSettingsIndexRoute: platformSettingsIndexRoute,
 }
 
 const platformRouteRouteWithChildren = platformRouteRoute._addFileChildren(
