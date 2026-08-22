@@ -1,10 +1,11 @@
-import { useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Background,
   BackgroundVariant,
   Controls,
   ReactFlow,
   ReactFlowProvider,
+  SelectionMode,
   useReactFlow,
   type XYPosition,
 } from "@xyflow/react";
@@ -32,7 +33,10 @@ import {
 } from "@/components/ui/empty";
 import {
   AlertTriangleIcon,
+  ClipboardPasteIcon,
+  CopyIcon,
   GitForkIcon,
+  ScissorsIcon,
   Trash2Icon,
 } from "lucide-react";
 
@@ -41,6 +45,15 @@ import { AUTOMATION_NODE_TYPES } from "../node-types";
 import type { FlowBlockKind } from "../types";
 import { useWorkbench } from "../use-workbench";
 import { m } from "@/paraglide/messages.js";
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    target.isContentEditable || target.matches("input, textarea, select")
+  );
+}
 
 function EditorEmptyState() {
   return (
@@ -72,6 +85,10 @@ function FlowCanvas() {
     onMoveEnd,
     addBlock,
     deleteNode,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
+    clipboard,
     error,
     reloadLatest,
     forceSave,
@@ -87,6 +104,30 @@ function FlowCanvas() {
     addBlock(kind, panePosition ?? undefined);
     setPanePosition(null);
   };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) {
+        return;
+      }
+      if (isEditableTarget(event.target)) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key === "c") {
+        event.preventDefault();
+        copySelected();
+      } else if (key === "x") {
+        event.preventDefault();
+        cutSelected();
+      } else if (key === "v") {
+        event.preventDefault();
+        pasteClipboard();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [copySelected, cutSelected, pasteClipboard]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
@@ -145,6 +186,9 @@ function FlowCanvas() {
               onMoveEnd={onMoveEnd}
               onPaneContextMenu={(event) => event.preventDefault()}
               deleteKeyCode={["Backspace", "Delete"]}
+              selectionKeyCode={["Meta", "Control"]}
+              selectionMode={SelectionMode.Partial}
+              multiSelectionKeyCode={["Meta", "Control"]}
               connectionRadius={20}
               minZoom={0.2}
               maxZoom={2}
@@ -168,8 +212,31 @@ function FlowCanvas() {
                 );
               })}
             </ContextMenuGroup>
+            {clipboard !== null && (
+              <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={() => {
+                    pasteClipboard(panePosition ?? undefined);
+                    setPanePosition(null);
+                  }}
+                >
+                  <ClipboardPasteIcon />
+                  {m.flow_editor_paste()}
+                </ContextMenuItem>
+              </>
+            )}
             {selectedNodes.length > 0 && (
               <>
+                <ContextMenuSeparator />
+                <ContextMenuItem onClick={copySelected}>
+                  <CopyIcon />
+                  {m.flow_editor_copy()}
+                </ContextMenuItem>
+                <ContextMenuItem onClick={cutSelected}>
+                  <ScissorsIcon />
+                  {m.flow_editor_cut()}
+                </ContextMenuItem>
                 <ContextMenuSeparator />
                 <ContextMenuItem
                   variant="destructive"

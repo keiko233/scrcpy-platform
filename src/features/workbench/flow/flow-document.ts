@@ -16,7 +16,12 @@ import {
   type JsonValue,
 } from "../../../shared/project-contracts";
 
-import type { WorkbenchEdge, WorkbenchNode } from "../types";
+import type {
+  FlowBlockKind,
+  WorkbenchEdge,
+  WorkbenchNode,
+  WorkbenchNodeData,
+} from "../types";
 import { BLOCK_DEFINITIONS, isFlowBlockKind } from "../blocks";
 
 export function toFlowDocument(
@@ -220,4 +225,114 @@ export function canConnectPorts(
   connection: Parameters<IsValidConnection<WorkbenchEdge>>[0],
 ): boolean {
   return connectionPorts(nodes, connection) !== null;
+}
+
+export interface ClipboardNode {
+  id: string;
+  type: FlowBlockKind;
+  position: XYPosition;
+  data: WorkbenchNodeData;
+}
+
+export interface ClipboardEdge {
+  source: string;
+  target: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+}
+
+export interface ClipboardPayload {
+  nodes: ClipboardNode[];
+  edges: ClipboardEdge[];
+}
+
+export interface PasteOptions {
+  offset?: XYPosition;
+  origin?: XYPosition;
+}
+
+export function copySelection(
+  nodes: WorkbenchNode[],
+  edges: WorkbenchEdge[],
+): ClipboardPayload | null {
+  const selected = nodes.filter(
+    (node) =>
+      node.selected === true &&
+      node.type !== "start" &&
+      node.type !== "end",
+  );
+  if (selected.length === 0) {
+    return null;
+  }
+  const ids = new Set(selected.map((node) => node.id));
+  return {
+    nodes: selected.map((node) => ({
+      id: node.id,
+      type: node.type,
+      position: { x: node.position.x, y: node.position.y },
+      data: node.data,
+    })),
+    edges: edges
+      .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
+      .map((edge) => {
+        const next: ClipboardEdge = {
+          source: edge.source,
+          target: edge.target,
+        };
+        if (edge.sourceHandle !== undefined && edge.sourceHandle !== null) {
+          next.sourceHandle = edge.sourceHandle;
+        }
+        if (edge.targetHandle !== undefined && edge.targetHandle !== null) {
+          next.targetHandle = edge.targetHandle;
+        }
+        return next;
+      }),
+  };
+}
+
+export function pasteSelection(
+  payload: ClipboardPayload,
+  options?: PasteOptions,
+): { nodes: WorkbenchNode[]; edges: WorkbenchEdge[] } {
+  if (payload.nodes.length === 0) {
+    return { nodes: [], edges: [] };
+  }
+  const minX = Math.min(...payload.nodes.map((node) => node.position.x));
+  const minY = Math.min(...payload.nodes.map((node) => node.position.y));
+  const offset =
+    options?.origin !== undefined
+      ? { x: options.origin.x - minX, y: options.origin.y - minY }
+      : (options?.offset ?? { x: 40, y: 40 });
+  const idMap = new Map<string, string>();
+  const nodes: WorkbenchNode[] = payload.nodes.map((node) => {
+    const id = `node-${crypto.randomUUID()}`;
+    idMap.set(node.id, id);
+    return {
+      id,
+      type: node.type,
+      position: {
+        x: node.position.x + offset.x,
+        y: node.position.y + offset.y,
+      },
+      data: node.data,
+      selected: true,
+    };
+  });
+  const edges: WorkbenchEdge[] = payload.edges
+    .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+    .map((edge) => {
+      const next: WorkbenchEdge = {
+        id: `edge-${crypto.randomUUID()}`,
+        source: idMap.get(edge.source) as string,
+        target: idMap.get(edge.target) as string,
+      };
+      if (edge.sourceHandle !== undefined) {
+        next.sourceHandle = edge.sourceHandle;
+      }
+      if (edge.targetHandle !== undefined) {
+        next.targetHandle = edge.targetHandle;
+      }
+      return next;
+    });
+  return { nodes, edges };
 }

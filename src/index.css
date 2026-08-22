@@ -276,7 +276,7 @@ body,
 }
 
 .wb-flow-node {
-  @apply min-w-64 rounded-md border bg-card px-2 py-1.5 text-foreground shadow-xs transition-shadow;
+  @apply min-w-64 rounded-md border border-border bg-card px-2 py-1.5 text-foreground shadow-xs transition-shadow;
 }
 
 .wb-flow-node:focus-visible {
@@ -284,11 +284,7 @@ body,
   outline-offset: 1px;
 }
 
-.react-flow__node.wb-flow-node {
-  @apply border-border;
-}
-
-.react-flow__node.wb-flow-node.selected {
+.wb-flow-node.selected {
   @apply border-primary shadow-[0_0_0_1px_var(--primary)];
 }
 

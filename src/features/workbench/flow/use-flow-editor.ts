@@ -23,13 +23,16 @@ import type { FlowBlockKind, WorkbenchEdge, WorkbenchNode } from "../types";
 import {
   applyNodesChange,
   canConnectPorts,
+  copySelection,
   defaultViewport,
   edgesFromDocument,
   mergeEdge,
   nodesFromDocument,
+  pasteSelection,
   patchNodeData,
   toFlowDocument,
   viewportFromDocument,
+  type ClipboardPayload,
 } from "./flow-document";
 
 export type FlowSaveError =
@@ -56,6 +59,10 @@ export interface FlowEditor {
   addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
+  copySelected: () => void;
+  cutSelected: () => void;
+  pasteClipboard: (position?: XYPosition) => void;
+  clipboard: ClipboardPayload | null;
   loadDocument: (document: FlowDocument) => void;
   save: () => Promise<boolean>;
   reloadLatest: () => Promise<boolean>;
@@ -81,6 +88,7 @@ export function useFlowEditor(
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving">("idle");
   const [error, setError] = useState<FlowSaveError>(null);
+  const [clipboard, setClipboard] = useState<ClipboardPayload | null>(null);
 
   const nodesRef = useLatest(nodes);
   const edgesRef = useLatest(edges);
@@ -213,6 +221,64 @@ export function useFlowEditor(
     [setNodes],
   );
 
+  const copySelected = useCallback(() => {
+    const payload = copySelection(nodesRef.current, edgesRef.current);
+    if (payload !== null) {
+      setClipboard(payload);
+    }
+  }, [nodesRef, edgesRef]);
+
+  const cutSelected = useCallback(() => {
+    const payload = copySelection(nodesRef.current, edgesRef.current);
+    if (payload === null) {
+      return;
+    }
+    setClipboard(payload);
+    const ids = new Set(payload.nodes.map((node) => node.id));
+    setNodes((current) =>
+      applyNodesChange(
+        [...ids].map((id) => ({ type: "remove", id })),
+        current,
+      ),
+    );
+    setEdges((current) =>
+      current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)),
+    );
+    setDirty(true);
+  }, [nodesRef, edgesRef, setNodes, setEdges]);
+
+  const pasteClipboard = useCallback(
+    (position?: XYPosition) => {
+      if (clipboard === null) {
+        return;
+      }
+      const pasted = pasteSelection(
+        clipboard,
+        position !== undefined ? { origin: position } : undefined,
+      );
+      setNodes((current) => [
+        ...current.map((node) =>
+          node.selected ? { ...node, selected: false } : node,
+        ),
+        ...pasted.nodes,
+      ]);
+      setEdges((current) => [...current, ...pasted.edges]);
+      setClipboard((current) =>
+        current === null
+          ? null
+          : {
+              nodes: current.nodes.map((node, index) => ({
+                ...node,
+                position: pasted.nodes[index].position,
+              })),
+              edges: current.edges,
+            },
+      );
+      setDirty(true);
+    },
+    [clipboard, setNodes, setEdges],
+  );
+
   const save = useCallback(async (): Promise<boolean> => {
     if (script === null) {
       return false;
@@ -331,6 +397,10 @@ export function useFlowEditor(
     addBlock,
     deleteNode,
     updateNodeData,
+    copySelected,
+    cutSelected,
+    pasteClipboard,
+    clipboard,
     loadDocument,
     save,
     reloadLatest,

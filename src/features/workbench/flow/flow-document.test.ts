@@ -7,10 +7,13 @@ import {
 } from "../../../shared/project-contracts";
 import type { WorkbenchEdge, WorkbenchNode } from "../types";
 import {
+  copySelection,
   edgesFromDocument,
   mergeEdge,
   nodesFromDocument,
+  pasteSelection,
   toFlowDocument,
+  type ClipboardPayload,
 } from "./flow-document";
 
 function workbenchNode(
@@ -376,5 +379,125 @@ describe("workbench flow document", () => {
     );
 
     assert.equal(merged, existing);
+  });
+});
+
+describe("workbench copy and paste", () => {
+  it("returns null when no action node is selected", () => {
+    const nodes = [
+      workbenchNode("start", "start"),
+      workbenchNode("end", "end"),
+    ];
+
+    assert.equal(copySelection(nodes, []), null);
+  });
+
+  it("excludes start and end nodes from the copied selection", () => {
+    const nodes: WorkbenchNode[] = [
+      { ...workbenchNode("start", "start"), selected: true },
+      { ...workbenchNode("a", "click"), selected: true },
+      { ...workbenchNode("end", "end"), selected: true },
+    ];
+
+    const payload = copySelection(nodes, []);
+
+    assert.ok(payload !== null);
+    assert.deepEqual(
+      payload.nodes.map((node) => node.id),
+      ["a"],
+    );
+  });
+
+  it("captures only internal edges between copied nodes", () => {
+    const nodes: WorkbenchNode[] = [
+      { ...workbenchNode("a", "click"), selected: true },
+      { ...workbenchNode("b", "delay"), selected: true },
+      workbenchNode("c", "delay"),
+    ];
+    const edges: WorkbenchEdge[] = [
+      {
+        id: "e1",
+        source: "a",
+        target: "b",
+        sourceHandle: "next",
+        targetHandle: "in",
+      },
+      {
+        id: "e2",
+        source: "b",
+        target: "c",
+        sourceHandle: "next",
+        targetHandle: "in",
+      },
+    ];
+
+    const payload = copySelection(nodes, edges);
+
+    assert.ok(payload !== null);
+    assert.deepEqual(
+      payload.edges.map((edge) => edge.source),
+      ["a"],
+    );
+    assert.equal(payload.edges[0]?.targetHandle, "in");
+  });
+
+  it("clones nodes and edges with fresh ids and offset positions", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "a",
+          type: "click",
+          position: { x: 10, y: 10 },
+          data: { kind: "click", x: 1, y: 2 },
+        },
+        {
+          id: "b",
+          type: "delay",
+          position: { x: 30, y: 10 },
+          data: { kind: "delay", ms: 500 },
+        },
+      ],
+      edges: [
+        { source: "a", target: "b", sourceHandle: "next", targetHandle: "in" },
+      ],
+    };
+
+    const { nodes, edges } = pasteSelection(payload);
+
+    assert.equal(nodes.length, 2);
+    const [first, second] = nodes;
+    assert.ok(first !== undefined && second !== undefined);
+    assert.notEqual(first.id, "a");
+    assert.notEqual(second.id, "b");
+    assert.notEqual(first.id, second.id);
+    assert.equal(first.selected, true);
+    assert.deepEqual(first.position, { x: 50, y: 50 });
+    assert.deepEqual(second.position, { x: 70, y: 50 });
+    assert.deepEqual(first.data, { kind: "click", x: 1, y: 2 });
+
+    assert.equal(edges.length, 1);
+    assert.equal(edges[0]?.source, first.id);
+    assert.equal(edges[0]?.target, second.id);
+    assert.equal(edges[0]?.sourceHandle, "next");
+    assert.equal(edges[0]?.targetHandle, "in");
+    assert.match(edges[0]?.id ?? "", /^edge-/);
+  });
+
+  it("anchors the copied group to an explicit origin position", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "a",
+          type: "click",
+          position: { x: 10, y: 20 },
+          data: { kind: "click" },
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = pasteSelection(payload, { origin: { x: 100, y: 200 } });
+
+    assert.deepEqual(nodes[0]?.position, { x: 100, y: 200 });
   });
 });
