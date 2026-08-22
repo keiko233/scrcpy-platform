@@ -16,7 +16,12 @@ import {
 import type {
   FlowRunDto,
   FlowRunListener,
+  FlowRunLogEntryDto,
+  FlowRunLogLevel,
+  FlowRunLogListener,
   FlowRunStepDto,
+  ResumeFlowRunInput,
+  ResumeFlowRunResult,
   StartFlowRunInput,
   StartFlowRunResult,
   StopFlowRunInput,
@@ -62,6 +67,15 @@ class RunCancelledError extends Error {
 
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function formatLogValue(value: JsonValue): string {
+  try {
+    const text = JSON.stringify(value);
+    return text === undefined ? String(value) : text;
+  } catch {
+    return String(value);
+  }
 }
 
 function cloneRun(run: FlowRunDto): FlowRunDto {
@@ -353,9 +367,15 @@ export class FlowRuntimeService {
   readonly #now: () => string;
   readonly #recognition: FlowRecognitionDriver | null;
   readonly #listeners = new Set<FlowRunListener>();
+  readonly #logListeners = new Set<FlowRunLogListener>();
   #run: FlowRunDto | null = null;
   #abortController: AbortController | null = null;
   #execution: Promise<void> | null = null;
+  #nextLogId = 1;
+  #breakpoints = new Set<string>();
+  #stepOnce = false;
+  #resumeResolver: ((action: ResumeFlowRunInput["action"]) => void) | null = null;
+  #pendingResume: Promise<ResumeFlowRunInput["action"]> | null = null;
 
   constructor(
     repository: FlowScriptRepository,
@@ -375,12 +395,20 @@ export class FlowRuntimeService {
     return () => this.#listeners.delete(listener);
   }
 
+  subscribeLogs(listener: FlowRunLogListener): () => void {
+    this.#logListeners.add(listener);
+    return () => this.#logListeners.delete(listener);
+  }
+
   getRun(): FlowRunDto | null {
     return this.#run === null ? null : cloneRun(this.#run);
   }
 
   start(input: StartFlowRunInput): StartFlowRunResult {
-    if (this.#run?.state === "running") {
+    if (
+      this.#run?.state === "running" ||
+      this.#run?.state === "paused"
+    ) {
       return { status: "error", error: "run-busy" };
     }
 
@@ -449,7 +477,18 @@ export class FlowRuntimeService {
     };
     const controller = new AbortController();
     this.#abortController = controller;
+    this.#breakpoints = new Set(input.breakpoints ?? []);
+    this.#stepOnce = false;
+    this.#resumeResolver = null;
+    this.#pendingResume = null;
     this.#publish();
+    this.#emitLog(null, "info", "Flow run started", {
+      scriptId: input.scriptId,
+      deviceId: input.deviceId,
+      displayId: input.displayId,
+      breakpoints: [...this.#breakpoints],
+      nodeCount: steps.length,
+    });
     this.#execution = this.#execute(
       script.draftDocument,
       orderedNodes[0]?.id ?? "",
@@ -470,16 +509,28 @@ export class FlowRuntimeService {
     if (run === null || run.runId !== input.runId) {
       return { status: "error", error: "run-not-found" };
     }
-    if (run.state === "running") {
+    if (run.state === "running" || run.state === "paused") {
       this.#abortController?.abort();
       await this.#execution;
     }
     return { status: "ok", run: cloneRun(this.#run as FlowRunDto) };
   }
 
+  resume(input: ResumeFlowRunInput): ResumeFlowRunResult {
+    const run = this.#run;
+    if (run === null || run.runId !== input.runId) {
+      return { status: "error", error: "run-not-found" };
+    }
+    if (run.state !== "paused" || this.#resumeResolver === null) {
+      return { status: "error", error: "run-not-paused" };
+    }
+    this.#resumeResolver(input.action);
+    return { status: "ok", run: cloneRun(run) };
+  }
+
   async cancelCurrent(): Promise<void> {
     const run = this.#run;
-    if (run?.state !== "running") {
+    if (run?.state !== "running" && run?.state !== "paused") {
       return;
     }
     await this.stop({ runId: run.runId });
@@ -564,6 +615,7 @@ export class FlowRuntimeService {
         if (node === undefined || step === undefined) {
           throw new Error(`Flow reached missing node "${currentNodeId}".`);
         }
+        await this.#pauseIfNeeded(node.id, signal);
         step.state = "running";
         step.startedAt = this.#now();
         step.finishedAt = null;
@@ -571,6 +623,10 @@ export class FlowRuntimeService {
         step.executionCount += 1;
         run.currentNodeId = node.id;
         this.#publish();
+        const enteredAt = Date.now();
+        this.#emitLog(node.id, "debug", `Entering ${node.type} node`, {
+          executionCount: step.executionCount,
+        });
 
         const resolved = resolveNodeInputs(
           node,
@@ -593,6 +649,11 @@ export class FlowRuntimeService {
         step.state = "completed";
         step.finishedAt = this.#now();
         run.currentNodeId = null;
+        this.#emitLog(node.id, "debug", `Completed ${node.type} node`, {
+          durationMs: Date.now() - enteredAt,
+          flowPort: result.flowPort,
+          outputs: result.outputs,
+        });
         this.#publish();
 
         if (result.flowPort === null) {
@@ -630,6 +691,9 @@ export class FlowRuntimeService {
       }
       run.state = "completed";
       run.finishedAt = finishedAt;
+      this.#emitLog(null, "info", "Flow run completed", {
+        variables: run.variables,
+      });
       this.#publish();
     } catch (error) {
       const cancelled = signal.aborted || error instanceof RunCancelledError;
@@ -652,7 +716,43 @@ export class FlowRuntimeService {
       run.currentNodeId = null;
       run.finishedAt = finishedAt;
       run.error = cancelled ? null : errorMessageOf(error);
+      this.#emitLog(
+        currentStep?.nodeId ?? null,
+        cancelled ? "warn" : "error",
+        cancelled ? "Flow run cancelled" : errorMessageOf(error),
+      );
       this.#publish();
+    }
+  }
+
+  async #pauseIfNeeded(nodeId: string, signal: AbortSignal): Promise<void> {
+    if (!this.#breakpoints.has(nodeId) && !this.#stepOnce) {
+      return;
+    }
+    const run = this.#run as FlowRunDto;
+    run.state = "paused";
+    run.currentNodeId = nodeId;
+    this.#emitLog(nodeId, "info", "Paused before executing node");
+    this.#publish();
+    this.#pendingResume = new Promise<ResumeFlowRunInput["action"]>(
+      (resolve, reject) => {
+        const onAbort = () => {
+          reject(new RunCancelledError());
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
+        this.#resumeResolver = (action) => {
+          signal.removeEventListener("abort", onAbort);
+          resolve(action);
+        };
+      },
+    );
+    try {
+      const action = await this.#pendingResume;
+      this.#stepOnce = action === "step";
+      this.#emitLog(nodeId, "debug", `Resumed (${action})`);
+    } finally {
+      this.#resumeResolver = null;
+      this.#pendingResume = null;
     }
   }
 
@@ -689,6 +789,11 @@ export class FlowRuntimeService {
           context,
           signal,
         );
+        this.#emitLog(node.id, "info", "OCR recognized text", {
+          text: recognition.outputs.text,
+          confidence: recognition.outputs.confidence,
+          matched: recognition.outputs.matched,
+        });
         for (const [name, value] of Object.entries(
           recognition.assignments,
         )) {
@@ -712,13 +817,22 @@ export class FlowRuntimeService {
           ? node.data.expression
           : evaluateExpression(requiredString(node, "expression"), variables);
         variables[name] = value;
+        this.#emitLog(node.id, "info", `Set ${name} = ${formatLogValue(value)}`, {
+          name,
+          value,
+        });
         return executionResult("next", { value });
       }
       case "if": {
         const condition = connectedInputs.has("condition")
           ? node.data.condition
           : evaluateExpression(requiredString(node, "condition"), variables);
-        return executionResult(expressionTruthy(condition) ? "true" : "false");
+        const branch = expressionTruthy(condition) ? "true" : "false";
+        this.#emitLog(node.id, "info", `Condition evaluated to ${branch}`, {
+          result: formatLogValue(condition),
+          branch,
+        });
+        return executionResult(branch);
       }
       case "merge":
         return executionResult("next");
@@ -735,6 +849,9 @@ export class FlowRuntimeService {
               : `Assertion node "${node.id}" failed.`,
           );
         }
+        this.#emitLog(node.id, "info", "Assertion passed", {
+          result: formatLogValue(condition),
+        });
         return executionResult("next");
       }
       case "for": {
@@ -809,6 +926,31 @@ export class FlowRuntimeService {
         throw new Error(
           `Screen region node "${node.id}" has no control flow to execute.`,
         );
+    }
+  }
+
+  #emitLog(
+    nodeId: string | null,
+    level: FlowRunLogLevel,
+    message: string,
+    data: JsonValue | null = null,
+  ): void {
+    const run = this.#run;
+    const entry: FlowRunLogEntryDto = {
+      id: this.#nextLogId++,
+      runId: run?.runId ?? "",
+      nodeId,
+      level,
+      message,
+      data,
+      createdAt: this.#now(),
+    };
+    for (const listener of this.#logListeners) {
+      try {
+        listener(entry);
+      } catch {
+        // A broken observer must never stop a background run.
+      }
     }
   }
 

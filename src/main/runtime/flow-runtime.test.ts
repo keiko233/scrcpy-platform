@@ -193,6 +193,29 @@ async function waitForTerminal(service: FlowRuntimeService): Promise<FlowRunDto>
   });
 }
 
+async function waitForState(
+  service: FlowRuntimeService,
+  predicate: (run: FlowRunDto) => boolean,
+): Promise<FlowRunDto> {
+  const current = service.getRun();
+  if (current !== null && predicate(current)) {
+    return current;
+  }
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      unsubscribe();
+      reject(new Error("Timed out waiting for flow run state."));
+    }, 1000);
+    const unsubscribe = service.subscribe((run) => {
+      if (predicate(run)) {
+        clearTimeout(timeout);
+        unsubscribe();
+        resolve(run);
+      }
+    });
+  });
+}
+
 describe("FlowRuntimeService", () => {
   test("runs a valid linear flow in deterministic order and publishes snapshots", async () => {
     const click = node("click", "click", { x: 10, y: 20 });
@@ -700,5 +723,115 @@ describe("FlowRuntimeService", () => {
     assert.equal(failed.state, "failed");
     assert.match(failed.error ?? "", /finite positive "width"/);
     assert.deepEqual(recognition.calls, []);
+  });
+
+  test("pauses before a breakpoint node and resumes with continue", async () => {
+    const click = node("click", "click", { x: 1, y: 2 });
+    const { service, driver } = serviceFor(linearDocument([click]));
+
+    service.start({ ...RUN_INPUT, breakpoints: ["click"] });
+    const paused = await waitForState(service, (run) => run.state === "paused");
+
+    assert.equal(paused.currentNodeId, "click");
+    assert.deepEqual(driver.calls, []);
+
+    const resumeResult = service.resume({ runId: "run-1", action: "continue" });
+    assert.equal(resumeResult.status, "ok");
+
+    const completed = await waitForState(
+      service,
+      (run) => run.state === "completed",
+    );
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["click"]);
+  });
+
+  test("step advances exactly one node before pausing again", async () => {
+    const first = node("first", "click", { x: 1, y: 2 });
+    const second = node("second", "click", { x: 3, y: 4 });
+    const { service, driver } = serviceFor(linearDocument([first, second]));
+
+    service.start({ ...RUN_INPUT, breakpoints: ["first"] });
+    const paused = await waitForState(service, (run) => run.state === "paused");
+    assert.equal(paused.currentNodeId, "first");
+
+    assert.equal(
+      service.resume({ runId: "run-1", action: "step" }).status,
+      "ok",
+    );
+    const nextPause = await waitForState(
+      service,
+      (run) => run.state === "paused" && run.currentNodeId === "second",
+    );
+    assert.equal(nextPause.currentNodeId, "second");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["first"]);
+
+    assert.equal(
+      service.resume({ runId: "run-1", action: "continue" }).status,
+      "ok",
+    );
+    const completed = await waitForState(
+      service,
+      (run) => run.state === "completed",
+    );
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), [
+      "first",
+      "second",
+    ]);
+  });
+
+  test("rejects resume for missing runs or non-paused runs", async () => {
+    const click = node("click", "click", { x: 1, y: 2 });
+    const { service } = serviceFor(linearDocument([click]));
+
+    assert.deepEqual(service.resume({ runId: "other", action: "continue" }), {
+      status: "error",
+      error: "run-not-found",
+    });
+
+    service.start(RUN_INPUT);
+    assert.deepEqual(service.resume({ runId: "run-1", action: "step" }), {
+      status: "error",
+      error: "run-not-paused",
+    });
+    await waitForTerminal(service);
+  });
+
+  test("emits structured log entries for lifecycle, values, and OCR", async () => {
+    const recognition = new FakeRecognition();
+    const click = node("click", "click", { x: 1, y: 2 });
+    const set = node("set", "set-variable", { name: "answer", expression: "6 * 7" });
+    const { service } = serviceFor(
+      linearDocument([click, set]),
+      new FakeDriver(),
+      recognition,
+    );
+    const entries: Parameters<Parameters<FlowRuntimeService["subscribeLogs"]>[0]>[0][] =
+      [];
+    service.subscribeLogs((entry) => entries.push(entry));
+
+    service.start(RUN_INPUT);
+    await waitForTerminal(service);
+
+    assert.ok(entries.some((entry) => entry.message === "Flow run started"));
+    assert.ok(entries.some((entry) => entry.message === "Flow run completed"));
+    assert.ok(
+      entries.some(
+        (entry) =>
+          entry.nodeId === "set" &&
+          entry.message === "Set answer = 42" &&
+          entry.data !== null &&
+          (entry.data as { value: number }).value === 42,
+      ),
+    );
+    assert.ok(
+      entries.some(
+        (entry) =>
+          entry.nodeId === "click" &&
+          entry.level === "debug" &&
+          entry.message === "Entering click node",
+      ),
+    );
   });
 });

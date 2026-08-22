@@ -36,6 +36,9 @@ import type {
 import type {
   FlowRunDto,
   FlowRunListener,
+  FlowRunLogListener,
+  ResumeFlowRunInput,
+  ResumeFlowRunResult,
   StartFlowRunInput,
   StartFlowRunResult,
   StopFlowRunInput,
@@ -75,7 +78,9 @@ export const ELECTRON_CHANNELS = {
   runsGet: "runs:get",
   runsStart: "runs:start",
   runsStop: "runs:stop",
+  runsResume: "runs:resume",
   runsEvent: "runs:event",
+  runsLogEvent: "runs:log-event",
   windowMinimize: "window:minimize",
   windowToggleMaximize: "window:toggle-maximize",
   windowClose: "window:close",
@@ -158,7 +163,9 @@ export interface ElectronAPI {
   getFlowRun(): Promise<FlowRunDto | null>;
   startFlowRun(input: StartFlowRunInput): Promise<StartFlowRunResult>;
   stopFlowRun(input: StopFlowRunInput): Promise<StopFlowRunResult>;
+  resumeFlowRun(input: ResumeFlowRunInput): Promise<ResumeFlowRunResult>;
   onFlowRun(listener: FlowRunListener): () => void;
+  onFlowRunLog(listener: FlowRunLogListener): () => void;
 
   windowMinimize(): Promise<void>;
   windowToggleMaximize(): Promise<void>;

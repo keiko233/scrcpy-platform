@@ -72,6 +72,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.runsStart, input),
   stopFlowRun: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.runsStop, input),
+  resumeFlowRun: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.runsResume, input),
   onFlowRun: (listener) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -79,6 +81,15 @@ const api: ElectronAPI = {
     ) => listener(run);
     ipcRenderer.on(ELECTRON_CHANNELS.runsEvent, handler);
     return () => ipcRenderer.removeListener(ELECTRON_CHANNELS.runsEvent, handler);
+  },
+  onFlowRunLog: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      entry: Parameters<typeof listener>[0],
+    ) => listener(entry);
+    ipcRenderer.on(ELECTRON_CHANNELS.runsLogEvent, handler);
+    return () =>
+      ipcRenderer.removeListener(ELECTRON_CHANNELS.runsLogEvent, handler);
   },
 
   windowMinimize: () => ipcRenderer.invoke(ELECTRON_CHANNELS.windowMinimize),

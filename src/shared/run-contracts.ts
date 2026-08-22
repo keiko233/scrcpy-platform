@@ -9,6 +9,7 @@ export const StartFlowRunInputSchema = z
     deviceId: z.string().min(1),
     sessionId: z.string().min(1),
     displayId: z.number().int().nonnegative(),
+    breakpoints: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
@@ -16,11 +17,21 @@ export const StopFlowRunInputSchema = z
   .object({ runId: z.string().min(1) })
   .strict();
 
+export const ResumeFlowRunInputSchema = z
+  .object({
+    runId: z.string().min(1),
+    action: z.enum(["continue", "step"]),
+  })
+  .strict();
+
 export type StartFlowRunInput = z.infer<typeof StartFlowRunInputSchema>;
 export type StopFlowRunInput = z.infer<typeof StopFlowRunInputSchema>;
+export type ResumeFlowRunInput = z.infer<typeof ResumeFlowRunInputSchema>;
+export type ResumeAction = ResumeFlowRunInput["action"];
 
 export const FlowRunStateSchema = z.enum([
   "running",
+  "paused",
   "completed",
   "failed",
   "cancelled",
@@ -68,6 +79,25 @@ export type FlowRunStepState = z.infer<typeof FlowRunStepStateSchema>;
 export type FlowRunStepDto = z.infer<typeof FlowRunStepDtoSchema>;
 export type FlowRunDto = z.infer<typeof FlowRunDtoSchema>;
 
+export const FlowRunLogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+
+export const FlowRunLogEntryDtoSchema = z
+  .object({
+    id: z.number().int().positive(),
+    runId: z.string().min(1),
+    nodeId: z.string().min(1).nullable(),
+    level: FlowRunLogLevelSchema,
+    message: z.string(),
+    data: JsonValueSchema.nullable(),
+    createdAt: z.string().datetime(),
+  })
+  .strict();
+
+export type FlowRunLogLevel = z.infer<typeof FlowRunLogLevelSchema>;
+export type FlowRunLogEntryDto = z.infer<typeof FlowRunLogEntryDtoSchema>;
+
+export type FlowRunLogListener = (entry: FlowRunLogEntryDto) => void;
+
 export type StartFlowRunFailure =
   | "script-not-found"
   | "device-not-connected"
@@ -87,5 +117,11 @@ export type StartFlowRunResult =
 export type StopFlowRunResult =
   | { status: "ok"; run: FlowRunDto }
   | { status: "error"; error: "run-not-found" };
+
+export type ResumeFlowRunFailure = "run-not-found" | "run-not-paused";
+
+export type ResumeFlowRunResult =
+  | { status: "ok"; run: FlowRunDto }
+  | { status: "error"; error: ResumeFlowRunFailure };
 
 export type FlowRunListener = (run: FlowRunDto) => void;
