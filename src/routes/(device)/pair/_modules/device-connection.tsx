@@ -35,7 +35,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
-import type { DeviceManager } from "./use-devices";
+import type { DeviceManager } from "@/features/workbench/device/use-devices";
 
 const SCRCPY_SETTINGS_STORAGE_KEY = "android-platform:scrcpy-settings";
 

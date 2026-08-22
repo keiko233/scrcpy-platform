@@ -2,7 +2,7 @@ import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
 import { Titlebar } from "@/features/shell/titlebar";
 
-import { getDeviceSessionState } from "../device-session-state";
+import { getDeviceSessionState } from "@/stores/device-session-state";
 
 export const Route = createFileRoute("/(device)")({
   component: () => (

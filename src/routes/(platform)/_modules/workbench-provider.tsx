@@ -1,17 +1,16 @@
 import { useCallback, useState, type ReactNode } from "react";
 
 import type { RevisionDto, ScreenRegion } from "@/shared/project-contracts";
-
-import { useDevices } from "./device/use-devices";
-import { FlowApiContext } from "./flow/flow-api-context";
-import { useFlowEditor } from "./flow/use-flow-editor";
-import { useScriptLibrary } from "./library/use-script-library";
-import { useScreens } from "./screen/use-screens";
-import { useFlowRun } from "./run/use-flow-run";
+import { useDevices } from "@/features/workbench/device/use-devices";
+import { FlowApiContext } from "@/features/workbench/flow/flow-api-context";
+import { useFlowEditor } from "@/features/workbench/flow/use-flow-editor";
+import { useScriptLibrary } from "@/features/workbench/library/use-script-library";
+import { useScreens } from "@/features/workbench/screen/use-screens";
+import { useFlowRun } from "@/features/workbench/run/use-flow-run";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
-} from "./use-workbench";
+} from "@/features/workbench/use-workbench";
 
 export function WorkbenchProvider({
   children,

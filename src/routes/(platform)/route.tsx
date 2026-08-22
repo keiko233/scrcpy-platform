@@ -1,12 +1,12 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
-import { DeviceStatus } from "@/features/shell/device-status";
-import { DisplayTabs } from "@/features/shell/display-tabs";
 import { Titlebar } from "@/features/shell/titlebar";
-import { WorkspaceActions } from "@/features/shell/workspace-actions";
-import { WorkbenchProvider } from "@/features/workbench/workbench-context";
+import { getDeviceSessionState } from "@/stores/device-session-state";
 
-import { getDeviceSessionState } from "../device-session-state";
+import { DeviceStatus } from "./_modules/device-status";
+import { DisplayTabs } from "./_modules/display-tabs";
+import { WorkspaceActions } from "./_modules/workspace-actions";
+import { WorkbenchProvider } from "./_modules/workbench-provider";
 
 export const Route = createFileRoute("/(platform)")({
   component: () => (

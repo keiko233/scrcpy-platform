@@ -1,8 +1,8 @@
 import { Group, Panel, Separator } from "react-resizable-panels";
 
-import { DeviceMonitor } from "./monitor/device-monitor";
-import { FlowEditorPanel } from "./editor/flow-editor";
-import { ScriptBrowser } from "./library/script-browser";
+import { DeviceMonitor } from "@/features/workbench/monitor/device-monitor";
+import { FlowEditorPanel } from "@/features/workbench/editor/flow-editor";
+import { ScriptBrowser } from "@/features/workbench/library/script-browser";
 
 export function WorkbenchScreen() {
   return (

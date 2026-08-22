@@ -1,6 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { getDeviceSessionState } from "./device-session-state";
+import { getDeviceSessionState } from "@/stores/device-session-state";
 
 export const Route = createFileRoute("/")({
   beforeLoad: async () => {

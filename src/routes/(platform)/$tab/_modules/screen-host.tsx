@@ -1,11 +1,11 @@
 import type { ComponentType } from "react";
 
-import { DebugScreen } from "@/features/workbench/debug/debug-tab";
-import { WorkbenchScreen } from "@/features/workbench/workbench-screen";
-import { SettingsScreen } from "@/features/settings/settings-screen";
+import { WORKSPACES, type TabId } from "@/features/shell/tabs";
+import { useActiveTabId } from "@/features/shell/use-active-tab";
 
-import { WORKSPACES, type TabId } from "./tabs";
-import { useActiveTabId } from "./use-active-tab";
+import { DebugScreen } from "./debug-screen";
+import { SettingsScreen } from "./settings-screen";
+import { WorkbenchScreen } from "./workbench-screen";
 
 const SCREENS: Record<TabId, ComponentType> = {
   workbench: WorkbenchScreen,

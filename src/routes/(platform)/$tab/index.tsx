@@ -1,7 +1,8 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 
-import { ScreenHost } from "@/features/shell/screen-host";
 import { isTabId } from "@/features/shell/tabs";
+
+import { ScreenHost } from "./_modules/screen-host";
 
 export const Route = createFileRoute("/(platform)/$tab/")({
   component: ScreenHost,

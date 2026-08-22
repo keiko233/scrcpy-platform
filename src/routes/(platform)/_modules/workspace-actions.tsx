@@ -1,9 +1,8 @@
 import { Link } from "@tanstack/react-router";
 
 import { cn } from "@/lib/utils";
-
-import { WORKSPACES } from "./tabs";
-import { useActiveTabId } from "./use-active-tab";
+import { WORKSPACES } from "@/features/shell/tabs";
+import { useActiveTabId } from "@/features/shell/use-active-tab";
 
 export function WorkspaceActions() {
   const activeId = useActiveTabId();

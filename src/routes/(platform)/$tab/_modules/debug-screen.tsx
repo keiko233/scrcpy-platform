@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LogEntry, LogLevel } from "@/shared/electron-api";
-import { LogMessage } from "./log-message";
+import { LogMessage } from "@/features/workbench/debug/log-message";
 
 export function DebugScreen() {
   const [logs, setLogs] = useState<LogEntry[]>([]);

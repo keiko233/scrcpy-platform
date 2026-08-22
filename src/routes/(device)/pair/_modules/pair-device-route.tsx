@@ -2,8 +2,9 @@ import { useNavigate } from "@tanstack/react-router";
 import { InfoIcon } from "lucide-react";
 import { useEffect } from "react";
 
+import { useDevices } from "@/features/workbench/device/use-devices";
+
 import { DeviceConnectionPanel } from "./device-connection";
-import { useDevices } from "./use-devices";
 
 export function PairDeviceRoute() {
   const devices = useDevices();

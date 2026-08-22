@@ -72,7 +72,7 @@ export function NodeConfigPopover({
         <Settings2Icon />
       </PopoverTrigger>
 
-      <PopoverPopup align="start" side="right" sideOffset={8} className="w-72">
+      <PopoverPopup align="start" side="right" sideOffset={8}>
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
             {Icon && <Icon className="size-4 shrink-0 text-muted-foreground" />}
