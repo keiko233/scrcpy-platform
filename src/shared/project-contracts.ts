@@ -31,6 +31,7 @@ export const FLOW_NODE_KINDS = [
   "launch-app",
   "set-variable",
   "calculate",
+  "convert",
   "if",
   "merge",
   "for",
@@ -51,6 +52,7 @@ export const FLOW_NODE_PORTS = {
   "launch-app": { inputs: ["in"], outputs: ["next"] },
   "set-variable": { inputs: ["in"], outputs: ["next"] },
   calculate: { inputs: ["in"], outputs: ["next"] },
+  convert: { inputs: ["in"], outputs: ["next"] },
   if: { inputs: ["in"], outputs: ["true", "false"] },
   merge: { inputs: ["a", "b"], outputs: ["next"] },
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
@@ -162,6 +164,10 @@ export const FLOW_NODE_DATA_PORTS = {
   calculate: {
     inputs: [dataPort("values", "Values", "any")],
     outputs: [outputPort("value", "Value", "number")],
+  },
+  convert: {
+    inputs: [dataPort("value", "Value", "any")],
+    outputs: [outputPort("value", "Value", "any")],
   },
   if: {
     inputs: [dataPort("condition", "Condition", "boolean")],

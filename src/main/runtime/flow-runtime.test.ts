@@ -489,6 +489,46 @@ describe("FlowRuntimeService", () => {
     assert.equal(completed.variables.result, 96);
   });
 
+  test("converts a connected OCR text value before calculating", async () => {
+    const recognition = new FakeRecognition();
+    recognition.assignments = {
+      ocrText: "96",
+      ocrConfidence: 96,
+      ocrMatched: true,
+    };
+    recognition.outputs = {
+      text: "96",
+      confidence: 96,
+      matched: true,
+    };
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("ocr", "ocr"),
+        node("convert", "convert", { toType: "number" }),
+        node("calc", "calculate", { operation: "max", values: "", variable: "result" }),
+        node("assert", "assert", { condition: "$result == 96" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "ocr", "next", "in"],
+        ["e2", "ocr", "convert", "next", "in"],
+        ["data-1", "ocr", "convert", "text", "value"],
+        ["e3", "convert", "calc", "next", "in"],
+        ["data-2", "convert", "calc", "value", "values"],
+        ["e4", "calc", "assert", "next", "in"],
+        ["e5", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.result, 96);
+  });
+
   test("overrides action fields with connected typed input values", async () => {
     const document = linearDocument([
       node("source", "set-variable", { name: "coordinate", expression: "17" }),

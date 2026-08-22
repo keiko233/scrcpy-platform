@@ -1,9 +1,11 @@
 import { compileFlow } from "../../shared/flow-graph";
 import {
   aggregateValues,
+  castValue,
   evaluateExpression,
   expressionTruthy,
   type AggregateOperation,
+  type CastTarget,
 } from "../../shared/expression";
 import {
   FLOW_NODE_DATA_PORTS,
@@ -219,6 +221,26 @@ function calculateValues(
     .map((part) => part.trim())
     .filter((part) => part.length > 0)
     .map((part) => evaluateExpression(part, variables));
+}
+
+const CAST_TARGETS: readonly CastTarget[] = [
+  "number",
+  "int",
+  "string",
+  "boolean",
+];
+
+function convertNodeValue(node: FlowNode): JsonValue {
+  const toType = requiredString(node, "toType", { trim: true });
+  if (!CAST_TARGETS.includes(toType as CastTarget)) {
+    throw new Error(
+      `Convert node "${node.id}" has unsupported target "${toType}".`,
+    );
+  }
+  if (node.data.value === undefined) {
+    throw new Error(`Convert node "${node.id}" requires a connected value.`);
+  }
+  return castValue(toType as CastTarget, node.data.value);
 }
 
 function finiteNonnegative(value: unknown, nodeId: string, field: string): number {
@@ -877,6 +899,14 @@ export class FlowRuntimeService {
           operation,
           value: result,
           count: values.length,
+        });
+        return executionResult("next", { value: result });
+      }
+      case "convert": {
+        const result = convertNodeValue(node);
+        this.#emitLog(node.id, "info", `Converted value to ${node.data.toType}`, {
+          toType: node.data.toType,
+          value: result,
         });
         return executionResult("next", { value: result });
       }

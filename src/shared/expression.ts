@@ -502,6 +502,21 @@ function coerceString(name: string, value: JsonValue): string {
   throw functionError(name, "cannot convert the given value to a string");
 }
 
+export type CastTarget = "number" | "int" | "string" | "boolean";
+
+export function castValue(target: CastTarget, value: JsonValue): JsonValue {
+  switch (target) {
+    case "number":
+      return coerceNumber("number", value);
+    case "int":
+      return Math.trunc(coerceNumber("int", value));
+    case "string":
+      return coerceString("string", value);
+    case "boolean":
+      return expressionTruthy(value);
+  }
+}
+
 export function aggregateValues(
   operation: AggregateOperation,
   values: JsonValue[],
@@ -549,17 +564,11 @@ function evaluateCall(name: string, args: JsonValue[]): JsonValue {
       requireArguments(name, args, 1);
       return Math.ceil(numericArgument(name, args[0]));
     case "number":
-      requireArguments(name, args, 1);
-      return coerceNumber(name, args[0]);
     case "int":
-      requireArguments(name, args, 1);
-      return Math.trunc(coerceNumber(name, args[0]));
     case "string":
-      requireArguments(name, args, 1);
-      return coerceString(name, args[0]);
     case "boolean":
       requireArguments(name, args, 1);
-      return expressionTruthy(args[0]);
+      return castValue(name, args[0]);
     case "len": {
       requireArguments(name, args, 1);
       const value = args[0];

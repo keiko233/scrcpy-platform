@@ -1,4 +1,5 @@
 import {
+  ArrowRightLeftIcon,
   ClockIcon,
   CombineIcon,
   FlagIcon,
@@ -580,6 +581,29 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.calculate.inputs,
     outputPorts: FLOW_NODE_PORTS.calculate.outputs,
   },
+  convert: {
+    kind: "convert",
+    label: "Convert",
+    description: "Cast a connected value to number, integer, string, or boolean.",
+    icon: ArrowRightLeftIcon,
+    defaults: { kind: "convert", toType: "number" },
+    summarize: (data) => `to ${text(data.toType)}`,
+    fields: [
+      {
+        name: "toType",
+        label: "Convert to",
+        kind: "select",
+        options: [
+          { value: "number", label: "Number" },
+          { value: "int", label: "Integer" },
+          { value: "string", label: "String" },
+          { value: "boolean", label: "Boolean" },
+        ],
+      },
+    ],
+    inputPorts: FLOW_NODE_PORTS.convert.inputs,
+    outputPorts: FLOW_NODE_PORTS.convert.outputs,
+  },
   if: {
     kind: "if",
     get label() {
@@ -841,6 +865,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "launch-app",
   "set-variable",
   "calculate",
+  "convert",
   "if",
   "merge",
   "for",
