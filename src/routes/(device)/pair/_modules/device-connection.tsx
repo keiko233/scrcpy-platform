@@ -64,8 +64,7 @@ function ScrcpySettingsDialog() {
   const [open, setOpen] = useState(false);
   const [savedSettings, setSavedSettings] = useSafeLocalStorage(
     SCRCPY_SETTINGS_STORAGE_KEY,
-    ScrcpySettingsSchema.nullable(),
-    null,
+    ScrcpySettingsSchema.nullable().default(null),
   );
   const [settings, setSettings] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
   const [draft, setDraft] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
