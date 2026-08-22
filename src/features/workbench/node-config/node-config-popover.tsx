@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  CrosshairIcon,
   ScanLineIcon,
   Settings2Icon,
   XIcon,
@@ -28,7 +29,8 @@ export function NodeConfigPopover({
   nodeId: string;
   data: WorkbenchNodeData;
 }) {
-  const { flow, screens, screenRegionSelection } = useWorkbench();
+  const { flow, screens, screenRegionSelection, screenPointSelection } =
+    useWorkbench();
   const [open, setOpen] = useState(false);
 
   const definition = BLOCK_DEFINITIONS[data.kind];
@@ -51,7 +53,8 @@ export function NodeConfigPopover({
   );
   const Icon = definition?.icon;
   const selectingScreenRegion = screenRegionSelection.nodeId === nodeId;
-  const canSelectScreenRegion =
+  const selectingScreenPoint = screenPointSelection.nodeId === nodeId;
+  const canSelectOnScreen =
     screens.screen?.streamId !== null &&
     screens.screen?.streamId !== undefined;
 
@@ -116,11 +119,12 @@ export function NodeConfigPopover({
               <Button
                 size="sm"
                 variant={selectingScreenRegion ? "secondary" : "outline"}
-                disabled={!canSelectScreenRegion && !selectingScreenRegion}
+                disabled={!canSelectOnScreen && !selectingScreenRegion}
                 onClick={() => {
                   if (selectingScreenRegion) {
                     screenRegionSelection.cancel();
                   } else {
+                    setOpen(false);
                     screenRegionSelection.start(nodeId);
                   }
                 }}
@@ -128,9 +132,38 @@ export function NodeConfigPopover({
                 {selectingScreenRegion ? <XIcon /> : <ScanLineIcon />}
                 {selectingScreenRegion ? "Cancel selection" : "Select on screen"}
               </Button>
-              {!canSelectScreenRegion && (
+              {!canSelectOnScreen && (
                 <p className="text-[10px] text-muted-foreground">
                   Start a display stream before selecting a region.
+                </p>
+              )}
+            </Section>
+          )}
+
+          {data.kind === "click" && (
+            <Section
+              title="Screen selection"
+              description="Click the live display to set the tap position."
+            >
+              <Button
+                size="sm"
+                variant={selectingScreenPoint ? "secondary" : "outline"}
+                disabled={!canSelectOnScreen && !selectingScreenPoint}
+                onClick={() => {
+                  if (selectingScreenPoint) {
+                    screenPointSelection.cancel();
+                  } else {
+                    setOpen(false);
+                    screenPointSelection.start(nodeId);
+                  }
+                }}
+              >
+                {selectingScreenPoint ? <XIcon /> : <CrosshairIcon />}
+                {selectingScreenPoint ? "Cancel selection" : "Select point"}
+              </Button>
+              {!canSelectOnScreen && (
+                <p className="text-[10px] text-muted-foreground">
+                  Start a display stream before selecting a point.
                 </p>
               )}
             </Section>

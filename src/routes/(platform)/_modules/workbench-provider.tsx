@@ -7,6 +7,7 @@ import { useFlowEditor } from "@/features/workbench/flow/use-flow-editor";
 import { useScriptLibrary } from "@/features/workbench/library/use-script-library";
 import { useScreens } from "@/features/workbench/screen/use-screens";
 import { useFlowRun } from "@/features/workbench/run/use-flow-run";
+import type { ScreenPoint } from "@/features/workbench/monitor/screen-region-selection";
 import {
   WorkbenchContext,
   type WorkbenchContextValue,
@@ -23,6 +24,9 @@ export function WorkbenchProvider({
   const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
   const runs = useFlowRun();
   const [screenRegionNodeId, setScreenRegionNodeId] = useState<string | null>(
+    null,
+  );
+  const [screenPointNodeId, setScreenPointNodeId] = useState<string | null>(
     null,
   );
 
@@ -42,8 +46,16 @@ export function WorkbenchProvider({
     )
       ? screenRegionNodeId
       : null;
+  const activeScreenPointNodeId =
+    screenPointNodeId !== null &&
+    flow.nodes.some(
+      (node) => node.id === screenPointNodeId && node.data.kind === "click",
+    )
+      ? screenPointNodeId
+      : null;
 
   const startScreenRegionSelection = useCallback((nodeId: string) => {
+    setScreenPointNodeId(null);
     setScreenRegionNodeId(nodeId);
   }, []);
 
@@ -60,6 +72,26 @@ export function WorkbenchProvider({
       setScreenRegionNodeId(null);
     },
     [activeScreenRegionNodeId, updateNodeData],
+  );
+
+  const startScreenPointSelection = useCallback((nodeId: string) => {
+    setScreenRegionNodeId(null);
+    setScreenPointNodeId(nodeId);
+  }, []);
+
+  const cancelScreenPointSelection = useCallback(() => {
+    setScreenPointNodeId(null);
+  }, []);
+
+  const completeScreenPointSelection = useCallback(
+    (point: ScreenPoint) => {
+      if (activeScreenPointNodeId === null) {
+        return;
+      }
+      updateNodeData(activeScreenPointNodeId, point);
+      setScreenPointNodeId(null);
+    },
+    [activeScreenPointNodeId, updateNodeData],
   );
 
   const selectProjectSafe = useCallback(
@@ -131,6 +163,12 @@ export function WorkbenchProvider({
       start: startScreenRegionSelection,
       cancel: cancelScreenRegionSelection,
       complete: completeScreenRegionSelection,
+    },
+    screenPointSelection: {
+      nodeId: activeScreenPointNodeId,
+      start: startScreenPointSelection,
+      cancel: cancelScreenPointSelection,
+      complete: completeScreenPointSelection,
     },
     selectProjectSafe,
     selectScriptSafe,

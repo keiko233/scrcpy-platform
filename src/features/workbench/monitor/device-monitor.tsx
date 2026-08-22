@@ -23,6 +23,7 @@ import type { DeviceButton, TouchAction } from "@/shared/screen-contracts";
 import { useScreenVideo } from "../screen/use-screen-video";
 import { useWorkbench } from "../use-workbench";
 import {
+  screenPointFromNormalized,
   screenRegionFromDrag,
   type NormalizedScreenPoint,
 } from "./screen-region-selection";
@@ -53,12 +54,18 @@ interface ScreenRegionSelectionDraft {
 }
 
 export function DeviceMonitor() {
-  const { devices, screens, screenRegionSelection } = useWorkbench();
+  const { devices, screens, screenRegionSelection, screenPointSelection } =
+    useWorkbench();
   const {
     nodeId: screenRegionNodeId,
     cancel: cancelScreenRegionSelection,
     complete: completeScreenRegionSelection,
   } = screenRegionSelection;
+  const {
+    nodeId: screenPointNodeId,
+    cancel: cancelScreenPointSelection,
+    complete: completeScreenPointSelection,
+  } = screenPointSelection;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const moveFrameRef = useRef<number | null>(null);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
@@ -119,11 +126,17 @@ export function DeviceMonitor() {
       });
       return;
     }
+    if (screenPointNodeId !== null) {
+      return;
+    }
     sendTouch("down", position);
   };
 
   const pointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      return;
+    }
+    if (screenPointNodeId !== null) {
       return;
     }
     if (selectionDraftRef.current !== null) {
@@ -183,11 +196,25 @@ export function DeviceMonitor() {
       );
       return;
     }
+    if (screenPointNodeId !== null) {
+      if (action === "cancel") {
+        cancelScreenPointSelection();
+        return;
+      }
+      completeScreenPointSelection(
+        screenPointFromNormalized(
+          end,
+          event.currentTarget.width,
+          event.currentTarget.height,
+        ),
+      );
+      return;
+    }
     sendTouch(action, end);
   };
 
   useEffect(() => {
-    if (screenRegionNodeId === null) {
+    if (screenRegionNodeId === null && screenPointNodeId === null) {
       return;
     }
     pendingMoveRef.current = null;
@@ -199,11 +226,18 @@ export function DeviceMonitor() {
       if (event.key === "Escape") {
         updateSelectionDraft(null);
         cancelScreenRegionSelection();
+        cancelScreenPointSelection();
       }
     };
     window.addEventListener("keydown", cancelOnEscape);
     return () => window.removeEventListener("keydown", cancelOnEscape);
-  }, [cancelScreenRegionSelection, screenRegionNodeId, updateSelectionDraft]);
+  }, [
+    cancelScreenPointSelection,
+    cancelScreenRegionSelection,
+    screenPointNodeId,
+    screenRegionNodeId,
+    updateSelectionDraft,
+  ]);
 
   useEffect(
     () => () => {
@@ -248,7 +282,8 @@ export function DeviceMonitor() {
             aria-label="Live Android display"
             className={cn(
               "h-auto max-h-full w-auto max-w-full touch-none bg-black",
-              screenRegionNodeId !== null && "cursor-crosshair",
+              (screenRegionNodeId !== null || screenPointNodeId !== null) &&
+                "cursor-crosshair",
             )}
             onPointerCancel={(event) => pointerEnd("cancel", event)}
             onPointerDown={pointerDown}
@@ -260,6 +295,12 @@ export function DeviceMonitor() {
           {screenRegionNodeId !== null && video.connected && (
             <div className="pointer-events-none absolute top-2 z-20 rounded-md border border-amber-400/60 bg-black/75 px-2 py-1 text-[11px] text-white shadow-sm">
               Drag over the screen to select a region · Esc to cancel
+            </div>
+          )}
+
+          {screenPointNodeId !== null && video.connected && (
+            <div className="pointer-events-none absolute top-2 z-20 rounded-md border border-sky-400/60 bg-black/75 px-2 py-1 text-[11px] text-white shadow-sm">
+              Click the screen to select a point · Esc to cancel
             </div>
           )}
 

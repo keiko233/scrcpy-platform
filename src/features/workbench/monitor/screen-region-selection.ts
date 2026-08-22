@@ -5,6 +5,11 @@ export interface NormalizedScreenPoint {
   y: number;
 }
 
+export type ScreenPoint = {
+  x: number;
+  y: number;
+};
+
 function axisRange(
   start: number,
   end: number,
@@ -37,5 +42,21 @@ export function screenRegionFromDrag(
     y: vertical.offset,
     width: horizontal.length,
     height: vertical.length,
+  };
+}
+
+export function screenPointFromNormalized(
+  point: NormalizedScreenPoint,
+  frameWidth: number,
+  frameHeight: number,
+): ScreenPoint {
+  const boundedWidth = Math.max(1, Math.round(frameWidth));
+  const boundedHeight = Math.max(1, Math.round(frameHeight));
+  return {
+    x: Math.min(boundedWidth - 1, Math.max(0, Math.round(point.x * boundedWidth))),
+    y: Math.min(
+      boundedHeight - 1,
+      Math.max(0, Math.round(point.y * boundedHeight)),
+    ),
   };
 }
