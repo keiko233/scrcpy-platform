@@ -39,6 +39,7 @@ describe("workbench block definitions", () => {
   it("does not expose OCR configuration as connectable data inputs", () => {
     const configPorts = [
       "languages",
+      "charSet",
       "matchMode",
       "caseSensitive",
       "timeoutMs",

@@ -20,6 +20,7 @@ export interface OcrEngine {
     png: Uint8Array,
     languages: readonly OcrLanguage[],
     rectangle: OcrRectangle,
+    whitelist: string,
     signal: AbortSignal,
   ): Promise<OcrEngineResult>;
   dispose(): Promise<void>;
@@ -61,6 +62,9 @@ const OcrNodeDataSchema = z
     languages: z
       .enum(["eng", "chi_sim", "eng+chi_sim"])
       .default("eng+chi_sim"),
+    charSet: z
+      .enum(["any", "digits", "number", "letters", "alphanumeric"])
+      .default("any"),
     x: z.number().finite().nonnegative().default(0),
     y: z.number().finite().nonnegative().default(0),
     width: z.number().finite().positive().optional(),
@@ -179,6 +183,23 @@ function matchesText(
 
 function languagesOf(value: "eng" | "chi_sim" | "eng+chi_sim"): OcrLanguage[] {
   return value === "eng+chi_sim" ? ["eng", "chi_sim"] : [value];
+}
+
+function charWhitelistOf(
+  value: "any" | "digits" | "number" | "letters" | "alphanumeric",
+): string {
+  switch (value) {
+    case "any":
+      return "";
+    case "digits":
+      return "0123456789";
+    case "number":
+      return "0123456789.,-";
+    case "letters":
+      return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    case "alphanumeric":
+      return "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  }
 }
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -307,6 +328,7 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
             png,
             languagesOf(data.languages),
             rectangle,
+            charWhitelistOf(data.charSet),
             attemptController.signal,
           ),
           attemptController.signal,

@@ -212,6 +212,7 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       width: 500,
       height: 200,
       languages: "eng+chi_sim",
+      charSet: "any",
       expectedText: "",
       matchMode: "contains",
       caseSensitive: false,
@@ -286,6 +287,47 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
                 value: "chi_sim",
                 get label() {
                   return m.block_field_ocr_languages_option_chi_sim();
+                },
+              },
+            ];
+          },
+        },
+        {
+          name: "charSet",
+          get label() {
+            return m.block_field_ocr_char_set_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              {
+                value: "any",
+                get label() {
+                  return m.block_field_ocr_char_set_option_any();
+                },
+              },
+              {
+                value: "digits",
+                get label() {
+                  return m.block_field_ocr_char_set_option_digits();
+                },
+              },
+              {
+                value: "number",
+                get label() {
+                  return m.block_field_ocr_char_set_option_number();
+                },
+              },
+              {
+                value: "letters",
+                get label() {
+                  return m.block_field_ocr_char_set_option_letters();
+                },
+              },
+              {
+                value: "alphanumeric",
+                get label() {
+                  return m.block_field_ocr_char_set_option_alphanumeric();
                 },
               },
             ];
@@ -583,24 +625,54 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
   },
   convert: {
     kind: "convert",
-    label: "Convert",
-    description: "Cast a connected value to number, integer, string, or boolean.",
+    get label() {
+      return m.block_convert_label();
+    },
+    get description() {
+      return m.block_convert_description();
+    },
     icon: ArrowRightLeftIcon,
     defaults: { kind: "convert", toType: "number" },
-    summarize: (data) => `to ${text(data.toType)}`,
-    fields: [
-      {
-        name: "toType",
-        label: "Convert to",
-        kind: "select",
-        options: [
-          { value: "number", label: "Number" },
-          { value: "int", label: "Integer" },
-          { value: "string", label: "String" },
-          { value: "boolean", label: "Boolean" },
-        ],
-      },
-    ],
+    summarize: (data) => m.block_convert_summarize({ target: text(data.toType) }),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "toType",
+          get label() {
+            return m.block_field_convert_to_type_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              {
+                value: "number",
+                get label() {
+                  return m.block_field_convert_to_type_option_number();
+                },
+              },
+              {
+                value: "int",
+                get label() {
+                  return m.block_field_convert_to_type_option_int();
+                },
+              },
+              {
+                value: "string",
+                get label() {
+                  return m.block_field_convert_to_type_option_string();
+                },
+              },
+              {
+                value: "boolean",
+                get label() {
+                  return m.block_field_convert_to_type_option_boolean();
+                },
+              },
+            ];
+          },
+        },
+      ];
+    },
     inputPorts: FLOW_NODE_PORTS.convert.inputs,
     outputPorts: FLOW_NODE_PORTS.convert.outputs,
   },

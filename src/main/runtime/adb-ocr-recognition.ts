@@ -126,10 +126,13 @@ export class TesseractOcrEngine implements OcrEngine {
     png: Uint8Array,
     languages: readonly OcrLanguage[],
     rectangle: OcrRectangle,
+    whitelist: string,
     signal: AbortSignal,
   ): Promise<OcrEngineResult> {
     abortIfNeeded(signal);
     const worker = await this.#getWorker(languages);
+    abortIfNeeded(signal);
+    await worker.setParameters({ tessedit_char_whitelist: whitelist });
     abortIfNeeded(signal);
     const result = await worker.recognize(Buffer.from(png), { rectangle });
     abortIfNeeded(signal);

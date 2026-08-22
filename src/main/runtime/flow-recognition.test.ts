@@ -51,6 +51,7 @@ class FakeEngine implements OcrEngine {
   readonly calls: Array<{
     languages: readonly OcrLanguage[];
     rectangle: OcrRectangle;
+    whitelist: string;
   }> = [];
   results: OcrEngineResult[] = [{ text: "Ready", confidence: 96 }];
   disposed = false;
@@ -59,8 +60,9 @@ class FakeEngine implements OcrEngine {
     _png: Uint8Array,
     languages: readonly OcrLanguage[],
     rectangle: OcrRectangle,
+    whitelist: string,
   ): Promise<OcrEngineResult> {
-    this.calls.push({ languages, rectangle });
+    this.calls.push({ languages, rectangle, whitelist });
     return this.results[Math.min(this.calls.length - 1, this.results.length - 1)];
   }
 
@@ -106,10 +108,31 @@ describe("OcrRecognitionDriver", () => {
       {
         languages: ["eng", "chi_sim"],
         rectangle: { left: 10, top: 20, width: 300, height: 80 },
+        whitelist: "",
       },
     ]);
     await driver.dispose();
     assert.equal(engine.disposed, true);
+  });
+
+  test("restricts recognition to the configured character set", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    await driver.recognize(
+      ocrNode({ charSet: "digits" }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+    assert.equal(engine.calls[0]?.whitelist, "0123456789");
+
+    await driver.recognize(
+      ocrNode({ charSet: "number" }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+    assert.equal(engine.calls[1]?.whitelist, "0123456789.,-");
   });
 
   test("retries until text matches", async () => {
