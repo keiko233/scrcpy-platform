@@ -197,11 +197,13 @@ function connectionPorts(
     source.data.kind,
     "output",
     connection.sourceHandle ?? undefined,
+    source.data,
   );
   const targetPort = resolveFlowPort(
     target.data.kind,
     "input",
     connection.targetHandle ?? undefined,
+    target.data,
   );
   if (
     sourcePort === null ||

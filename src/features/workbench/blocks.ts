@@ -22,6 +22,7 @@ import { m } from "@/paraglide/messages.js";
 import {
   FLOW_NODE_KINDS,
   FLOW_NODE_PORTS,
+  flowDynamicPortId,
 } from "../../shared/project-contracts";
 import type { JsonValue } from "../../shared/project-contracts";
 
@@ -34,6 +35,18 @@ import type {
 
 function text(value: JsonValue | undefined): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function calculateInputSummary(data: WorkbenchNodeData): string {
+  const count =
+    typeof data.inputCount === "number" && Number.isInteger(data.inputCount)
+      ? Math.max(1, data.inputCount)
+      : 2;
+  const shown = Math.min(count, 6);
+  const ids = Array.from({ length: shown }, (_, index) =>
+    flowDynamicPortId(index),
+  );
+  return count > shown ? `${ids.join(", ")}, …` : ids.join(", ");
 }
 
 export interface BlockDefinition {
@@ -552,9 +565,20 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_calculate_description();
     },
     icon: SigmaIcon,
-    defaults: { kind: "calculate", operation: "max", values: "", variable: "result" },
-    summarize: (data) =>
-      `${text(data.variable) || m.block_summarize_unset()} = ${text(data.operation)}(${text(data.values)})`,
+    defaults: {
+      kind: "calculate",
+      operation: "max",
+      inputCount: 2,
+      variable: "result",
+      expression: "a + b",
+    },
+    summarize: (data) => {
+      const name = text(data.variable) || m.block_summarize_unset();
+      if (data.operation === "expression") {
+        return `${name} = ${text(data.expression) || m.block_summarize_unset()}`;
+      }
+      return `${name} = ${text(data.operation)}(${calculateInputSummary(data)})`;
+    },
     get fields(): FieldDefinition[] {
       return [
         {
@@ -595,18 +619,25 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
                   return m.block_field_calculate_operation_option_count();
                 },
               },
+              {
+                value: "expression",
+                get label() {
+                  return m.block_field_calculate_operation_option_expression();
+                },
+              },
             ];
           },
         },
         {
-          name: "values",
+          name: "expression",
           get label() {
-            return m.block_field_calculate_values_label();
+            return m.block_field_calculate_expression_label();
           },
           kind: "textarea",
           get placeholder() {
-            return m.block_field_calculate_values_placeholder();
+            return m.block_field_calculate_expression_placeholder();
           },
+          visible: (data) => data.operation === "expression",
         },
         {
           name: "variable",
@@ -713,7 +744,7 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_merge_description();
     },
     icon: CombineIcon,
-    defaults: { kind: "merge" },
+    defaults: { kind: "merge", inputCount: 2 },
     summarize: () => m.block_merge_summarize(),
     get fields(): FieldDefinition[] {
       return [];

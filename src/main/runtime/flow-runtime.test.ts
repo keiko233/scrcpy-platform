@@ -418,39 +418,59 @@ describe("FlowRuntimeService", () => {
     assert.equal(completed.variables.target, 42);
   });
 
-  test("aggregates expressions and stores the result variable", async () => {
-    const document = linearDocument([
-      node("seed-a", "set-variable", { name: "a", expression: "4" }),
-      node("seed-b", "set-variable", { name: "b", expression: "9" }),
-      node("calc", "calculate", {
-        operation: "max",
-        values: "$a, $b, 2",
-        variable: "result",
-      }),
-      node("assert", "assert", { condition: "$result == 9" }),
-    ]);
+  test("aggregates connected values and stores the result variable", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("seed-a", "set-variable", { name: "a", expression: "4" }),
+        node("seed-b", "set-variable", { name: "b", expression: "9" }),
+        node("seed-c", "set-variable", { name: "c", expression: "2" }),
+        node("calc", "calculate", {
+          operation: "max",
+          inputCount: 3,
+          variable: "result",
+        }),
+        node("assert", "assert", { condition: "$result == 9" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "seed-a", "next", "in"],
+        ["e2", "seed-a", "seed-b", "next", "in"],
+        ["e3", "seed-b", "seed-c", "next", "in"],
+        ["e4", "seed-c", "calc", "next", "in"],
+        ["data-1", "seed-a", "calc", "value", "a"],
+        ["data-2", "seed-b", "calc", "value", "b"],
+        ["data-3", "seed-c", "calc", "value", "c"],
+        ["e5", "calc", "assert", "next", "in"],
+        ["e6", "assert", "end", "next", "in"],
+      ],
+    );
     const { service } = serviceFor(document);
 
     service.start(RUN_INPUT);
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.deepEqual(completed.variables, { a: 4, b: 9, result: 9 });
+    assert.deepEqual(completed.variables, { a: 4, b: 9, c: 2, result: 9 });
   });
 
-  test("counts values supplied through a connected data input", async () => {
+  test("counts values supplied through connected data inputs", async () => {
     const document = graphDocument(
       [
         node("start", "start"),
         node("source", "set-variable", { name: "raw", expression: "1" }),
-        node("calc", "calculate", { operation: "count", values: "", variable: "n" }),
+        node("calc", "calculate", {
+          operation: "count",
+          inputCount: 1,
+          variable: "n",
+        }),
         node("assert", "assert", { condition: "$n == 1" }),
         node("end", "end"),
       ],
       [
         ["e1", "start", "source", "next", "in"],
         ["e2", "source", "calc", "next", "in"],
-        ["data-1", "source", "calc", "value", "values"],
+        ["data-1", "source", "calc", "value", "a"],
         ["e3", "calc", "assert", "next", "in"],
         ["e4", "assert", "end", "next", "in"],
       ],
@@ -464,29 +484,74 @@ describe("FlowRuntimeService", () => {
     assert.equal(completed.variables.n, 1);
   });
 
-  test("casts OCR text to a number before aggregating", async () => {
-    const recognition = new FakeRecognition();
-    recognition.assignments = {
-      ocrText: "96",
-      ocrConfidence: 96,
-      ocrMatched: true,
-    };
-    const document = linearDocument([
-      node("ocr", "ocr"),
-      node("calc", "calculate", {
-        operation: "max",
-        values: "number($ocrText), 10",
-        variable: "result",
-      }),
-      node("assert", "assert", { condition: "$result == 96" }),
-    ]);
-    const { service } = serviceFor(document, new FakeDriver(), recognition);
+  test("sums multiple connected values", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("seed-a", "set-variable", { name: "a", expression: "4" }),
+        node("seed-b", "set-variable", { name: "b", expression: "9" }),
+        node("calc", "calculate", {
+          operation: "sum",
+          inputCount: 2,
+          variable: "total",
+        }),
+        node("assert", "assert", { condition: "$total == 13" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "seed-a", "next", "in"],
+        ["e2", "seed-a", "seed-b", "next", "in"],
+        ["e3", "seed-b", "calc", "next", "in"],
+        ["data-1", "seed-a", "calc", "value", "a"],
+        ["data-2", "seed-b", "calc", "value", "b"],
+        ["e4", "calc", "assert", "next", "in"],
+        ["e5", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document);
 
     service.start(RUN_INPUT);
     const completed = await waitForTerminal(service);
 
     assert.equal(completed.state, "completed");
-    assert.equal(completed.variables.result, 96);
+    assert.equal(completed.variables.total, 13);
+  });
+
+  test("evaluates a custom expression over connected inputs", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("seed-a", "set-variable", { name: "a", expression: "10" }),
+        node("seed-b", "set-variable", { name: "b", expression: "4" }),
+        node("seed-c", "set-variable", { name: "c", expression: "2" }),
+        node("calc", "calculate", {
+          operation: "expression",
+          inputCount: 3,
+          variable: "result",
+          expression: "(a - b) / c",
+        }),
+        node("assert", "assert", { condition: "$result == 3" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "seed-a", "next", "in"],
+        ["e2", "seed-a", "seed-b", "next", "in"],
+        ["e3", "seed-b", "seed-c", "next", "in"],
+        ["e4", "seed-c", "calc", "next", "in"],
+        ["data-1", "seed-a", "calc", "value", "a"],
+        ["data-2", "seed-b", "calc", "value", "b"],
+        ["data-3", "seed-c", "calc", "value", "c"],
+        ["e5", "calc", "assert", "next", "in"],
+        ["e6", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.result, 3);
   });
 
   test("converts a connected OCR text value before calculating", async () => {
@@ -506,7 +571,11 @@ describe("FlowRuntimeService", () => {
         node("start", "start"),
         node("ocr", "ocr"),
         node("convert", "convert", { toType: "number" }),
-        node("calc", "calculate", { operation: "max", values: "", variable: "result" }),
+        node("calc", "calculate", {
+          operation: "max",
+          inputCount: 1,
+          variable: "result",
+        }),
         node("assert", "assert", { condition: "$result == 96" }),
         node("end", "end"),
       ],
@@ -515,7 +584,7 @@ describe("FlowRuntimeService", () => {
         ["e2", "ocr", "convert", "next", "in"],
         ["data-1", "ocr", "convert", "text", "value"],
         ["e3", "convert", "calc", "next", "in"],
-        ["data-2", "convert", "calc", "value", "values"],
+        ["data-2", "convert", "calc", "value", "a"],
         ["e4", "calc", "assert", "next", "in"],
         ["e5", "assert", "end", "next", "in"],
       ],

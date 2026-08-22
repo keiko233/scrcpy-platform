@@ -11,6 +11,7 @@ import {
   FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
   ScreenRegionSchema,
+  flowDataInputPorts,
   resolveFlowPort,
   type FlowDocument,
   type FlowDataType,
@@ -184,43 +185,38 @@ function finiteNumberInput(node: FlowNode, field: string): number {
   return value;
 }
 
-function calculateOperation(node: FlowNode): AggregateOperation {
+function calculateOperation(node: FlowNode): AggregateOperation | "expression" {
   const operation = requiredString(node, "operation", { trim: true });
-  const operations: readonly AggregateOperation[] = [
+  const operations: readonly (AggregateOperation | "expression")[] = [
     "max",
     "min",
     "sum",
     "avg",
     "count",
+    "expression",
   ];
-  if (!operations.includes(operation as AggregateOperation)) {
+  if (!operations.includes(operation as AggregateOperation | "expression")) {
     throw new Error(
       `Calculate node "${node.id}" has unsupported operation "${operation}".`,
     );
   }
-  return operation as AggregateOperation;
+  return operation as AggregateOperation | "expression";
+}
+
+function calculateInputEntries(
+  node: FlowNode,
+  connectedInputs: ReadonlySet<string>,
+): ReadonlyArray<readonly [string, JsonValue]> {
+  return flowDataInputPorts(node.type, node.data)
+    .filter((port) => connectedInputs.has(port.id))
+    .map((port) => [port.id, node.data[port.id] as JsonValue] as const);
 }
 
 function calculateValues(
   node: FlowNode,
   connectedInputs: ReadonlySet<string>,
-  variables: Readonly<Record<string, JsonValue>>,
 ): JsonValue[] {
-  if (connectedInputs.has("values")) {
-    const value = node.data.values;
-    return Array.isArray(value) ? value : [value];
-  }
-  const raw = node.data.values;
-  if (typeof raw !== "string" || raw.trim().length === 0) {
-    throw new Error(
-      `Calculate node "${node.id}" requires at least one comma-separated value.`,
-    );
-  }
-  return raw
-    .split(",")
-    .map((part) => part.trim())
-    .filter((part) => part.length > 0)
-    .map((part) => evaluateExpression(part, variables));
+  return calculateInputEntries(node, connectedInputs).map(([, value]) => value);
 }
 
 const CAST_TARGETS: readonly CastTarget[] = [
@@ -346,11 +342,13 @@ function resolveNodeInputs(
       source.type,
       "output",
       edge.sourceHandle,
+      source.data,
     );
     const targetPort = resolveFlowPort(
       node.type,
       "input",
       edge.targetHandle,
+      node.data,
     );
     if (sourcePort?.role !== "data" || targetPort?.role !== "data") {
       throw new Error(`Data edge "${edge.id}" has invalid typed ports.`);
@@ -635,11 +633,13 @@ export class FlowRuntimeService {
         source.type,
         "output",
         edge.sourceHandle,
+        source.data,
       );
       const targetPort = resolveFlowPort(
         target.type,
         "input",
         edge.targetHandle,
+        target.data,
       );
       if (sourcePort?.role === "flow" && targetPort?.role === "flow") {
         const list = outgoing.get(edge.source);
@@ -892,7 +892,32 @@ export class FlowRuntimeService {
       case "calculate": {
         const name = variableName(node, "variable");
         const operation = calculateOperation(node);
-        const values = calculateValues(node, connectedInputs, variables);
+        const values = calculateValues(node, connectedInputs);
+        if (operation === "expression") {
+          const expression = requiredString(node, "expression", { trim: true });
+          const scope: Record<string, JsonValue> = { ...variables };
+          for (const [id, value] of calculateInputEntries(node, connectedInputs)) {
+            scope[id] = value;
+          }
+          const result = evaluateExpression(expression, scope);
+          if (typeof result !== "number" || !Number.isFinite(result)) {
+            throw new Error(
+              `Calculate node "${node.id}" expression must return a finite number.`,
+            );
+          }
+          variables[name] = result;
+          this.#emitLog(node.id, "info", `Calculated ${name} = ${formatLogValue(result)}`, {
+            operation,
+            expression,
+            value: result,
+          });
+          return executionResult("next", { value: result });
+        }
+        if (operation !== "count" && values.length === 0) {
+          throw new Error(
+            `Calculate node "${node.id}" requires at least one connected input value.`,
+          );
+        }
         const result = aggregateValues(operation, values);
         variables[name] = result;
         this.#emitLog(node.id, "info", `Calculated ${name} = ${formatLogValue(result)}`, {

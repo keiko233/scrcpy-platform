@@ -1,7 +1,8 @@
 import {
   areFlowDataTypesCompatible,
-  FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
+  flowDataInputPorts,
+  flowInputPortIds,
   resolveFlowPort,
   type FlowEdge,
   type FlowNode,
@@ -71,6 +72,7 @@ export function validateFlow(
 ): FlowValidationIssue[] {
   const issues: FlowValidationIssue[] = [];
   const nodeKinds = new Map<string, FlowNodeKind>();
+  const nodeData = new Map<string, FlowNode["data"]>();
   const seenNodeIds = new Set<string>();
 
   for (const node of nodes) {
@@ -83,6 +85,7 @@ export function validateFlow(
     }
     seenNodeIds.add(node.id);
     nodeKinds.set(node.id, node.type);
+    nodeData.set(node.id, node.data);
   }
 
   const seenEdgeIds = new Set<string>();
@@ -153,7 +156,12 @@ export function validateFlow(
     let sourcePort: ResolvedFlowPort | null = null;
     let targetPort: ResolvedFlowPort | null = null;
     if (sourceKind !== undefined) {
-      sourcePort = resolveFlowPort(sourceKind, "output", edge.sourceHandle);
+      sourcePort = resolveFlowPort(
+        sourceKind,
+        "output",
+        edge.sourceHandle,
+        nodeData.get(edge.source),
+      );
       if (sourcePort === null) {
         issues.push({
           kind: "invalid-port",
@@ -164,7 +172,12 @@ export function validateFlow(
       }
     }
     if (targetKind !== undefined) {
-      targetPort = resolveFlowPort(targetKind, "input", edge.targetHandle);
+      targetPort = resolveFlowPort(
+        targetKind,
+        "input",
+        edge.targetHandle,
+        nodeData.get(edge.target),
+      );
       if (targetPort === null) {
         issues.push({
           kind: "invalid-port",
@@ -210,7 +223,7 @@ export function validateFlow(
 
   for (const node of nodes) {
     const incomingCount = incoming.get(node.id)?.length ?? 0;
-    const inputs: readonly string[] = FLOW_NODE_PORTS[node.type].inputs;
+    const inputs: readonly string[] = flowInputPortIds(node.type, node.data);
     const expectedIncoming = inputs.length;
     if (incomingCount !== expectedIncoming) {
       issues.push({
@@ -253,7 +266,7 @@ export function validateFlow(
         });
       }
     }
-    for (const port of FLOW_NODE_DATA_PORTS[node.type].inputs) {
+    for (const port of flowDataInputPorts(node.type, node.data)) {
       const count = incomingDataByPort.get(portKey(node.id, port.id))?.length ?? 0;
       if (count > 1) {
         issues.push({
@@ -348,6 +361,7 @@ function deterministicOrder(
     return [];
   }
   const nodeKinds = new Map(nodes.map((node) => [node.id, node.type]));
+  const nodeData = new Map(nodes.map((node) => [node.id, node.data]));
   const outgoing = new Map<string, FlowEdge[]>();
   const incomingCount = new Map(nodes.map((node) => [node.id, 0]));
   for (const edge of edges) {
@@ -356,8 +370,18 @@ function deterministicOrder(
     if (
       sourceKind === undefined ||
       targetKind === undefined ||
-      resolveFlowPort(sourceKind, "output", edge.sourceHandle)?.role !== "flow" ||
-      resolveFlowPort(targetKind, "input", edge.targetHandle)?.role !== "flow" ||
+      resolveFlowPort(
+        sourceKind,
+        "output",
+        edge.sourceHandle,
+        nodeData.get(edge.source),
+      )?.role !== "flow" ||
+      resolveFlowPort(
+        targetKind,
+        "input",
+        edge.targetHandle,
+        nodeData.get(edge.target),
+      )?.role !== "flow" ||
       isLoopBackEdge(edge, nodeKinds)
     ) {
       continue;

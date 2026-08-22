@@ -7,12 +7,16 @@ import type {
   FlowNodeKind,
 } from "../../../shared/project-contracts";
 
-function node(id: string, type: FlowNodeKind): FlowNode {
+function node(
+  id: string,
+  type: FlowNodeKind,
+  data: Record<string, unknown> = {},
+): FlowNode {
   return {
     id,
     type,
     position: { x: 0, y: 0 },
-    data: { kind: type },
+    data: { kind: type, ...data } as FlowNode["data"],
   };
 }
 
@@ -369,5 +373,90 @@ describe("workbench flow validation", () => {
     assert.equal(compiled.valid, false);
     assert.deepEqual(compiled.order, []);
     assert.ok(issueKinds(compiled.issues).includes("illegal-outgoing"));
+  });
+
+  it("accepts dynamic calculate data inputs", () => {
+    const nodes = [
+      node("start", "start"),
+      node("a", "set-variable"),
+      node("b", "set-variable"),
+      node("calc", "calculate", {
+        inputCount: 2,
+        variable: "r",
+        operation: "sum",
+      }),
+      node("end", "end"),
+    ];
+    const edges = [
+      edge("e1", "start", "a"),
+      edge("e2", "a", "b"),
+      edge("e3", "b", "calc"),
+      edge("e4", "calc", "end"),
+      edge("d1", "a", "calc", "value", "a"),
+      edge("d2", "b", "calc", "value", "b"),
+    ];
+
+    const compiled = compileFlow(nodes, edges);
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+  });
+
+  it("rejects edges into undeclared dynamic calculate inputs", () => {
+    const nodes = [
+      node("start", "start"),
+      node("a", "set-variable"),
+      node("calc", "calculate", {
+        inputCount: 1,
+        variable: "r",
+        operation: "sum",
+      }),
+      node("end", "end"),
+    ];
+    const edges = [
+      edge("e1", "start", "a"),
+      edge("e2", "a", "calc"),
+      edge("e3", "calc", "end"),
+      edge("d1", "a", "calc", "value", "b"),
+    ];
+
+    const issues = validateFlow(nodes, edges);
+    const invalid = issues.filter((issue) => issue.kind === "invalid-port");
+    assert.equal(invalid.length, 1);
+    assert.equal(invalid[0]?.port, "b");
+  });
+
+  it("rejects a dynamic merge whose declared inputs are not all wired", () => {
+    const nodes = [
+      node("start", "start"),
+      node("if", "if"),
+      node("a", "delay"),
+      node("b", "delay"),
+      node("merge", "merge", { inputCount: 3 }),
+      node("end", "end"),
+    ];
+    const edges = [
+      edge("e1", "start", "if"),
+      edge("e2", "if", "a", "true"),
+      edge("e3", "if", "b", "false"),
+      edge("e4", "a", "merge", "next", "a"),
+      edge("e5", "b", "merge", "next", "b"),
+      edge("e6", "merge", "end"),
+    ];
+
+    const issues = validateFlow(nodes, edges);
+    assert.ok(
+      issues.some(
+        (issue) =>
+          issue.kind === "illegal-incoming" && issue.nodeId === "merge",
+      ),
+    );
+    assert.ok(
+      issues.some(
+        (issue) =>
+          issue.kind === "illegal-port-count" &&
+          issue.nodeId === "merge" &&
+          issue.port === "c",
+      ),
+    );
   });
 });

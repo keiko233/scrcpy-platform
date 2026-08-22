@@ -1,5 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { Trash2Icon } from "lucide-react";
+import { MinusIcon, PlusIcon, Trash2Icon } from "lucide-react";
 
 import {
   ContextMenu,
@@ -10,6 +10,10 @@ import {
 import { cn } from "@/lib/utils";
 import {
   FLOW_NODE_DATA_PORTS,
+  FLOW_NODE_DYNAMIC_FLOW_INPUTS,
+  FLOW_NODE_DYNAMIC_INPUTS,
+  flowDynamicPortCount,
+  flowDynamicPortId,
   type FlowDataType,
 } from "@/shared/project-contracts";
 
@@ -97,8 +101,6 @@ function getPortDisplayLabel(
       return m.port_set_variable_expression();
     case "set-variable:value":
       return m.port_set_variable_value();
-    case "calculate:values":
-      return m.port_calculate_values();
     case "calculate:value":
       return m.port_calculate_value();
     case "if:condition":
@@ -143,8 +145,8 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
 }
 
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
-  const { deleteNode } = useFlowApi();
-  const { runs } = useWorkbench();
+  const { deleteNode, updateNodeData } = useFlowApi();
+  const { runs, flow } = useWorkbench();
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
   const title = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
@@ -153,13 +155,33 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
   const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
   const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
   const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
+  const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[data.kind];
+  const dynamicDataConfig = FLOW_NODE_DYNAMIC_INPUTS[data.kind];
+  const dynamicCount = flowDynamicPortCount(data.kind, data) ?? 0;
+  const dynamicIds = Array.from({ length: dynamicCount }, (_, index) =>
+    flowDynamicPortId(index),
+  );
   const inputPorts: NodePort[] = [
     ...(definition?.inputPorts ?? []).map((portId) => ({
       id: portId,
       label: portId,
       dataType: "flow" as const,
     })),
+    ...(dynamicFlowConfig !== undefined
+      ? dynamicIds.map((portId) => ({
+          id: portId,
+          label: portId,
+          dataType: "flow" as const,
+        }))
+      : []),
     ...dataPorts.inputs,
+    ...(dynamicDataConfig !== undefined
+      ? dynamicIds.map((portId) => ({
+          id: portId,
+          label: portId,
+          dataType: dynamicDataConfig.dataType,
+        }))
+      : []),
   ];
   const outputPorts: NodePort[] = [
     ...(definition?.outputPorts ?? []).map((portId) => ({
@@ -173,6 +195,32 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
     { length: Math.max(inputPorts.length, outputPorts.length) },
     (_, index) => ({ input: inputPorts[index], output: outputPorts[index] }),
   );
+
+  const dynamicConfig = dynamicFlowConfig ?? dynamicDataConfig;
+  const addDynamicInput = () => {
+    if (dynamicConfig !== undefined && dynamicCount < dynamicConfig.max) {
+      updateNodeData(id, { [dynamicConfig.countField]: dynamicCount + 1 });
+    }
+  };
+  const removeDynamicInput = () => {
+    if (dynamicConfig === undefined || dynamicCount <= dynamicConfig.min) {
+      return;
+    }
+    const removedPortId = dynamicIds[dynamicCount - 1];
+    const removedEdgeIds = flow.edges
+      .filter(
+        (edge) =>
+          edge.target === id &&
+          (edge.targetHandle ?? null) === removedPortId,
+      )
+      .map((edge) => edge.id);
+    if (removedEdgeIds.length > 0) {
+      flow.onEdgesChange(
+        removedEdgeIds.map((edgeId) => ({ type: "remove", id: edgeId })),
+      );
+    }
+    updateNodeData(id, { [dynamicConfig.countField]: dynamicCount - 1 });
+  };
 
   return (
     <ContextMenu>
@@ -283,6 +331,30 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                   </div>
                 );
               })}
+            </div>
+          )}
+          {dynamicConfig !== undefined && (
+            <div className="flex items-center justify-center gap-1 border-t bg-muted/30 py-0.5">
+              <button
+                type="button"
+                className="nodrag flex size-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                title={m.block_node_add_input()}
+                aria-label={m.block_node_add_input()}
+                disabled={dynamicCount >= dynamicConfig.max}
+                onClick={addDynamicInput}
+              >
+                <PlusIcon className="size-3" />
+              </button>
+              <button
+                type="button"
+                className="nodrag flex size-4 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-40"
+                title={m.block_node_remove_input()}
+                aria-label={m.block_node_remove_input()}
+                disabled={dynamicCount <= dynamicConfig.min}
+                onClick={removeDynamicInput}
+              >
+                <MinusIcon className="size-3" />
+              </button>
             </div>
           )}
         </div>

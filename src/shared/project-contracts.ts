@@ -54,7 +54,7 @@ export const FLOW_NODE_PORTS = {
   calculate: { inputs: ["in"], outputs: ["next"] },
   convert: { inputs: ["in"], outputs: ["next"] },
   if: { inputs: ["in"], outputs: ["true", "false"] },
-  merge: { inputs: ["a", "b"], outputs: ["next"] },
+  merge: { inputs: [], outputs: ["next"] },
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   assert: { inputs: ["in"], outputs: ["next"] },
@@ -162,7 +162,7 @@ export const FLOW_NODE_DATA_PORTS = {
     outputs: [outputPort("value", "Value", "any")],
   },
   calculate: {
-    inputs: [dataPort("values", "Values", "any")],
+    inputs: [],
     outputs: [outputPort("value", "Value", "number")],
   },
   convert: {
@@ -201,6 +201,95 @@ export const FLOW_NODE_DATA_PORTS = {
 
 export type FlowPortDirection = "input" | "output";
 
+export interface FlowDynamicInputConfig {
+  countField: string;
+  min: number;
+  max: number;
+}
+
+/**
+ * Data input ports that a node can grow dynamically (ComfyUI-style a, b, c...).
+ * Each generated port has an alphabetic id/label and a fixed data type.
+ */
+export const FLOW_NODE_DYNAMIC_INPUTS: Partial<
+  Record<FlowNodeKind, FlowDynamicInputConfig & { dataType: FlowDataType }>
+> = {
+  calculate: { countField: "inputCount", min: 1, max: 26, dataType: "any" },
+};
+
+/** Flow (control) input ports that a node can grow dynamically. */
+export const FLOW_NODE_DYNAMIC_FLOW_INPUTS: Partial<
+  Record<FlowNodeKind, FlowDynamicInputConfig>
+> = {
+  merge: { countField: "inputCount", min: 2, max: 26 },
+};
+
+/** Maps a zero-based index to an Excel-style alphabetic port id: a, b, ..., z, aa, ... */
+export function flowDynamicPortId(index: number): string {
+  let id = "";
+  let n = index + 1;
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    id = String.fromCharCode(97 + remainder) + id;
+    n = Math.floor((n - 1) / 26);
+  }
+  return id;
+}
+
+type DynamicPortData = Readonly<Record<string, JsonValue>> | undefined;
+
+function dynamicPortCount(
+  data: DynamicPortData,
+  config: FlowDynamicInputConfig,
+): number {
+  const raw = data?.[config.countField];
+  const value =
+    typeof raw === "number" && Number.isInteger(raw) ? raw : config.min;
+  return Math.min(config.max, Math.max(config.min, value));
+}
+
+export function flowDynamicPortCount(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+): number | null {
+  const config =
+    FLOW_NODE_DYNAMIC_INPUTS[kind] ?? FLOW_NODE_DYNAMIC_FLOW_INPUTS[kind];
+  return config === undefined ? null : dynamicPortCount(data, config);
+}
+
+/** All flow input port ids for a node, including any dynamic flow inputs. */
+export function flowInputPortIds(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+): string[] {
+  const ids: string[] = [...FLOW_NODE_PORTS[kind].inputs];
+  const config = FLOW_NODE_DYNAMIC_FLOW_INPUTS[kind];
+  if (config !== undefined) {
+    const count = dynamicPortCount(data, config);
+    for (let index = 0; index < count; index += 1) {
+      ids.push(flowDynamicPortId(index));
+    }
+  }
+  return ids;
+}
+
+/** All data input ports for a node, including any dynamic data inputs. */
+export function flowDataInputPorts(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+): FlowDataPortDefinition[] {
+  const inputs = [...FLOW_NODE_DATA_PORTS[kind].inputs];
+  const config = FLOW_NODE_DYNAMIC_INPUTS[kind];
+  if (config !== undefined) {
+    const count = dynamicPortCount(data, config);
+    for (let index = 0; index < count; index += 1) {
+      const id = flowDynamicPortId(index);
+      inputs.push({ id, label: id, dataType: config.dataType });
+    }
+  }
+  return inputs;
+}
+
 export type ResolvedFlowPort =
   | { id: string; role: "flow"; dataType: "flow" }
   | ({ role: "data" } & FlowDataPortDefinition);
@@ -209,11 +298,24 @@ export function resolveFlowPort(
   kind: FlowNodeKind,
   direction: FlowPortDirection,
   persistedPort: string | undefined,
+  data?: DynamicPortData,
 ): ResolvedFlowPort | null {
-  const flowPorts =
-    direction === "input"
-      ? FLOW_NODE_PORTS[kind].inputs
-      : FLOW_NODE_PORTS[kind].outputs;
+  if (direction === "input") {
+    const flowPorts = flowInputPortIds(kind, data);
+    const resolvedId =
+      persistedPort ?? (flowPorts.length === 1 ? flowPorts[0] : undefined);
+    if (
+      resolvedId !== undefined &&
+      (flowPorts as readonly string[]).includes(resolvedId)
+    ) {
+      return { id: resolvedId, role: "flow", dataType: "flow" };
+    }
+    const dataPort = flowDataInputPorts(kind, data).find(
+      (port) => port.id === resolvedId,
+    );
+    return dataPort === undefined ? null : { ...dataPort, role: "data" };
+  }
+  const flowPorts = FLOW_NODE_PORTS[kind].outputs;
   const resolvedId =
     persistedPort ?? (flowPorts.length === 1 ? flowPorts[0] : undefined);
   if (
@@ -222,12 +324,10 @@ export function resolveFlowPort(
   ) {
     return { id: resolvedId, role: "flow", dataType: "flow" };
   }
-  const dataPorts =
-    direction === "input"
-      ? FLOW_NODE_DATA_PORTS[kind].inputs
-      : FLOW_NODE_DATA_PORTS[kind].outputs;
-  const data = dataPorts.find((port) => port.id === resolvedId);
-  return data === undefined ? null : { ...data, role: "data" };
+  const dataPort = FLOW_NODE_DATA_PORTS[kind].outputs.find(
+    (port) => port.id === resolvedId,
+  );
+  return dataPort === undefined ? null : { ...dataPort, role: "data" };
 }
 
 export function areFlowDataTypesCompatible(

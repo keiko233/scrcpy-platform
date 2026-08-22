@@ -28,6 +28,7 @@ export type WorkbenchEdge = Edge<Record<string, unknown>>;
 interface FieldDefinitionBase {
   name: string;
   label: string;
+  visible?: (data: WorkbenchNodeData) => boolean;
 }
 
 export type FieldDefinition = FieldDefinitionBase &

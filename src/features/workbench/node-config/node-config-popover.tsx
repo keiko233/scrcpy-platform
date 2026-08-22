@@ -34,7 +34,9 @@ export function NodeConfigPopover({
   const [open, setOpen] = useState(false);
 
   const definition = BLOCK_DEFINITIONS[data.kind];
-  const fields: FieldDefinition[] = definition?.fields ?? [];
+  const fields: FieldDefinition[] = (definition?.fields ?? []).filter(
+    (field) => field.visible?.(data) ?? true,
+  );
   const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
   const inputPortByField = new Map(dataPorts.inputs.map((port) => [port.field ?? port.id, port]));
   const inputFields = fields.filter((field) => inputPortByField.has(field.name));
