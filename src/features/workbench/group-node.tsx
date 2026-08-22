@@ -69,7 +69,7 @@ export function GroupNodeComponent({
           </div>
         </div>
       </ContextMenuTrigger>
-      <ContextMenuPopup align="center" sideOffset={4}>
+      <ContextMenuPopup sideOffset={4}>
         <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
           <Trash2Icon />
           {m.block_node_delete_block()}

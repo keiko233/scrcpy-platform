@@ -214,7 +214,7 @@ function FlowCanvas() {
             </ReactFlow>
           </ContextMenuTrigger>
 
-          <ContextMenuPopup align="center" sideOffset={6}>
+          <ContextMenuPopup sideOffset={6}>
             <ContextMenuGroup>
               <ContextMenuGroupLabel>{m.flow_editor_add_block_at_pointer()}</ContextMenuGroupLabel>
               {FLOW_BLOCK_KIND_ORDER.map((kind) => {

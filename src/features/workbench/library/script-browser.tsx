@@ -231,20 +231,6 @@ function VersionsContent() {
   );
 }
 
-function trackElement(
-  mapRef: React.RefObject<Map<string, Element>>,
-  key: string,
-) {
-  return (element: Element | null) => {
-    const map = mapRef.current;
-    if (element === null) {
-      map.delete(key);
-    } else {
-      map.set(key, element);
-    }
-  };
-}
-
 export function ScriptBrowser() {
   const { library, flow, selectProjectSafe, selectScriptSafe } = useWorkbench();
   const {
@@ -273,8 +259,6 @@ export function ScriptBrowser() {
   const createScriptAnchorRef = useRef<Element | null>(null);
   const renameProjectAnchorRef = useRef<Element | null>(null);
   const renameScriptAnchorRef = useRef<Element | null>(null);
-  const projectTabRefs = useRef(new Map<string, Element>());
-  const scriptTabRefs = useRef(new Map<string, Element>());
 
   const openCreateProject = (event: React.MouseEvent<HTMLElement>) => {
     createProjectAnchorRef.current = event.currentTarget;
@@ -288,15 +272,17 @@ export function ScriptBrowser() {
     setCreatingScript(true);
   };
 
-  const openRenameProject = (project: ProjectDto) => {
-    renameProjectAnchorRef.current =
-      projectTabRefs.current.get(project.id) ?? null;
+  const openRenameProject = (
+    project: ProjectDto,
+    anchor: HTMLElement | null,
+  ) => {
+    renameProjectAnchorRef.current = anchor;
     setCreatingProject(false);
     setRenamingProject(project);
   };
 
-  const openRenameScript = (script: ScriptDto) => {
-    renameScriptAnchorRef.current = scriptTabRefs.current.get(script.id) ?? null;
+  const openRenameScript = (script: ScriptDto, anchor: HTMLElement | null) => {
+    renameScriptAnchorRef.current = anchor;
     setCreatingScript(false);
     setRenamingScript(script);
   };
@@ -367,14 +353,16 @@ export function ScriptBrowser() {
             >
               {projects.map((project) => (
                 <ContextMenu key={project.id}>
-                  <ContextMenuTrigger ref={trackElement(projectTabRefs, project.id)}>
+                  <ContextMenuTrigger>
                     <TabsTab value={project.id} className="max-w-40 px-2.5 text-xs">
                       <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 truncate">{project.name}</span>
                     </TabsTab>
                   </ContextMenuTrigger>
-                  <ContextMenuPopup align="start" sideOffset={4}>
-                    <ContextMenuItem onClick={() => openRenameProject(project)}>
+                  <ContextMenuPopup sideOffset={4}>
+                    <ContextMenuItem
+                      onClick={(_, anchor) => openRenameProject(project, anchor)}
+                    >
                       <PencilIcon />
                       {m.script_browser_rename()}
                     </ContextMenuItem>
@@ -426,7 +414,7 @@ export function ScriptBrowser() {
                         flow.dirty;
                       return (
                         <ContextMenu key={script.id}>
-                          <ContextMenuTrigger className="w-full" ref={trackElement(scriptTabRefs, script.id)}>
+                          <ContextMenuTrigger className="w-full">
                             <TabsTab value={script.id} className="w-full gap-1.5 py-1.5 text-xs">
                               <FileCode2Icon className="size-3.5 shrink-0 text-muted-foreground" />
                               <div className="min-w-0 flex-1 flex items-start justify-between">
@@ -445,8 +433,12 @@ export function ScriptBrowser() {
                               </div>
                             </TabsTab>
                           </ContextMenuTrigger>
-                          <ContextMenuPopup align="start" sideOffset={4}>
-                            <ContextMenuItem onClick={() => openRenameScript(script)}>
+                          <ContextMenuPopup sideOffset={4}>
+                            <ContextMenuItem
+                              onClick={(_, anchor) =>
+                                openRenameScript(script, anchor)
+                              }
+                            >
                               <PencilIcon />
                               {m.script_browser_rename()}
                             </ContextMenuItem>
