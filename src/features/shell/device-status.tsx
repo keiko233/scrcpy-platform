@@ -1,4 +1,6 @@
+import { useNavigate } from "@tanstack/react-router";
 import { UnplugIcon } from "lucide-react";
+import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useWorkbench } from "@/features/workbench/use-workbench";
@@ -6,6 +8,13 @@ import { useWorkbench } from "@/features/workbench/use-workbench";
 export function DeviceStatus(): React.ReactElement | null {
   const { devices, flow } = useWorkbench();
   const { session, disconnecting, disconnect } = devices;
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (session?.state === "disconnected") {
+      void navigate({ to: "/pair" });
+    }
+  }, [session?.state, navigate]);
 
   if (session?.state !== "connected") {
     return null;
