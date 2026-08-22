@@ -12,6 +12,7 @@ import {
   RocketIcon,
   ScanSquareIcon,
   ScanTextIcon,
+  ScaleIcon,
   ShieldCheckIcon,
   SigmaIcon,
   VariableIcon,
@@ -707,6 +708,69 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.convert.inputs,
     outputPorts: FLOW_NODE_PORTS.convert.outputs,
   },
+  compare: {
+    kind: "compare",
+    get label() {
+      return m.block_compare_label();
+    },
+    get description() {
+      return m.block_compare_description();
+    },
+    icon: ScaleIcon,
+    defaults: { kind: "compare", operator: ">", left: "$a", right: "$b" },
+    summarize: (data) => {
+      const op = text(data.operator) || ">";
+      const l = text(data.left);
+      const r = text(data.right);
+      if (!l && !r) return m.block_summarize_condition_unset();
+      return `${l || "?"} ${op} ${r || "?"}`;
+    },
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "operator",
+          get label() {
+            return m.block_field_compare_operator_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
+              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
+              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
+              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
+              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
+              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
+              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
+              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
+            ];
+          },
+        },
+        {
+          name: "left",
+          get label() {
+            return m.block_field_compare_left_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_left_placeholder();
+          },
+        },
+        {
+          name: "right",
+          get label() {
+            return m.block_field_compare_right_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_right_placeholder();
+          },
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.compare.inputs,
+    outputPorts: FLOW_NODE_PORTS.compare.outputs,
+  },
   if: {
     kind: "if",
     get label() {
@@ -716,10 +780,58 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_if_description();
     },
     icon: GitBranchIcon,
-    defaults: { kind: "if", condition: "true" },
-    summarize: (data) => text(data.condition) || m.block_summarize_condition_unset(),
+    defaults: { kind: "if", condition: "true", operator: ">", left: "$count", right: "3" },
+    summarize: (data) => {
+      const op = text(data.operator);
+      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
+        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
+      }
+      return text(data.condition) || m.block_summarize_condition_unset();
+    },
     get fields(): FieldDefinition[] {
       return [
+        {
+          name: "operator",
+          get label() {
+            return m.block_field_compare_operator_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
+              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
+              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
+              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
+              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
+              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
+              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
+              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
+              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
+            ];
+          },
+        },
+        {
+          name: "left",
+          get label() {
+            return m.block_field_compare_left_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_left_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
+        {
+          name: "right",
+          get label() {
+            return m.block_field_compare_right_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_right_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
         {
           name: "condition",
           get label() {
@@ -728,6 +840,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           kind: "textarea",
           get placeholder() {
             return m.block_field_if_condition_placeholder();
+          },
+          visible: (data) => {
+            const op = text(data.operator);
+            return op === "expression" || op === "";
           },
         },
       ];
@@ -836,10 +952,58 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_while_description();
     },
     icon: RefreshCwIcon,
-    defaults: { kind: "while", condition: "false", maxIterations: 1000 },
-    summarize: (data) => text(data.condition) || m.block_summarize_condition_unset(),
+    defaults: { kind: "while", condition: "false", operator: ">", left: "$count", right: "10", maxIterations: 1000 },
+    summarize: (data) => {
+      const op = text(data.operator);
+      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
+        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
+      }
+      return text(data.condition) || m.block_summarize_condition_unset();
+    },
     get fields(): FieldDefinition[] {
       return [
+        {
+          name: "operator",
+          get label() {
+            return m.block_field_compare_operator_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
+              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
+              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
+              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
+              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
+              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
+              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
+              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
+              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
+            ];
+          },
+        },
+        {
+          name: "left",
+          get label() {
+            return m.block_field_compare_left_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_left_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
+        {
+          name: "right",
+          get label() {
+            return m.block_field_compare_right_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_right_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
         {
           name: "condition",
           get label() {
@@ -848,6 +1012,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           kind: "textarea",
           get placeholder() {
             return m.block_field_while_condition_placeholder();
+          },
+          visible: (data) => {
+            const op = text(data.operator);
+            return op === "expression" || op === "";
           },
         },
         {
@@ -873,10 +1041,58 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       return m.block_assert_description();
     },
     icon: ShieldCheckIcon,
-    defaults: { kind: "assert", condition: "true", message: "Assertion failed" },
-    summarize: (data) => text(data.condition) || m.block_summarize_condition_unset(),
+    defaults: { kind: "assert", condition: "true", operator: "==", left: "$result", right: "true", message: "Assertion failed" },
+    summarize: (data) => {
+      const op = text(data.operator);
+      if (op && op !== "expression" && (text(data.left) || text(data.right))) {
+        return `${text(data.left) || "?"} ${op} ${text(data.right) || "?"}`;
+      }
+      return text(data.condition) || m.block_summarize_condition_unset();
+    },
     get fields(): FieldDefinition[] {
       return [
+        {
+          name: "operator",
+          get label() {
+            return m.block_field_compare_operator_label();
+          },
+          kind: "select",
+          get options() {
+            return [
+              { value: ">", get label() { return m.block_field_compare_operator_option_gt(); } },
+              { value: ">=", get label() { return m.block_field_compare_operator_option_gte(); } },
+              { value: "<", get label() { return m.block_field_compare_operator_option_lt(); } },
+              { value: "<=", get label() { return m.block_field_compare_operator_option_lte(); } },
+              { value: "==", get label() { return m.block_field_compare_operator_option_eq(); } },
+              { value: "!=", get label() { return m.block_field_compare_operator_option_neq(); } },
+              { value: "contains", get label() { return m.block_field_compare_operator_option_contains(); } },
+              { value: "notContains", get label() { return m.block_field_compare_operator_option_not_contains(); } },
+              { value: "expression", get label() { return m.block_field_compare_operator_option_expression(); } },
+            ];
+          },
+        },
+        {
+          name: "left",
+          get label() {
+            return m.block_field_compare_left_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_left_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
+        {
+          name: "right",
+          get label() {
+            return m.block_field_compare_right_label();
+          },
+          kind: "text",
+          get placeholder() {
+            return m.block_field_compare_right_placeholder();
+          },
+          visible: (data) => text(data.operator) !== "expression",
+        },
         {
           name: "condition",
           get label() {
@@ -885,6 +1101,10 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           kind: "textarea",
           get placeholder() {
             return m.block_field_assert_condition_placeholder();
+          },
+          visible: (data) => {
+            const op = text(data.operator);
+            return op === "expression" || op === "";
           },
         },
         {
@@ -969,6 +1189,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "set-variable",
   "calculate",
   "convert",
+  "compare",
   "if",
   "merge",
   "for",

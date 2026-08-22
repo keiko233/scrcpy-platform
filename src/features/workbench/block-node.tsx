@@ -103,6 +103,12 @@ function getPortDisplayLabel(
       return m.port_set_variable_value();
     case "calculate:value":
       return m.port_calculate_value();
+    case "compare:left":
+      return m.port_compare_left();
+    case "compare:right":
+      return m.port_compare_right();
+    case "compare:result":
+      return m.port_compare_result();
     case "if:condition":
       return m.port_if_condition();
     case "for:from":

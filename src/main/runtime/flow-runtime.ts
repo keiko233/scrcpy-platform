@@ -239,6 +239,109 @@ function convertNodeValue(node: FlowNode): JsonValue {
   return castValue(toType as CastTarget, node.data.value);
 }
 
+function getFieldOrInputValue(
+  node: FlowNode,
+  field: string,
+  connectedInputs: ReadonlySet<string>,
+  variables: Readonly<Record<string, JsonValue>>,
+): JsonValue {
+  if (connectedInputs.has(field)) {
+    const value = node.data[field];
+    if (value === undefined) {
+      throw new Error(`Data input "${field}" on node "${node.id}" is missing.`);
+    }
+    return value as JsonValue;
+  }
+  const raw = node.data[field];
+  if (typeof raw === "number" || typeof raw === "boolean" || raw === null) {
+    return raw as JsonValue;
+  }
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) {
+      throw new Error(`Node "${node.id}" requires nonempty field "${field}".`);
+    }
+    return evaluateExpression(trimmed, variables);
+  }
+  throw new Error(`Node "${node.id}" requires field "${field}".`);
+}
+
+function compareWithOperator(
+  operator: string,
+  left: JsonValue,
+  right: JsonValue,
+  nodeId: string,
+): boolean {
+  switch (operator) {
+    case ">":
+    case ">=":
+    case "<":
+    case "<=": {
+      if (typeof left === "number" && typeof right === "number") {
+        if (operator === ">") return left > right;
+        if (operator === ">=") return left >= right;
+        if (operator === "<") return left < right;
+        return left <= right;
+      }
+      if (typeof left === "string" && typeof right === "string") {
+        if (operator === ">") return left > right;
+        if (operator === ">=") return left >= right;
+        if (operator === "<") return left < right;
+        return left <= right;
+      }
+      // Try numeric coercion for string numbers
+      const leftNum = typeof left === "string" ? Number(left.trim()) : NaN;
+      const rightNum = typeof right === "string" ? Number(right.trim()) : NaN;
+      const leftIsNumeric = typeof left === "string" && left.trim() !== "" && Number.isFinite(leftNum);
+      const rightIsNumeric = typeof right === "string" && right.trim() !== "" && Number.isFinite(rightNum);
+      if (typeof left === "number" && rightIsNumeric) {
+        if (operator === ">") return left > rightNum;
+        if (operator === ">=") return left >= rightNum;
+        if (operator === "<") return left < rightNum;
+        return left <= rightNum;
+      }
+      if (leftIsNumeric && typeof right === "number") {
+        if (operator === ">") return leftNum > right;
+        if (operator === ">=") return leftNum >= right;
+        if (operator === "<") return leftNum < right;
+        return leftNum <= right;
+      }
+      if (leftIsNumeric && rightIsNumeric) {
+        if (operator === ">") return leftNum > rightNum;
+        if (operator === ">=") return leftNum >= rightNum;
+        if (operator === "<") return leftNum < rightNum;
+        return leftNum <= rightNum;
+      }
+      throw new Error(
+        `Compare node "${nodeId}" operator "${operator}" requires both numbers or both strings.`,
+      );
+    }
+    case "==":
+    case "===":
+      return left === right;
+    case "!=":
+    case "!==":
+      return left !== right;
+    case "contains": {
+      if (typeof left === "string" && typeof right === "string") return left.includes(right);
+      if (Array.isArray(left)) return left.includes(right);
+      throw new Error(`Compare node "${nodeId}" operator "contains" requires string or array.`);
+    }
+    case "notContains": {
+      if (typeof left === "string" && typeof right === "string") return !left.includes(right);
+      if (Array.isArray(left)) return !left.includes(right);
+      throw new Error(`Compare node "${nodeId}" operator "notContains" requires string or array.`);
+    }
+    default:
+      throw new Error(`Node "${nodeId}" has unsupported operator "${operator}".`);
+  }
+}
+
+function isCompareMode(node: FlowNode): boolean {
+  const op = node.data.operator;
+  return typeof op === "string" && op.trim() !== "" && op.trim() !== "expression";
+}
+
 function finiteNonnegative(value: unknown, nodeId: string, field: string): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     throw new Error(`Node "${nodeId}" requires a finite nonnegative "${field}" value.`);
@@ -935,24 +1038,72 @@ export class FlowRuntimeService {
         });
         return executionResult("next", { value: result });
       }
-      case "if": {
-        const condition = connectedInputs.has("condition")
-          ? node.data.condition
-          : evaluateExpression(requiredString(node, "condition"), variables);
-        const branch = expressionTruthy(condition) ? "true" : "false";
-        this.#emitLog(node.id, "info", `Condition evaluated to ${branch}`, {
-          result: formatLogValue(condition),
-          branch,
+      case "compare": {
+        const operator = requiredString(node, "operator", { trim: true });
+        const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
+        const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
+        const result = compareWithOperator(operator, left, right, node.id);
+        this.#emitLog(node.id, "info", `Compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${result}`, {
+          operator,
+          left,
+          right,
+          result,
         });
+        return executionResult("next", { result });
+      }
+      case "if": {
+        let passed: boolean;
+        if (isCompareMode(node)) {
+          const operator = requiredString(node, "operator", { trim: true });
+          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
+          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
+          passed = compareWithOperator(operator, left, right, node.id);
+          this.#emitLog(node.id, "info", `Condition compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${passed}`, {
+            operator,
+            left,
+            right,
+            result: passed,
+          });
+        } else {
+          const condition = connectedInputs.has("condition")
+            ? node.data.condition
+            : evaluateExpression(requiredString(node, "condition"), variables);
+          passed = expressionTruthy(condition);
+          this.#emitLog(node.id, "info", `Condition evaluated to ${passed ? "true" : "false"}`, {
+            result: formatLogValue(condition),
+            branch: passed ? "true" : "false",
+          });
+        }
+        const branch = passed ? "true" : "false";
         return executionResult(branch);
       }
       case "merge":
         return executionResult("next");
       case "assert": {
-        const condition = connectedInputs.has("condition")
-          ? node.data.condition
-          : evaluateExpression(requiredString(node, "condition"), variables);
-        const passed = expressionTruthy(condition);
+        let passed: boolean;
+        let rawCondition: JsonValue;
+        if (isCompareMode(node)) {
+          const operator = requiredString(node, "operator", { trim: true });
+          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
+          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
+          passed = compareWithOperator(operator, left, right, node.id);
+          rawCondition = passed;
+          this.#emitLog(node.id, "info", `Assertion compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${passed}`, {
+            operator,
+            left,
+            right,
+            result: passed,
+          });
+        } else {
+          const condition = connectedInputs.has("condition")
+            ? node.data.condition
+            : evaluateExpression(requiredString(node, "condition"), variables);
+          rawCondition = condition;
+          passed = expressionTruthy(condition);
+          this.#emitLog(node.id, "info", passed ? "Assertion passed" : "Assertion failed", {
+            result: formatLogValue(condition),
+          });
+        }
         if (!passed) {
           const message = node.data.message;
           throw new Error(
@@ -962,7 +1113,7 @@ export class FlowRuntimeService {
           );
         }
         this.#emitLog(node.id, "info", "Assertion passed", {
-          result: formatLogValue(condition),
+          result: formatLogValue(rawCondition),
         });
         return executionResult("next");
       }
@@ -1016,10 +1167,27 @@ export class FlowRuntimeService {
             `While node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
           );
         }
-        const condition = connectedInputs.has("condition")
-          ? node.data.condition
-          : evaluateExpression(requiredString(node, "condition"), variables);
-        const continues = expressionTruthy(condition);
+        let continues: boolean;
+        if (isCompareMode(node)) {
+          const operator = requiredString(node, "operator", { trim: true });
+          const left = getFieldOrInputValue(node, "left", connectedInputs, variables);
+          const right = getFieldOrInputValue(node, "right", connectedInputs, variables);
+          continues = compareWithOperator(operator, left, right, node.id);
+          this.#emitLog(node.id, "info", `While compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${continues}`, {
+            operator,
+            left,
+            right,
+            continues,
+          });
+        } else {
+          const condition = connectedInputs.has("condition")
+            ? node.data.condition
+            : evaluateExpression(requiredString(node, "condition"), variables);
+          continues = expressionTruthy(condition);
+          this.#emitLog(node.id, "info", `While condition evaluated to ${continues}`, {
+            result: formatLogValue(condition),
+          });
+        }
         if (!continues) {
           whileIterations.delete(node.id);
           return executionResult("done");
