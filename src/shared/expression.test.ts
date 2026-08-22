@@ -95,4 +95,14 @@ describe("safe flow expressions", () => {
     assert.throws(() => evaluateExpression("number('abc')"), /cannot convert/);
     assert.throws(() => evaluateExpression("number('')"), /empty string/);
   });
+
+  test("parses formatted numeric strings with grouping and currency", () => {
+    assert.equal(evaluateExpression("number('299,878')"), 299878);
+    assert.equal(evaluateExpression("number('1,234.56')"), 1234.56);
+    assert.equal(evaluateExpression("number('1.234,56')"), 1234.56);
+    assert.equal(evaluateExpression("number('1,5')"), 1.5);
+    assert.equal(evaluateExpression("number('$1,299')"), 1299);
+    assert.equal(evaluateExpression("number(' 42 ')"), 42);
+    assert.equal(evaluateExpression("number('12.5%')"), 12.5);
+  });
 });

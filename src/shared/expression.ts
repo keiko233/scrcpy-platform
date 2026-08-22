@@ -465,6 +465,39 @@ function stringArgument(name: string, value: JsonValue): string {
   return value;
 }
 
+function parseNumericString(name: string, value: string): number {
+  let text = value.trim().replace(/[$€£¥\s]/g, "");
+  if (text.endsWith("%")) {
+    text = text.slice(0, -1).trim();
+  }
+  if (text.length === 0) {
+    throw functionError(name, "cannot convert an empty string to a number");
+  }
+  const hasComma = text.includes(",");
+  const hasDot = text.includes(".");
+  let normalized: string;
+  if (hasComma && hasDot) {
+    normalized =
+      text.lastIndexOf(".") > text.lastIndexOf(",")
+        ? text.replace(/,/g, "")
+        : text.replace(/\./g, "").replace(",", ".");
+  } else if (hasComma) {
+    const commas = text.match(/,/g)?.length ?? 0;
+    const trailing = text.slice(text.lastIndexOf(",") + 1);
+    normalized =
+      commas === 1 && trailing.length !== 3
+        ? text.replace(",", ".")
+        : text.replace(/,/g, "");
+  } else {
+    normalized = text;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    throw functionError(name, `cannot convert "${value}" to a number`);
+  }
+  return parsed;
+}
+
 function coerceNumber(name: string, value: JsonValue): number {
   if (typeof value === "number") {
     if (!Number.isFinite(value)) {
@@ -476,15 +509,7 @@ function coerceNumber(name: string, value: JsonValue): number {
     return value ? 1 : 0;
   }
   if (typeof value === "string") {
-    const trimmed = value.trim();
-    if (trimmed.length === 0) {
-      throw functionError(name, "cannot convert an empty string to a number");
-    }
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) {
-      throw functionError(name, `cannot convert "${value}" to a number`);
-    }
-    return parsed;
+    return parseNumericString(name, value);
   }
   throw functionError(name, "cannot convert the given value to a number");
 }
