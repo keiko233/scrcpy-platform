@@ -482,8 +482,27 @@ export const CreateScriptInputSchema = z.object({
     }),
 });
 
+export const RenameProjectInputSchema = z.object({
+  projectId: z.string().min(1),
+  name: z.string().trim().min(1).max(200),
+});
+
+export const DeleteProjectInputSchema = z.object({
+  projectId: z.string().min(1),
+});
+
 export const GetScriptInputSchema = z.object({
   scriptId: z.string().min(1),
+});
+
+export const RenameScriptInputSchema = z.object({
+  scriptId: z.string().min(1),
+  name: z.string().trim().min(1).max(500),
+});
+
+export const DeleteScriptInputSchema = z.object({
+  scriptId: z.string().min(1),
+  projectId: z.string().min(1),
 });
 
 export const SaveScriptDraftInputSchema = z.object({
@@ -508,9 +527,13 @@ export const RestoreRevisionInputSchema = z.object({
 });
 
 export type CreateProjectInput = z.infer<typeof CreateProjectInputSchema>;
+export type RenameProjectInput = z.infer<typeof RenameProjectInputSchema>;
+export type DeleteProjectInput = z.infer<typeof DeleteProjectInputSchema>;
 export type ListScriptsInput = z.infer<typeof ListScriptsInputSchema>;
 export type CreateScriptInput = z.infer<typeof CreateScriptInputSchema>;
 export type GetScriptInput = z.infer<typeof GetScriptInputSchema>;
+export type RenameScriptInput = z.infer<typeof RenameScriptInputSchema>;
+export type DeleteScriptInput = z.infer<typeof DeleteScriptInputSchema>;
 export type SaveScriptDraftInput = z.infer<typeof SaveScriptDraftInputSchema>;
 export type CreateRevisionInput = z.infer<typeof CreateRevisionInputSchema>;
 export type ListRevisionsInput = z.infer<typeof ListRevisionsInputSchema>;
@@ -549,6 +572,30 @@ export type CreateScriptFailure = "project-not-found" | "path-conflict";
 export type CreateScriptResult =
   | { status: "ok"; script: ScriptDto }
   | { status: "error"; error: CreateScriptFailure };
+
+export type RenameProjectFailure = "project-not-found";
+
+export type RenameProjectResult =
+  | { status: "ok"; project: ProjectDto }
+  | { status: "error"; error: RenameProjectFailure };
+
+export type DeleteProjectFailure = "project-not-found";
+
+export type DeleteProjectResult =
+  | { status: "ok" }
+  | { status: "error"; error: DeleteProjectFailure };
+
+export type RenameScriptFailure = "script-not-found";
+
+export type RenameScriptResult =
+  | { status: "ok"; script: ScriptDto }
+  | { status: "error"; error: RenameScriptFailure };
+
+export type DeleteScriptFailure = "script-not-found";
+
+export type DeleteScriptResult =
+  | { status: "ok" }
+  | { status: "error"; error: DeleteScriptFailure };
 
 export type SaveScriptDraftFailure = "script-not-found" | "stale-draft";
 

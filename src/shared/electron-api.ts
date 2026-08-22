@@ -22,10 +22,18 @@ import type {
   CreateRevisionResult,
   CreateScriptInput,
   CreateScriptResult,
+  DeleteProjectInput,
+  DeleteProjectResult,
+  DeleteScriptInput,
+  DeleteScriptResult,
   GetScriptInput,
   ListRevisionsInput,
   ListScriptsInput,
   ProjectDto,
+  RenameProjectInput,
+  RenameProjectResult,
+  RenameScriptInput,
+  RenameScriptResult,
   RestoreRevisionInput,
   RestoreRevisionResult,
   RevisionDto,
@@ -57,9 +65,13 @@ export const ELECTRON_CHANNELS = {
   logsEntry: ElectronChannel.LogsEntry,
   projectsList: ElectronChannel.ProjectsList,
   projectsCreate: ElectronChannel.ProjectsCreate,
+  projectsRename: ElectronChannel.ProjectsRename,
+  projectsDelete: ElectronChannel.ProjectsDelete,
   scriptsList: ElectronChannel.ScriptsList,
   scriptsCreate: ElectronChannel.ScriptsCreate,
   scriptsGet: ElectronChannel.ScriptsGet,
+  scriptsRename: ElectronChannel.ScriptsRename,
+  scriptsDelete: ElectronChannel.ScriptsDelete,
   scriptsSaveDraft: ElectronChannel.ScriptsSaveDraft,
   revisionsCreate: ElectronChannel.RevisionsCreate,
   revisionsList: ElectronChannel.RevisionsList,
@@ -132,10 +144,14 @@ export interface ElectronAPI {
 
   listProjects(): Promise<ProjectDto[]>;
   createProject(input: CreateProjectInput): Promise<ProjectDto>;
+  renameProject(input: RenameProjectInput): Promise<RenameProjectResult>;
+  deleteProject(input: DeleteProjectInput): Promise<DeleteProjectResult>;
 
   listScripts(input: ListScriptsInput): Promise<ScriptDto[]>;
   createScript(input: CreateScriptInput): Promise<CreateScriptResult>;
   getScript(input: GetScriptInput): Promise<ScriptDto | null>;
+  renameScript(input: RenameScriptInput): Promise<RenameScriptResult>;
+  deleteScript(input: DeleteScriptInput): Promise<DeleteScriptResult>;
   saveScriptDraft(input: SaveScriptDraftInput): Promise<SaveScriptDraftResult>;
 
   createRevision(input: CreateRevisionInput): Promise<CreateRevisionResult>;

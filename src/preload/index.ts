@@ -19,6 +19,10 @@ const api: ElectronAPI = {
   listProjects: () => ipcRenderer.invoke(ELECTRON_CHANNELS.projectsList),
   createProject: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.projectsCreate, input),
+  renameProject: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.projectsRename, input),
+  deleteProject: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.projectsDelete, input),
 
   listScripts: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsList, input),
@@ -26,6 +30,10 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsCreate, input),
   getScript: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsGet, input),
+  renameScript: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsRename, input),
+  deleteScript: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsDelete, input),
   saveScriptDraft: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.scriptsSaveDraft, input),
 

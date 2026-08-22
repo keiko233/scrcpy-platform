@@ -385,6 +385,86 @@ describe("ProjectStore", () => {
     }
   });
 
+  test("renaming a project updates the name and throws for missing projects", () => {
+    const { db, store, project } = makeProjectWithScript();
+    try {
+      const renamed = store.renameProject({
+        projectId: project.id,
+        name: "Renamed Project",
+      });
+      assert.equal(renamed.id, project.id);
+      assert.equal(renamed.name, "Renamed Project");
+      assert.equal(
+        store.listProjects().find((item) => item.id === project.id)?.name,
+        "Renamed Project",
+      );
+      assertThrowsError(
+        () => store.renameProject({ projectId: "missing", name: "X" }),
+        (error: unknown) =>
+          error instanceof NotFoundError && error.kind === "project",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("deleting a project cascades to its scripts and revisions", () => {
+    const { db, store, project, script } = makeProjectWithScript();
+    try {
+      store.createRevision({ scriptId: script.id, message: "keep" });
+      store.deleteProject({ projectId: project.id });
+      assert.equal(store.listProjects().length, 0);
+      assert.equal(store.listScripts({ projectId: project.id }).length, 0);
+      assert.equal(store.getScript({ scriptId: script.id }), null);
+      assert.equal(store.listRevisions({ scriptId: script.id }).length, 0);
+      assertThrowsError(
+        () => store.deleteProject({ projectId: "missing" }),
+        (error: unknown) =>
+          error instanceof NotFoundError && error.kind === "project",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("renaming a script updates the name and throws for missing scripts", () => {
+    const { db, store, script } = makeProjectWithScript();
+    try {
+      const renamed = store.renameScript({
+        scriptId: script.id,
+        name: "Renamed Flow",
+      });
+      assert.equal(renamed.id, script.id);
+      assert.equal(renamed.name, "Renamed Flow");
+      assert.equal(renamed.draftVersion, script.draftVersion);
+      assertThrowsError(
+        () => store.renameScript({ scriptId: "missing", name: "X" }),
+        (error: unknown) =>
+          error instanceof NotFoundError && error.kind === "script",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  test("deleting a script removes it together with its revisions", () => {
+    const { db, store, project, script } = makeProjectWithScript();
+    try {
+      store.createRevision({ scriptId: script.id, message: "keep" });
+      store.deleteScript({ scriptId: script.id });
+      assert.equal(store.getScript({ scriptId: script.id }), null);
+      assert.equal(store.listRevisions({ scriptId: script.id }).length, 0);
+      assert.equal(store.listScripts({ projectId: project.id }).length, 0);
+      assertThrowsError(
+        () => store.deleteScript({ scriptId: "missing" }),
+        (error: unknown) =>
+          error instanceof NotFoundError && error.kind === "script",
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   test("database CHECK constraints guard version numbers and JSON documents", () => {
     const db = new PersistenceDatabase(":memory:");
     try {

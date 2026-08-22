@@ -7,9 +7,12 @@ import {
 
 import type {
   CreateScriptInput,
+  DeleteScriptInput,
+  RenameScriptInput,
   SaveScriptDraftInput,
   ScriptDto,
 } from "@/shared/project-contracts";
+import { scriptQueryKey } from "@/hooks/query/use-script";
 
 export const SCRIPTS_QUERY_KEY = "scripts" as const;
 export const scriptsQueryKey = (projectId: string) =>
@@ -58,6 +61,43 @@ export function useCreateScript() {
             return [...current, result.script];
           },
         );
+      }
+    },
+  });
+}
+
+export function useRenameScript() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RenameScriptInput) =>
+      window.androidPlatform.renameScript(input),
+    onSuccess: (result) => {
+      if (result.status === "ok") {
+        updateScriptInCache(queryClient, result.script);
+      }
+    },
+  });
+}
+
+export function useDeleteScript() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: DeleteScriptInput) =>
+      window.androidPlatform.deleteScript(input),
+    onSuccess: (result, variables) => {
+      if (result.status === "ok") {
+        queryClient.setQueryData<ScriptDto[]>(
+          scriptsQueryKey(variables.projectId),
+          (current) => {
+            if (current === undefined) {
+              return current;
+            }
+            return current.filter((script) => script.id !== variables.scriptId);
+          },
+        );
+        queryClient.removeQueries({
+          queryKey: scriptQueryKey(variables.scriptId),
+        });
       }
     },
   });

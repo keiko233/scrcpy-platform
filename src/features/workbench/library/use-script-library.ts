@@ -1,8 +1,19 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { useCreateProject, useProjects } from "@/hooks/query/use-projects";
-import { useCreateScript, useScripts, scriptsQueryKey } from "@/hooks/query/use-scripts";
+import {
+  useCreateProject,
+  useDeleteProject,
+  useProjects,
+  useRenameProject,
+} from "@/hooks/query/use-projects";
+import {
+  useCreateScript,
+  useDeleteScript,
+  useRenameScript,
+  useScripts,
+  scriptsQueryKey,
+} from "@/hooks/query/use-scripts";
 import {
   useCreateRevision,
   useRevisions,
@@ -32,6 +43,10 @@ export interface ScriptLibrary {
   createScript: (name: string) => Promise<ScriptDto | null>;
   createRevision: (message?: string | null) => Promise<boolean>;
   restoreRevision: (revision: RevisionDto) => Promise<boolean>;
+  renameProject: (projectId: string, name: string) => Promise<boolean>;
+  deleteProject: (projectId: string) => Promise<boolean>;
+  renameScript: (scriptId: string, name: string) => Promise<boolean>;
+  deleteScript: (scriptId: string) => Promise<boolean>;
   applyScriptUpdate: (script: ScriptDto) => void;
   clearError: () => void;
 }
@@ -65,6 +80,10 @@ export function useScriptLibrary(): ScriptLibrary {
   const createScriptMutation = useCreateScript();
   const createRevisionMutation = useCreateRevision();
   const restoreRevisionMutation = useRestoreRevision();
+  const renameProjectMutation = useRenameProject();
+  const deleteProjectMutation = useDeleteProject();
+  const renameScriptMutation = useRenameScript();
+  const deleteScriptMutation = useDeleteScript();
 
   const projects = projectsQuery.data ?? [];
   const scripts = scriptsQuery.data ?? [];
@@ -75,6 +94,13 @@ export function useScriptLibrary(): ScriptLibrary {
     projects.find((project) => project.id === selectedProjectId) ?? null;
   const selectedScript =
     scripts.find((script) => script.id === selectedScriptId) ?? null;
+
+  useEffect(() => {
+    if (!loading && selectedProjectId === null && projects.length > 0) {
+      setSelectedProjectId(projects[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, selectedProjectId, projects.length]);
 
   const refreshProjects = useCallback(async () => {
     await projectsQuery.refetch();
@@ -223,6 +249,107 @@ export function useScriptLibrary(): ScriptLibrary {
     [queryClient],
   );
 
+  const renameProject = useCallback(
+    async (projectId: string, name: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await renameProjectMutation.mutateAsync({
+          projectId,
+          name,
+        });
+        if (result.status === "ok") {
+          return true;
+        }
+        setError("The project no longer exists.");
+        return false;
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [renameProjectMutation],
+  );
+
+  const deleteProject = useCallback(
+    async (projectId: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await deleteProjectMutation.mutateAsync({ projectId });
+        if (result.status === "ok") {
+          if (selectedProjectId === projectId) {
+            setSelectedProjectId(null);
+            setSelectedScriptId(null);
+          }
+          return true;
+        }
+        setError("The project no longer exists.");
+        return false;
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [deleteProjectMutation, selectedProjectId],
+  );
+
+  const renameScript = useCallback(
+    async (scriptId: string, name: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await renameScriptMutation.mutateAsync({
+          scriptId,
+          name,
+        });
+        if (result.status === "ok") {
+          applyScriptUpdate(result.script);
+          return true;
+        }
+        setError("The script no longer exists.");
+        return false;
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [renameScriptMutation, applyScriptUpdate],
+  );
+
+  const deleteScript = useCallback(
+    async (scriptId: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await deleteScriptMutation.mutateAsync({
+          scriptId,
+          projectId: selectedProjectId ?? "",
+        });
+        if (result.status === "ok") {
+          if (selectedScriptId === scriptId) {
+            setSelectedScriptId(null);
+          }
+          return true;
+        }
+        setError("The script no longer exists.");
+        return false;
+      } catch (cause) {
+        setError(errorMessage(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [deleteScriptMutation, selectedScriptId, selectedProjectId],
+  );
+
   const clearError = useCallback(() => setError(null), []);
 
   return {
@@ -243,6 +370,10 @@ export function useScriptLibrary(): ScriptLibrary {
     createScript,
     createRevision,
     restoreRevision,
+    renameProject,
+    deleteProject,
+    renameScript,
+    deleteScript,
     applyScriptUpdate,
     clearError,
   };

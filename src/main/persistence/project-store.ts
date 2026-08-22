@@ -89,6 +89,43 @@ export class ProjectStore {
     }));
   }
 
+  renameProject(input: { projectId: string; name: string }): ProjectDto {
+    const updatedAt = nowIso();
+    const result = this.#db
+      .prepare(
+        "UPDATE projects SET name = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(input.name, updatedAt, input.projectId);
+    if (Number(result.changes) !== 1) {
+      throw new NotFoundError("project");
+    }
+    const row = this.#db
+      .prepare(
+        "SELECT id, name, created_at, updated_at FROM projects WHERE id = ?",
+      )
+      .get(input.projectId) as {
+      id: string;
+      name: string;
+      created_at: string;
+      updated_at: string;
+    };
+    return {
+      id: row.id,
+      name: row.name,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  deleteProject(input: { projectId: string }): void {
+    const result = this.#db
+      .prepare("DELETE FROM projects WHERE id = ?")
+      .run(input.projectId);
+    if (Number(result.changes) !== 1) {
+      throw new NotFoundError("project");
+    }
+  }
+
   createScript(input: { projectId: string; name: string; path: string }): ScriptDto {
     const project = this.#db
       .prepare("SELECT id FROM projects WHERE id = ?")
@@ -142,6 +179,28 @@ export class ProjectStore {
   getScript(input: { scriptId: string }): ScriptDto | null {
     const row = this.#getScriptRow(input.scriptId);
     return row ? mapScript(row) : null;
+  }
+
+  renameScript(input: { scriptId: string; name: string }): ScriptDto {
+    const updatedAt = nowIso();
+    const result = this.#db
+      .prepare(
+        "UPDATE scripts SET name = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(input.name, updatedAt, input.scriptId);
+    if (Number(result.changes) !== 1) {
+      throw new NotFoundError("script");
+    }
+    return mapScript(this.#getScriptRow(input.scriptId) as ScriptRow);
+  }
+
+  deleteScript(input: { scriptId: string }): void {
+    const result = this.#db
+      .prepare("DELETE FROM scripts WHERE id = ?")
+      .run(input.scriptId);
+    if (Number(result.changes) !== 1) {
+      throw new NotFoundError("script");
+    }
   }
 
   saveScriptDraft(input: {
