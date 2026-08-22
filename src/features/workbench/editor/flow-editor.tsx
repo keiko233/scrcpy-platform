@@ -23,6 +23,9 @@ import {
   ContextMenuItem,
   ContextMenuPopup,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubPopup,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import {
@@ -42,7 +45,7 @@ import {
   UngroupIcon,
 } from "lucide-react";
 
-import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
+import { BLOCK_CATEGORIES, BLOCK_DEFINITIONS } from "../blocks";
 import { AUTOMATION_NODE_TYPES } from "../node-types";
 import type { FlowBlockKind } from "../types";
 import { useWorkbench } from "../use-workbench";
@@ -217,14 +220,27 @@ function FlowCanvas() {
           <ContextMenuPopup sideOffset={6}>
             <ContextMenuGroup>
               <ContextMenuGroupLabel>{m.flow_editor_add_block_at_pointer()}</ContextMenuGroupLabel>
-              {FLOW_BLOCK_KIND_ORDER.map((kind) => {
-                const definition = BLOCK_DEFINITIONS[kind];
-                const Icon = definition.icon;
+              {BLOCK_CATEGORIES.map((category) => {
+                const CategoryIcon = category.icon;
                 return (
-                  <ContextMenuItem key={kind} onClick={() => addBlockAtPane(kind)}>
-                    <Icon />
-                    {definition.label}
-                  </ContextMenuItem>
+                  <ContextMenuSub key={category.id}>
+                    <ContextMenuSubTrigger>
+                      <CategoryIcon />
+                      {category.label}
+                    </ContextMenuSubTrigger>
+                    <ContextMenuSubPopup>
+                      {category.kinds.map((kind) => {
+                        const definition = BLOCK_DEFINITIONS[kind];
+                        const Icon = definition.icon;
+                        return (
+                          <ContextMenuItem key={kind} onClick={() => addBlockAtPane(kind)}>
+                            <Icon />
+                            {definition.label}
+                          </ContextMenuItem>
+                        );
+                      })}
+                    </ContextMenuSubPopup>
+                  </ContextMenuSub>
                 );
               })}
             </ContextMenuGroup>

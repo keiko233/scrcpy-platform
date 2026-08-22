@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -57,6 +58,35 @@ function useSubMenuContext(): SubMenuContextValue {
   return context;
 }
 
+type SubmenuControllerValue = {
+  activeId: string | null;
+  setActiveId: (id: string | null) => void;
+};
+
+const SubmenuControllerContext = createContext<SubmenuControllerValue | null>(
+  null,
+);
+
+function useCloseSiblingSubmenus(): () => void {
+  const controller = useContext(SubmenuControllerContext);
+  return useCallback(() => {
+    controller?.setActiveId(null);
+  }, [controller]);
+}
+
+function SubmenuControllerScope({ children }: { children?: React.ReactNode }) {
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const value = useMemo<SubmenuControllerValue>(
+    () => ({ activeId, setActiveId }),
+    [activeId],
+  );
+  return (
+    <SubmenuControllerContext.Provider value={value}>
+      {children}
+    </SubmenuControllerContext.Provider>
+  );
+}
+
 const POPUP_CLASS = cn(
   "fixed z-50 flex min-w-32 flex-col rounded-lg border bg-popover not-dark:bg-clip-padding p-1 text-popover-foreground shadow-lg/5 outline-none",
   "before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]",
@@ -67,7 +97,7 @@ const MENU_ITEM_SELECTOR =
 
 const MENU_ITEM_CLASS = cn(
   "flex min-h-8 cursor-default select-none items-center gap-2 rounded-sm px-2 py-1 text-base text-foreground outline-none transition-colors hover:bg-accent hover:text-accent-foreground focus:bg-accent focus:text-accent-foreground sm:min-h-7 sm:text-sm",
-  "[&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg]:pointer-events-none [&>svg]:-mx-0.5 [&>svg]:shrink-0",
+  "[&>svg:not([class*='opacity-'])]:opacity-80 [&>svg:not([class*='size-'])]:size-4.5 sm:[&>svg:not([class*='size-'])]:size-4 [&>svg]:pointer-events-none [&>svg:not(:last-child)]:-mx-0.5 [&>svg]:shrink-0",
 );
 
 function moveItemFocus(
@@ -296,7 +326,7 @@ export function ContextMenuContent({
           onKeyDown={(event) => handleMenuKeyDown(event, popupRef.current, close)}
           {...props}
         >
-          {children}
+          <SubmenuControllerScope>{children}</SubmenuControllerScope>
         </motion.div>
       )}
     </AnimatePresence>,
@@ -362,6 +392,7 @@ export function ContextMenuItem({
   ) => void;
 }) {
   const { close, anchor } = useMenuContext();
+  const closeSiblingSubmenus = useCloseSiblingSubmenus();
 
   return (
     <div
@@ -379,6 +410,7 @@ export function ContextMenuItem({
         disabled && "pointer-events-none opacity-50",
         className,
       )}
+      onMouseEnter={closeSiblingSubmenus}
       onClick={(event) => {
         if (disabled) {
           return;
@@ -424,6 +456,7 @@ export function ContextMenuLinkItem({
   ) => void;
 }) {
   const { close, anchor } = useMenuContext();
+  const closeSiblingSubmenus = useCloseSiblingSubmenus();
 
   return (
     <a
@@ -442,6 +475,7 @@ export function ContextMenuLinkItem({
         disabled && "pointer-events-none opacity-50",
         className,
       )}
+      onMouseEnter={closeSiblingSubmenus}
       onClick={(event) => {
         if (disabled) {
           return;
@@ -475,6 +509,7 @@ export function ContextMenuCheckboxItem({
   variant?: "default" | "switch";
 }) {
   const { close } = useMenuContext();
+  const closeSiblingSubmenus = useCloseSiblingSubmenus();
   const [internalChecked, setInternalChecked] = useState(defaultChecked);
   const isControlled = checkedProp !== undefined;
   const checked = isControlled ? checkedProp : internalChecked;
@@ -502,6 +537,7 @@ export function ContextMenuCheckboxItem({
         disabled && "pointer-events-none opacity-50",
         className,
       )}
+      onMouseEnter={closeSiblingSubmenus}
       onClick={() => {
         if (disabled) {
           return;
@@ -600,6 +636,7 @@ export function ContextMenuRadioItem({
   disabled?: boolean;
 }) {
   const { close } = useMenuContext();
+  const closeSiblingSubmenus = useCloseSiblingSubmenus();
   const radio = useContext(RadioContext);
   const checked = radio?.value === value;
 
@@ -615,6 +652,7 @@ export function ContextMenuRadioItem({
         disabled && "pointer-events-none opacity-50",
         className,
       )}
+      onMouseEnter={closeSiblingSubmenus}
       onClick={() => {
         if (disabled) {
           return;
@@ -686,19 +724,34 @@ export function ContextMenuSub({
   onOpenChange?: (open: boolean) => void;
   children?: React.ReactNode;
 }) {
+  const id = useId();
+  const controller = useContext(SubmenuControllerContext);
   const [internalOpen, setInternalOpen] = useState(defaultOpen);
   const [triggerEl, setTriggerEl] = useState<HTMLElement | null>(null);
 
-  const open = openProp ?? internalOpen;
+  const isControlled = openProp !== undefined;
+  const open = isControlled
+    ? openProp
+    : controller !== null
+      ? controller.activeId === id
+      : internalOpen;
 
   const setOpen = useCallback(
     (value: boolean) => {
-      if (openProp === undefined) {
-        setInternalOpen(value);
+      if (!isControlled) {
+        if (controller !== null) {
+          if (value) {
+            controller.setActiveId(id);
+          } else if (controller.activeId === id) {
+            controller.setActiveId(null);
+          }
+        } else {
+          setInternalOpen(value);
+        }
       }
       onOpenChange?.(value);
     },
-    [openProp, onOpenChange],
+    [isControlled, controller, id, onOpenChange],
   );
 
   const value = useMemo(
@@ -867,7 +920,7 @@ export function ContextMenuSubPopup({
           }
           {...props}
         >
-          {children}
+          <SubmenuControllerScope>{children}</SubmenuControllerScope>
         </motion.div>
       )}
     </AnimatePresence>,

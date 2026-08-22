@@ -3,6 +3,7 @@ import {
   BoxSelectIcon,
   ClockIcon,
   CombineIcon,
+  DatabaseIcon,
   EqualIcon,
   FlagIcon,
   GitBranchIcon,
@@ -16,7 +17,11 @@ import {
   ScaleIcon,
   ShieldCheckIcon,
   SigmaIcon,
+  SmartphoneIcon,
+  SplitIcon,
   StickyNoteIcon,
+  TagIcon,
+  WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -975,6 +980,63 @@ export const FLOW_BLOCK_KIND_ORDER: FlowBlockKind[] = [
   "start",
   "end",
   ...BLOCK_KIND_ORDER,
+];
+
+export type BlockCategoryId =
+  | "flow"
+  | "device"
+  | "logic"
+  | "data"
+  | "annotation";
+
+export interface BlockCategoryDefinition {
+  id: BlockCategoryId;
+  get label(): string;
+  icon: LucideIcon;
+  kinds: readonly FlowBlockKind[];
+}
+
+export const BLOCK_CATEGORIES: readonly BlockCategoryDefinition[] = [
+  {
+    id: "flow",
+    get label() {
+      return m.block_category_flow_label();
+    },
+    icon: WorkflowIcon,
+    kinds: ["start", "end"],
+  },
+  {
+    id: "device",
+    get label() {
+      return m.block_category_device_label();
+    },
+    icon: SmartphoneIcon,
+    kinds: ["click", "swipe", "screen-region", "ocr", "delay"],
+  },
+  {
+    id: "logic",
+    get label() {
+      return m.block_category_logic_label();
+    },
+    icon: SplitIcon,
+    kinds: ["if", "merge", "for", "while", "assert"],
+  },
+  {
+    id: "data",
+    get label() {
+      return m.block_category_data_label();
+    },
+    icon: DatabaseIcon,
+    kinds: ["constant", "calculate", "convert", "compare"],
+  },
+  {
+    id: "annotation",
+    get label() {
+      return m.block_category_annotation_label();
+    },
+    icon: TagIcon,
+    kinds: ["note", "group"],
+  },
 ];
 
 export function isAutomationBlockKind(

@@ -1,4 +1,4 @@
-import { MenuItem, MenuPopup, MenuTrigger, Menu as MenuRoot } from "@/components/ui/menu";
+import { MenuItem, MenuPopup, MenuSub, MenuSubPopup, MenuSubTrigger, MenuTrigger, Menu as MenuRoot } from "@/components/ui/menu";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,7 @@ import {
   ShieldAlertIcon,
   SquareIcon,
 } from "lucide-react";
-import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
+import { BLOCK_CATEGORIES, BLOCK_DEFINITIONS } from "../blocks";
 import { useWorkbench } from "../use-workbench";
 import { m } from "@/paraglide/messages.js";
 
@@ -107,14 +107,27 @@ export function WorkbenchToolbar() {
           }
         />
         <MenuPopup align="end">
-          {FLOW_BLOCK_KIND_ORDER.map((kind) => {
-            const definition = BLOCK_DEFINITIONS[kind];
-            const Icon = definition.icon;
+          {BLOCK_CATEGORIES.map((category) => {
+            const CategoryIcon = category.icon;
             return (
-              <MenuItem key={kind} onClick={() => flow.addBlock(kind)}>
-                <Icon />
-                {definition.label}
-              </MenuItem>
+              <MenuSub key={category.id}>
+                <MenuSubTrigger>
+                  <CategoryIcon />
+                  {category.label}
+                </MenuSubTrigger>
+                <MenuSubPopup align="start" alignOffset={-5}>
+                  {category.kinds.map((kind) => {
+                    const definition = BLOCK_DEFINITIONS[kind];
+                    const Icon = definition.icon;
+                    return (
+                      <MenuItem key={kind} onClick={() => flow.addBlock(kind)}>
+                        <Icon />
+                        {definition.label}
+                      </MenuItem>
+                    );
+                  })}
+                </MenuSubPopup>
+              </MenuSub>
             );
           })}
         </MenuPopup>
