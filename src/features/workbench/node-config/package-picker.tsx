@@ -137,18 +137,18 @@ export function PackageField({
         {filteredApps.length === 0 && !appsQuery.isPending && (
           <ComboboxEmpty>No apps found.</ComboboxEmpty>
         )}
-        <ComboboxPrimitive.List className="p-0">
+        <ComboboxPrimitive.List className="max-w-full overflow-hidden p-0">
           <div
             ref={setListElement}
             role="presentation"
-            className="overflow-auto overscroll-contain scroll-py-1"
+            className="overflow-x-hidden overflow-y-auto overscroll-contain scroll-py-1"
             style={{
               height: `min(${LIST_HEIGHT}px, ${virtualizer.getTotalSize()}px)`,
             }}
           >
-            <div
+              <div
               role="presentation"
-              className="relative w-full"
+              className="relative w-full max-w-full overflow-hidden"
               style={{ height: virtualizer.getTotalSize() }}
             >
               {virtualizer.getVirtualItems().map((virtualRow) => {
@@ -175,18 +175,19 @@ export function PackageField({
                         transform: `translateY(${virtualRow.start}px)`,
                       } satisfies CSSProperties
                     }
+                    className="min-w-0 max-w-full overflow-hidden"
                   >
-                    <div className="flex min-w-0 items-center gap-2">
+                    <div className="flex min-w-0 max-w-full items-center gap-2 overflow-hidden">
                       {app.iconUrl !== null ? (
                         <img
                           alt=""
-                          className="size-5 rounded-md object-cover"
+                          className="size-5 shrink-0 rounded-md object-cover"
                           src={app.iconUrl}
                         />
                       ) : (
                         <SmartphoneIcon className="size-4 shrink-0 text-muted-foreground" />
                       )}
-                      <span className="min-w-0">
+                      <span className="min-w-0 flex-1 overflow-hidden">
                         <span className="block truncate text-xs font-medium">
                           {app.name}
                         </span>
@@ -195,7 +196,7 @@ export function PackageField({
                         </span>
                       </span>
                       {app.system && (
-                        <Badge size="sm" variant="outline">
+                        <Badge size="sm" variant="outline" className="shrink-0">
                           System
                         </Badge>
                       )}
