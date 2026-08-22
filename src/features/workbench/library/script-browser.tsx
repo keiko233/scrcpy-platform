@@ -1,4 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useForm } from "@tanstack/react-form";
+import { z } from "zod";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -49,6 +51,12 @@ function formatDate(value: string): string {
 type PopoverSide = PopoverPrimitive.Positioner.Props["side"];
 type PopoverAlign = PopoverPrimitive.Positioner.Props["align"];
 
+const nameFormSchema = z.object({
+  name: z.string().trim().min(1),
+});
+
+type NameFormValues = z.infer<typeof nameFormSchema>;
+
 function NameFormPopover({
   open,
   onOpenChange,
@@ -74,52 +82,71 @@ function NameFormPopover({
   align?: PopoverAlign;
   onSubmit: (value: string) => Promise<unknown>;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const form = useForm({
+    defaultValues: {
+      name: initialValue,
+    } as NameFormValues,
+    validators: {
+      onChange: nameFormSchema,
+    },
+    onSubmit: async ({ value }) => {
+      const trimmed = value.name.trim();
+      const ok = await onSubmit(trimmed);
+      if (ok !== null && ok !== false) {
+        onOpenChange(false);
+      }
+    },
+  });
 
-  const canSubmit = value.trim().length > 0 && !busy;
-
-  const submit = async () => {
-    if (!canSubmit) {
-      return;
+  useEffect(() => {
+    if (open) {
+      form.reset({ name: initialValue });
     }
-    const ok = await onSubmit(value);
-    if (ok !== null && ok !== false) {
-      onOpenChange(false);
-    }
-  };
+  }, [form, initialValue, open]);
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverPopup side={side} align={align} sideOffset={4} anchor={anchor}>
-        <div className="flex min-w-56 flex-col gap-2">
+        <form
+          className="flex min-w-56 flex-col gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+        >
           <p className="text-xs font-medium">{title}</p>
-          <Input
-            size="sm"
-            autoFocus
-            placeholder={placeholder}
-            value={value}
-            onChange={(event) => setValue(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                void submit();
-              }
-            }}
-          />
+          <form.Field name="name">
+            {(field) => (
+              <Input
+                size="sm"
+                autoFocus
+                placeholder={placeholder}
+                value={field.state.value}
+                onChange={(event) => field.handleChange(event.target.value)}
+                onBlur={field.handleBlur}
+                aria-invalid={field.state.meta.errors.length > 0}
+              />
+            )}
+          </form.Field>
           <div className="flex justify-end gap-1.5">
-            <Button size="sm" variant="ghost" onClick={() => onOpenChange(false)}>
+            <Button size="sm" variant="ghost" type="button" onClick={() => onOpenChange(false)}>
               {m.script_browser_cancel_aria()}
             </Button>
-            <Button
-              size="sm"
-              variant="secondary"
-              disabled={!canSubmit}
-              loading={busy}
-              onClick={() => void submit()}
-            >
-              {submitLabel}
-            </Button>
+            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
+              {([canSubmit, isSubmitting]) => (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  type="submit"
+                  disabled={!canSubmit || busy}
+                  loading={busy || isSubmitting}
+                >
+                  {submitLabel}
+                </Button>
+              )}
+            </form.Subscribe>
           </div>
-        </div>
+        </form>
       </PopoverPopup>
     </Popover>
   );

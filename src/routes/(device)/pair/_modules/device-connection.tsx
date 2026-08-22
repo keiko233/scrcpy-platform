@@ -33,6 +33,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useForm } from "@tanstack/react-form";
 
 import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
 import { useScrcpySettings, useSetScrcpySettings } from "@/hooks/query/use-scrcpy-settings";
@@ -67,13 +68,29 @@ function ScrcpySettingsDialog() {
     SCRCPY_SETTINGS_STORAGE_KEY,
     ScrcpySettingsSchema.nullable().default(null),
   );
-  const [draft, setDraft] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const settingsQuery = useScrcpySettings();
   const applySettings = useSetScrcpySettings();
   const settings = settingsQuery.data ?? DEFAULT_SCRCPY_SETTINGS;
+
+  const form = useForm({
+    defaultValues: settings as ScrcpySettings,
+    validators: {
+      onChange: ScrcpySettingsSchema,
+    },
+    onSubmit: async ({ value }) => {
+      setError(null);
+      try {
+        const next = await applySettings.mutateAsync(value);
+        setSavedSettings(next);
+        form.reset(next);
+        setOpen(false);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      }
+    },
+  });
 
   useEffect(() => {
     if (savedSettings !== null) {
@@ -94,26 +111,12 @@ function ScrcpySettingsDialog() {
     }
   }, [settingsQuery.error]);
 
-  const validation = ScrcpySettingsSchema.safeParse(draft);
-
-  const save = async () => {
-    if (!validation.success) {
-      setError(m.pair_scrcpy_error_check_values());
-      return;
+  // Keep form in sync with remote settings when not open
+  useEffect(() => {
+    if (!open) {
+      form.reset(settings);
     }
-    setSaving(true);
-    setError(null);
-    try {
-      const next = await applySettings.mutateAsync(validation.data);
-      setSavedSettings(next);
-      setDraft(next);
-      setOpen(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setSaving(false);
-    }
-  };
+  }, [form, open, settings]);
 
   return (
     <Dialog
@@ -121,7 +124,7 @@ function ScrcpySettingsDialog() {
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
         if (nextOpen) {
-          setDraft(settings);
+          form.reset(settings);
           setError(null);
         }
       }}
@@ -133,283 +136,366 @@ function ScrcpySettingsDialog() {
         <Settings2Icon />
       </DialogTrigger>
       <DialogPopup className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{m.pair_scrcpy_title()}</DialogTitle>
-          <DialogDescription>{m.pair_scrcpy_description()}</DialogDescription>
-        </DialogHeader>
-        <DialogPanel className="divide-y py-0">
-          <section className="py-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {m.pair_scrcpy_video()}
-            </h3>
-            <SettingRow
-              title={m.pair_scrcpy_codec()}
-              description={m.pair_scrcpy_codec_description()}
-            >
-              <Select
-                value={draft.videoCodec}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setDraft((current) => ({
-                      ...current,
-                      videoCodec: value as ScrcpySettings["videoCodec"],
-                    }));
-                  }
-                }}
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            void form.handleSubmit();
+          }}
+          className="contents"
+        >
+          <DialogHeader>
+            <DialogTitle>{m.pair_scrcpy_title()}</DialogTitle>
+            <DialogDescription>{m.pair_scrcpy_description()}</DialogDescription>
+          </DialogHeader>
+          <DialogPanel className="divide-y py-0">
+            <section className="py-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {m.pair_scrcpy_video()}
+              </h3>
+              <SettingRow
+                title={m.pair_scrcpy_codec()}
+                description={m.pair_scrcpy_codec_description()}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full"
-                  aria-label={m.pair_scrcpy_codec()}
-                >
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="h264">H.264</SelectItem>
-                  <SelectItem value="h265">H.265</SelectItem>
-                  <SelectItem value="av1">AV1</SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_max_size()}
-              description={m.pair_scrcpy_max_size_description()}
-            >
-              <div className="flex w-full items-center gap-2">
-                <Input
-                  size="sm"
-                  nativeInput
-                  type="number"
-                  min={256}
-                  max={7680}
-                  step={16}
-                  disabled={draft.maxSize === null}
-                  value={draft.maxSize ?? ""}
-                  placeholder={m.pair_scrcpy_max_size_placeholder()}
-                  aria-label={m.pair_scrcpy_max_size_aria()}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      maxSize: Number(event.target.value),
-                    }))
-                  }
-                />
-                <label className="flex shrink-0 items-center gap-1.5 text-xs">
-                  <Switch
-                    aria-label={m.pair_scrcpy_auto_size_aria()}
-                    checked={draft.maxSize === null}
-                    onCheckedChange={(checked) =>
-                      setDraft((current) => ({
-                        ...current,
-                        maxSize: checked ? null : 1920,
-                      }))
-                    }
-                  />
-                  {m.pair_scrcpy_auto()}
-                </label>
-              </div>
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_frame_rate()}
-              description={m.pair_scrcpy_frame_rate_description()}
-            >
-              <div className="flex w-full items-center gap-2">
-                <Input
-                  size="sm"
-                  nativeInput
-                  type="number"
-                  min={1}
-                  max={240}
-                  value={draft.maxFps}
-                  aria-label={m.pair_scrcpy_frame_rate_aria()}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      maxFps: Number(event.target.value),
-                    }))
-                  }
-                />
-                <span className="w-10 text-xs text-muted-foreground">
-                  {m.pair_scrcpy_fps()}
-                </span>
-              </div>
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_video_bitrate()}
-              description={m.pair_scrcpy_video_bitrate_description()}
-            >
-              <div className="flex w-full items-center gap-2">
-                <Input
-                  size="sm"
-                  nativeInput
-                  type="number"
-                  min={1}
-                  max={100}
-                  step={1}
-                  value={draft.videoBitRate / 1_000_000}
-                  aria-label={m.pair_scrcpy_video_bitrate_aria()}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      videoBitRate: Number(event.target.value) * 1_000_000,
-                    }))
-                  }
-                />
-                <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_mbps()}</span>
-              </div>
-            </SettingRow>
-          </section>
+                <form.Field name="videoCodec">
+                  {(field) => (
+                    <Select
+                      value={field.state.value}
+                      onValueChange={(value) => {
+                        if (value !== null) {
+                          field.handleChange(value as ScrcpySettings["videoCodec"]);
+                        }
+                      }}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        className="w-full"
+                        aria-label={m.pair_scrcpy_codec()}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="h264">H.264</SelectItem>
+                        <SelectItem value="h265">H.265</SelectItem>
+                        <SelectItem value="av1">AV1</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_max_size()}
+                description={m.pair_scrcpy_max_size_description()}
+              >
+                <form.Field name="maxSize">
+                  {(field) => (
+                    <div className="flex w-full items-center gap-2">
+                      <Input
+                        size="sm"
+                        nativeInput
+                        type="number"
+                        min={256}
+                        max={7680}
+                        step={16}
+                        disabled={field.state.value === null}
+                        value={field.state.value ?? ""}
+                        placeholder={m.pair_scrcpy_max_size_placeholder()}
+                        aria-label={m.pair_scrcpy_max_size_aria()}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          if (raw === "") {
+                            field.handleChange(null as unknown as number);
+                            return;
+                          }
+                          const parsed = Number(raw);
+                          field.handleChange(
+                            Number.isNaN(parsed) ? (null as unknown as number) : parsed,
+                          );
+                        }}
+                        onBlur={field.handleBlur}
+                      />
+                      <label className="flex shrink-0 items-center gap-1.5 text-xs">
+                        <Switch
+                          aria-label={m.pair_scrcpy_auto_size_aria()}
+                          checked={field.state.value === null}
+                          onCheckedChange={(checked) => field.handleChange(checked ? null : 1920)}
+                        />
+                        {m.pair_scrcpy_auto()}
+                      </label>
+                    </div>
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_frame_rate()}
+                description={m.pair_scrcpy_frame_rate_description()}
+              >
+                <form.Field name="maxFps">
+                  {(field) => (
+                    <div className="flex w-full items-center gap-2">
+                      <Input
+                        size="sm"
+                        nativeInput
+                        type="number"
+                        min={1}
+                        max={240}
+                        value={String(field.state.value ?? "")}
+                        aria-label={m.pair_scrcpy_frame_rate_aria()}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value);
+                          field.handleChange(Number.isNaN(parsed) ? 0 : parsed);
+                        }}
+                        onBlur={field.handleBlur}
+                      />
+                      <span className="w-10 text-xs text-muted-foreground">
+                        {m.pair_scrcpy_fps()}
+                      </span>
+                    </div>
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_video_bitrate()}
+                description={m.pair_scrcpy_video_bitrate_description()}
+              >
+                <form.Field name="videoBitRate">
+                  {(field) => (
+                    <div className="flex w-full items-center gap-2">
+                      <Input
+                        size="sm"
+                        nativeInput
+                        type="number"
+                        min={1}
+                        max={100}
+                        step={1}
+                        value={String((field.state.value as number) / 1_000_000)}
+                        aria-label={m.pair_scrcpy_video_bitrate_aria()}
+                        onChange={(event) => {
+                          const parsed = Number(event.target.value);
+                          field.handleChange(
+                            Number.isNaN(parsed) ? 0 : Math.round(parsed * 1_000_000),
+                          );
+                        }}
+                        onBlur={field.handleBlur}
+                      />
+                      <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_mbps()}</span>
+                    </div>
+                  )}
+                </form.Field>
+              </SettingRow>
+            </section>
 
-          <section className="py-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {m.pair_scrcpy_audio()}
-            </h3>
-            <SettingRow
-              title={m.pair_scrcpy_transmit_audio()}
-              description={m.pair_scrcpy_transmit_audio_description()}
-            >
-              <Switch
-                aria-label={m.pair_scrcpy_transmit_audio_aria()}
-                checked={draft.audio}
-                onCheckedChange={(audio) => setDraft((current) => ({ ...current, audio }))}
-              />
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_audio_source()}
-              description={m.pair_scrcpy_audio_source_description()}
-            >
-              <Select
-                disabled={!draft.audio}
-                value={draft.audioSource}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setDraft((current) => ({
-                      ...current,
-                      audioSource: value as ScrcpySettings["audioSource"],
-                    }));
-                  }
-                }}
+            <section className="py-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {m.pair_scrcpy_audio()}
+              </h3>
+              <SettingRow
+                title={m.pair_scrcpy_transmit_audio()}
+                description={m.pair_scrcpy_transmit_audio_description()}
               >
-                <SelectTrigger size="sm" className="w-full" aria-label={m.pair_scrcpy_audio_source_aria()}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="output">{m.pair_scrcpy_audio_source_output()}</SelectItem>
-                  <SelectItem value="playback">{m.pair_scrcpy_audio_source_playback()}</SelectItem>
-                  <SelectItem value="mic">{m.pair_scrcpy_audio_source_mic()}</SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_audio_codec()}
-              description={m.pair_scrcpy_audio_codec_description()}
-            >
-              <Select
-                disabled={!draft.audio}
-                value={draft.audioCodec}
-                onValueChange={(value) => {
-                  if (value !== null) {
-                    setDraft((current) => ({
-                      ...current,
-                      audioCodec: value as ScrcpySettings["audioCodec"],
-                    }));
-                  }
-                }}
+                <form.Field name="audio">
+                  {(field) => (
+                    <Switch
+                      aria-label={m.pair_scrcpy_transmit_audio_aria()}
+                      checked={field.state.value as boolean}
+                      onCheckedChange={(checked) => field.handleChange(checked as unknown as boolean)}
+                    />
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_audio_source()}
+                description={m.pair_scrcpy_audio_source_description()}
               >
-                <SelectTrigger size="sm" className="w-full" aria-label={m.pair_scrcpy_audio_codec_aria()}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="opus">Opus</SelectItem>
-                  <SelectItem value="aac">AAC</SelectItem>
-                  <SelectItem value="flac">FLAC</SelectItem>
-                </SelectContent>
-              </Select>
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_audio_bitrate()}
-              description={m.pair_scrcpy_audio_bitrate_description()}
-            >
-              <div className="flex w-full items-center gap-2">
-                <Input
-                  size="sm"
-                  nativeInput
-                  type="number"
-                  min={16}
-                  max={1000}
-                  step={16}
-                  disabled={!draft.audio || draft.audioCodec === "flac"}
-                  value={draft.audioBitRate / 1000}
-                  aria-label={m.pair_scrcpy_audio_bitrate_aria()}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      audioBitRate: Number(event.target.value) * 1000,
-                    }))
-                  }
-                />
-                <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_kbps()}</span>
-              </div>
-            </SettingRow>
-          </section>
+                <form.Subscribe selector={(state) => state.values.audio}>
+                  {(audio) => (
+                    <form.Field name="audioSource">
+                      {(field) => (
+                        <Select
+                          disabled={!audio}
+                          value={field.state.value as string}
+                          onValueChange={(value) => {
+                            if (value !== null) {
+                              field.handleChange(value as ScrcpySettings["audioSource"]);
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="w-full"
+                            aria-label={m.pair_scrcpy_audio_source_aria()}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="output">{m.pair_scrcpy_audio_source_output()}</SelectItem>
+                            <SelectItem value="playback">{m.pair_scrcpy_audio_source_playback()}</SelectItem>
+                            <SelectItem value="mic">{m.pair_scrcpy_audio_source_mic()}</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </form.Field>
+                  )}
+                </form.Subscribe>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_audio_codec()}
+                description={m.pair_scrcpy_audio_codec_description()}
+              >
+                <form.Subscribe selector={(state) => state.values.audio}>
+                  {(audio) => (
+                    <form.Field name="audioCodec">
+                      {(field) => (
+                        <Select
+                          disabled={!audio}
+                          value={field.state.value as string}
+                          onValueChange={(value) => {
+                            if (value !== null) {
+                              field.handleChange(value as ScrcpySettings["audioCodec"]);
+                            }
+                          }}
+                        >
+                          <SelectTrigger
+                            size="sm"
+                            className="w-full"
+                            aria-label={m.pair_scrcpy_audio_codec_aria()}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="opus">Opus</SelectItem>
+                            <SelectItem value="aac">AAC</SelectItem>
+                            <SelectItem value="flac">FLAC</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                    </form.Field>
+                  )}
+                </form.Subscribe>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_audio_bitrate()}
+                description={m.pair_scrcpy_audio_bitrate_description()}
+              >
+                <form.Subscribe selector={(state) => ({ audio: state.values.audio, codec: state.values.audioCodec })}>
+                  {({ audio, codec }) => (
+                    <form.Field name="audioBitRate">
+                      {(field) => (
+                        <div className="flex w-full items-center gap-2">
+                          <Input
+                            size="sm"
+                            nativeInput
+                            type="number"
+                            min={16}
+                            max={1000}
+                            step={16}
+                            disabled={!audio || codec === "flac"}
+                            value={String((field.state.value as number) / 1000)}
+                            aria-label={m.pair_scrcpy_audio_bitrate_aria()}
+                            onChange={(event) => {
+                              const parsed = Number(event.target.value);
+                              field.handleChange(
+                                Number.isNaN(parsed) ? 0 : Math.round(parsed * 1000),
+                              );
+                            }}
+                            onBlur={field.handleBlur}
+                          />
+                          <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_kbps()}</span>
+                        </div>
+                      )}
+                    </form.Field>
+                  )}
+                </form.Subscribe>
+              </SettingRow>
+            </section>
 
-          <section className="py-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              {m.pair_scrcpy_device_behavior()}
-            </h3>
-            <SettingRow
-              title={m.pair_scrcpy_screen_off()}
-              description={m.pair_scrcpy_screen_off_description()}
+            <section className="py-3">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {m.pair_scrcpy_device_behavior()}
+              </h3>
+              <SettingRow
+                title={m.pair_scrcpy_screen_off()}
+                description={m.pair_scrcpy_screen_off_description()}
+              >
+                <form.Field name="turnScreenOff">
+                  {(field) => (
+                    <Switch
+                      aria-label={m.pair_scrcpy_screen_off_aria()}
+                      checked={field.state.value as boolean}
+                      onCheckedChange={(checked) => field.handleChange(checked as unknown as boolean)}
+                    />
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_stay_awake()}
+                description={m.pair_scrcpy_stay_awake_description()}
+              >
+                <form.Field name="stayAwake">
+                  {(field) => (
+                    <Switch
+                      aria-label={m.pair_scrcpy_stay_awake_aria()}
+                      checked={field.state.value as boolean}
+                      onCheckedChange={(checked) => field.handleChange(checked as unknown as boolean)}
+                    />
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_show_touches()}
+                description={m.pair_scrcpy_show_touches_description()}
+              >
+                <form.Field name="showTouches">
+                  {(field) => (
+                    <Switch
+                      aria-label={m.pair_scrcpy_show_touches_aria()}
+                      checked={field.state.value as boolean}
+                      onCheckedChange={(checked) => field.handleChange(checked as unknown as boolean)}
+                    />
+                  )}
+                </form.Field>
+              </SettingRow>
+              <SettingRow
+                title={m.pair_scrcpy_power_off_on_close()}
+                description={m.pair_scrcpy_power_off_on_close_description()}
+              >
+                <form.Field name="powerOffOnClose">
+                  {(field) => (
+                    <Switch
+                      aria-label={m.pair_scrcpy_power_off_on_close_aria()}
+                      checked={field.state.value as boolean}
+                      onCheckedChange={(checked) => field.handleChange(checked as unknown as boolean)}
+                    />
+                  )}
+                </form.Field>
+              </SettingRow>
+            </section>
+            {error !== null && <p className="py-3 text-xs text-destructive-foreground">{error}</p>}
+            <form.Subscribe selector={(state) => state.errors}>
+              {(errors) =>
+                errors.length > 0 ? (
+                  <p className="py-2 text-xs text-destructive-foreground">
+                    {m.pair_scrcpy_error_check_values()}
+                  </p>
+                ) : null
+              }
+            </form.Subscribe>
+          </DialogPanel>
+          <DialogFooter>
+            <DialogClose
+              render={<Button variant="outline" type="button" />}
+              onClick={() => form.reset(settings)}
             >
-              <Switch
-                aria-label={m.pair_scrcpy_screen_off_aria()}
-                checked={draft.turnScreenOff}
-                onCheckedChange={(turnScreenOff) => setDraft((current) => ({ ...current, turnScreenOff }))}
-              />
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_stay_awake()}
-              description={m.pair_scrcpy_stay_awake_description()}
-            >
-              <Switch
-                aria-label={m.pair_scrcpy_stay_awake_aria()}
-                checked={draft.stayAwake}
-                onCheckedChange={(stayAwake) => setDraft((current) => ({ ...current, stayAwake }))}
-              />
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_show_touches()}
-              description={m.pair_scrcpy_show_touches_description()}
-            >
-              <Switch
-                aria-label={m.pair_scrcpy_show_touches_aria()}
-                checked={draft.showTouches}
-                onCheckedChange={(showTouches) => setDraft((current) => ({ ...current, showTouches }))}
-              />
-            </SettingRow>
-            <SettingRow
-              title={m.pair_scrcpy_power_off_on_close()}
-              description={m.pair_scrcpy_power_off_on_close_description()}
-            >
-              <Switch
-                aria-label={m.pair_scrcpy_power_off_on_close_aria()}
-                checked={draft.powerOffOnClose}
-                onCheckedChange={(powerOffOnClose) =>
-                  setDraft((current) => ({ ...current, powerOffOnClose }))
-                }
-              />
-            </SettingRow>
-          </section>
-          {error !== null && <p className="py-3 text-xs text-destructive-foreground">{error}</p>}
-        </DialogPanel>
-        <DialogFooter>
-          <DialogClose render={<Button variant="outline" />} onClick={() => setDraft(settings)}>
-            {m.pair_scrcpy_cancel()}
-          </DialogClose>
-          <Button loading={saving} disabled={!validation.success} onClick={() => void save()}>
-            {m.pair_scrcpy_save()}
-          </Button>
-        </DialogFooter>
+              {m.pair_scrcpy_cancel()}
+            </DialogClose>
+            <form.Subscribe selector={(state) => [state.canSubmit, state.isSubmitting]}>
+              {([canSubmit, isSubmitting]) => (
+                <Button type="submit" loading={isSubmitting as boolean} disabled={!canSubmit}>
+                  {m.pair_scrcpy_save()}
+                </Button>
+              )}
+            </form.Subscribe>
+          </DialogFooter>
+        </form>
       </DialogPopup>
     </Dialog>
   );
