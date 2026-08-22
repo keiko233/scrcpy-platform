@@ -2,6 +2,7 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { DeviceMonitor } from "@/features/workbench/monitor/device-monitor";
 import { FlowEditorPanel } from "@/features/workbench/editor/flow-editor";
+import { RunPanel } from "@/features/workbench/debug/run-panel";
 import { ScriptBrowser } from "@/features/workbench/library/script-browser";
 
 export function WorkbenchScreen() {
@@ -26,7 +27,17 @@ export function WorkbenchScreen() {
           <Separator />
 
           <Panel id="bottom" defaultSize="58" minSize={240}>
-            <FlowEditorPanel />
+            <Group orientation="horizontal" className="h-full">
+              <Panel id="editor" defaultSize="68" minSize={320}>
+                <FlowEditorPanel />
+              </Panel>
+
+              <Separator />
+
+              <Panel id="run" defaultSize="32" minSize={280}>
+                <RunPanel />
+              </Panel>
+            </Group>
           </Panel>
         </Group>
       </div>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import type {
   FlowRunDto,
+  FlowRunLogEntryDto,
+  ResumeAction,
   StartFlowRunInput,
   StartFlowRunResult,
 } from "@/shared/run-contracts";
@@ -10,8 +12,12 @@ export interface FlowRunManager {
   run: FlowRunDto | null;
   busy: boolean;
   error: string | null;
+  logs: FlowRunLogEntryDto[];
+  breakpoints: ReadonlySet<string>;
   start: (input: StartFlowRunInput) => Promise<boolean>;
   stop: () => Promise<boolean>;
+  resume: (action: ResumeAction) => Promise<boolean>;
+  toggleBreakpoint: (nodeId: string) => void;
   clearError: () => void;
 }
 
@@ -35,6 +41,10 @@ export function useFlowRun(): FlowRunManager {
   const [run, setRun] = useState<FlowRunDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [logs, setLogs] = useState<FlowRunLogEntryDto[]>([]);
+  const [breakpoints, setBreakpoints] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -63,24 +73,37 @@ export function useFlowRun(): FlowRunManager {
     };
   }, []);
 
-  const start = useCallback(async (input: StartFlowRunInput) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await window.androidPlatform.startFlowRun(input);
-      if (result.status === "error") {
-        setError(describeStartFailure(result));
-        return false;
-      }
-      setRun(result.run);
-      return true;
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      return false;
-    } finally {
-      setBusy(false);
-    }
+  useEffect(() => {
+    return window.androidPlatform.onFlowRunLog((entry) => {
+      setLogs((current) => [...current, entry].slice(-1000));
+    });
   }, []);
+
+  const start = useCallback(
+    async (input: StartFlowRunInput) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const result = await window.androidPlatform.startFlowRun({
+          ...input,
+          breakpoints: [...breakpoints],
+        });
+        if (result.status === "error") {
+          setError(describeStartFailure(result));
+          return false;
+        }
+        setLogs([]);
+        setRun(result.run);
+        return true;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [breakpoints],
+  );
 
   const stop = useCallback(async () => {
     if (run === null) {
@@ -103,6 +126,60 @@ export function useFlowRun(): FlowRunManager {
     }
   }, [run]);
 
+  const resume = useCallback(
+    async (action: ResumeAction) => {
+      if (run === null) {
+        return false;
+      }
+      setBusy(true);
+      try {
+        const result = await window.androidPlatform.resumeFlowRun({
+          runId: run.runId,
+          action,
+        });
+        if (result.status === "error") {
+          setError(
+            result.error === "run-not-found"
+              ? "The active flow run no longer exists."
+              : "The flow run is not paused.",
+          );
+          return false;
+        }
+        setRun(result.run);
+        return true;
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [run],
+  );
+
+  const toggleBreakpoint = useCallback((nodeId: string) => {
+    setBreakpoints((current) => {
+      const next = new Set(current);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  }, []);
+
   const clearError = useCallback(() => setError(null), []);
-  return { run, busy, error, start, stop, clearError };
+  return {
+    run,
+    busy,
+    error,
+    logs,
+    breakpoints,
+    start,
+    stop,
+    resume,
+    toggleBreakpoint,
+    clearError,
+  };
 }

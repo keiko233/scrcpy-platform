@@ -21,7 +21,7 @@ export function WorkbenchToolbar() {
     flow.dirty &&
     flow.saveState === "idle" &&
     flow.error === null;
-  const running = runs.run?.state === "running";
+  const running = runs.run?.state === "running" || runs.run?.state === "paused";
   const session = devices.session;
   const displayId = screens.screen?.activeDisplayId ?? null;
   const canRun =

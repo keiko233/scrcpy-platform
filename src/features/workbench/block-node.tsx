@@ -17,6 +17,7 @@ import {
 import { BLOCK_DEFINITIONS } from "./blocks";
 import { useFlowApi } from "./flow/flow-api-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
+import { useWorkbench } from "./use-workbench";
 import type { WorkbenchNode } from "./types";
 
 type NodePort = {
@@ -54,10 +55,14 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
 
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
   const { deleteNode } = useFlowApi();
+  const { runs } = useWorkbench();
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
   const title = definition?.label ?? String(data.kind ?? "block");
   const summary = definition ? definition.summarize(data) : "Unknown block";
+  const isBreakpoint = runs.breakpoints.has(id);
+  const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
+  const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
   const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
   const inputPorts: NodePort[] = [
     ...(definition?.inputPorts ?? []).map((id) => ({
@@ -91,9 +96,32 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             "wb-flow-node !p-0",
             selected && "selected",
             definition?.kind && `wb-block-${definition.kind}`,
+            isPaused && "ring-2 ring-warning",
+            isCurrent && "ring-2 ring-primary",
           )}
         >
           <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
+            <button
+              type="button"
+              className="group/breakpoint flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
+              title={
+                isBreakpoint ? "Remove breakpoint" : "Add breakpoint"
+              }
+              aria-label={
+                isBreakpoint ? "Remove breakpoint" : "Add breakpoint"
+              }
+              aria-pressed={isBreakpoint}
+              onClick={() => runs.toggleBreakpoint(id)}
+            >
+              <span
+                className={cn(
+                  "size-2.5 rounded-full border",
+                  isBreakpoint
+                    ? "border-destructive bg-destructive"
+                    : "border-muted-foreground/50 bg-transparent group-hover/breakpoint:border-muted-foreground",
+                )}
+              />
+            </button>
             {Icon && (
               <Icon
                 aria-hidden="true"
