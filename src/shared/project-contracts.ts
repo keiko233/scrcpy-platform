@@ -28,7 +28,6 @@ export const FLOW_NODE_KINDS = [
   "swipe",
   "ocr",
   "delay",
-  "launch-app",
   "calculate",
   "convert",
   "compare",
@@ -52,7 +51,6 @@ export const FLOW_NODE_PORTS = {
   swipe: { inputs: ["in"], outputs: ["next"] },
   ocr: { inputs: ["in"], outputs: ["next"] },
   delay: { inputs: ["in"], outputs: ["next"] },
-  "launch-app": { inputs: ["in"], outputs: ["next"] },
   calculate: { inputs: ["in"], outputs: ["next"] },
   convert: { inputs: ["in"], outputs: ["next"] },
   compare: { inputs: [], outputs: [] },
@@ -154,13 +152,6 @@ export const FLOW_NODE_DATA_PORTS = {
   },
   delay: {
     inputs: [dataPort("ms", "Duration", "number")],
-    outputs: [],
-  },
-  "launch-app": {
-    inputs: [
-      dataPort("packageName", "Package", "string"),
-      dataPort("activity", "Activity", "string"),
-    ],
     outputs: [],
   },
   calculate: {

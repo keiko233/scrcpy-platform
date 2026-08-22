@@ -11,7 +11,6 @@ import {
   MousePointerClickIcon,
   PlayIcon,
   RefreshCwIcon,
-  RocketIcon,
   ScanSquareIcon,
   ScanTextIcon,
   ScaleIcon,
@@ -448,44 +447,6 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     },
     inputPorts: FLOW_NODE_PORTS.delay.inputs,
     outputPorts: FLOW_NODE_PORTS.delay.outputs,
-  },
-  "launch-app": {
-    kind: "launch-app",
-    get label() {
-      return m.block_launch_app_label();
-    },
-    get description() {
-      return m.block_launch_app_description();
-    },
-    icon: RocketIcon,
-    defaults: { kind: "launch-app", packageName: "", activity: "" },
-    summarize: (data) => text(data.packageName) || m.block_summarize_package_unset(),
-    get fields(): FieldDefinition[] {
-      return [
-        {
-          name: "packageName",
-          get label() {
-            return m.block_field_launch_app_package_name_label();
-          },
-          kind: "package",
-          get placeholder() {
-            return m.block_field_launch_app_package_name_placeholder();
-          },
-        },
-        {
-          name: "activity",
-          get label() {
-            return m.block_field_launch_app_activity_label();
-          },
-          kind: "text",
-          get placeholder() {
-            return m.block_field_launch_app_activity_placeholder();
-          },
-        },
-      ];
-    },
-    inputPorts: FLOW_NODE_PORTS["launch-app"].inputs,
-    outputPorts: FLOW_NODE_PORTS["launch-app"].outputs,
   },
   calculate: {
     kind: "calculate",
@@ -997,7 +958,6 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "screen-region",
   "ocr",
   "delay",
-  "launch-app",
   "constant",
   "calculate",
   "convert",

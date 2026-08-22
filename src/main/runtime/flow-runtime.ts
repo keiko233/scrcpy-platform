@@ -980,7 +980,6 @@ export class FlowRuntimeService {
       }
       case "click":
       case "swipe":
-      case "launch-app":
         await this.#driver.execute(node, context, signal);
         return executionResult("next");
       case "calculate": {

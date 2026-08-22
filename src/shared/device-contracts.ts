@@ -47,11 +47,25 @@ export type DeviceSessionDto = z.infer<typeof DeviceSessionDtoSchema>;
 export const InstalledAppDtoSchema = z.object({
   packageName: z.string().min(1),
   name: z.string().min(1),
-  iconUrl: z.string().min(1).nullable(),
   system: z.boolean(),
 });
 
 export type InstalledAppDto = z.infer<typeof InstalledAppDtoSchema>;
+
+export const InstalledAppsSnapshotSchema = z.object({
+  apps: z.array(InstalledAppDtoSchema),
+  pending: z.array(z.string().min(1)),
+});
+
+export type InstalledAppsSnapshot = z.infer<typeof InstalledAppsSnapshotSchema>;
+
+export const EnrichInstalledAppsInputSchema = z.object({
+  packages: z.array(z.string().min(1)).max(64),
+});
+
+export type EnrichInstalledAppsInput = z.infer<
+  typeof EnrichInstalledAppsInputSchema
+>;
 
 export const ConnectDeviceInputSchema = z.object({
   transportId: z

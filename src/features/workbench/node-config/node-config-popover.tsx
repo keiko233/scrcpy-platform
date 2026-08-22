@@ -107,7 +107,6 @@ export function NodeConfigPopover({
                 placeholder: m.node_config_name_placeholder(),
               }}
               value={data.name}
-              active={open}
               onChange={(value) => commit("name", value)}
             />
           </Section>
@@ -126,7 +125,6 @@ export function NodeConfigPopover({
                     value={data[field.name]}
                     dataType={port?.dataType}
                     connected={port ? connectedInputIds.has(port.id) : false}
-                    active={open}
                     onChange={(value) => commit(field.name, value)}
                   />
                 );
@@ -198,7 +196,6 @@ export function NodeConfigPopover({
                   key={field.name}
                   field={field}
                   value={data[field.name]}
-                  active={open}
                   onChange={(value) => commit(field.name, value)}
                 />
               ))}

@@ -95,10 +95,6 @@ function getPortDisplayLabel(
       return m.port_ocr_matched();
     case "delay:ms":
       return m.port_delay_ms();
-    case "launch-app:packageName":
-      return m.port_launch_app_package_name();
-    case "launch-app:activity":
-      return m.port_launch_app_activity();
     case "calculate:value":
       return m.port_calculate_value();
     case "compare:left":

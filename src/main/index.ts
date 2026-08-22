@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, net, protocol } from "electron";
+import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "node:path";
 import {
   ELECTRON_CHANNELS,
@@ -20,19 +20,6 @@ import { createAdbOcrRecognitionDriver } from "./runtime/adb-ocr-recognition";
 import { FlowRuntimeService } from "./runtime/flow-runtime";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
-const APP_FILE_SCHEME = "android-platform-file";
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: APP_FILE_SCHEME,
-    privileges: {
-      standard: true,
-      secure: true,
-      supportFetchAPI: true,
-      stream: true,
-    },
-  },
-]);
 
 let persistence: PersistenceDatabase | null = null;
 let deviceSession: DeviceSessionService | null = null;
@@ -138,15 +125,6 @@ function getSystemPlatform(): SystemPlatform {
 }
 
 void app.whenReady().then(() => {
-  protocol.handle(APP_FILE_SCHEME, (request) => {
-    const encodedFileUrl = new URL(request.url).host;
-    const fileUrl = decodeURIComponent(encodedFileUrl);
-    if (!fileUrl.startsWith("file:///")) {
-      return new Response("Invalid file URL", { status: 400 });
-    }
-    return net.fetch(fileUrl);
-  });
-
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
 
   ipcMain.handle(ELECTRON_CHANNELS.windowMinimize, (event) => {

@@ -14,7 +14,6 @@ vi.mock("@/paraglide/messages.js", () => ({
           // For other summarize fallbacks, return a placeholder
           if (prop.startsWith("block_summarize_")) {
             if (prop === "block_summarize_unset") return "(unset)";
-            if (prop === "block_summarize_package_unset") return "(package unset)";
             if (prop === "block_summarize_name_fallback") return "(name)";
             if (prop === "block_summarize_condition_unset") return "(condition unset)";
             if (prop === "block_summarize_index_fallback") return "index";
@@ -23,10 +22,6 @@ vi.mock("@/paraglide/messages.js", () => ({
           }
           // For block labels, return a readable fallback based on prop
           // e.g. block_start_label -> Start
-          if (prop === "block_field_launch_app_package_name_label") return "Package";
-          if (prop === "block_field_launch_app_package_name_placeholder") return "com.example.app";
-          if (prop === "block_field_launch_app_activity_label") return "Activity";
-          if (prop === "block_field_launch_app_activity_placeholder") return ".MainActivity (optional)";
           if (prop.startsWith("block_")) {
             const part = prop.replace("block_", "").replace(/_/g, " ");
             // Capitalize first letter for readability, but tests don't check label values

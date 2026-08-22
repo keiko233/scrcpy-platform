@@ -1,95 +1,75 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import AdmZip from "adm-zip";
+import type { Adb } from "@yume-chan/adb";
 import type { InstalledAppDto } from "../../shared/device-contracts";
-import { AppConstants, FilePath, MediaConstants } from "../../shared/constants/app";
+import { FilePath } from "../../shared/constants/app";
+import { ApkEntryReader } from "./apk-reader";
 
 const ANDROID_RESOURCES_ARSC = FilePath.ANDROID_RESOURCES_ARSC;
 const ANDROID_MANIFEST = FilePath.ANDROID_MANIFEST;
-const DEFAULT_ICON_DENSITY = MediaConstants.DEFAULT_ICON_DENSITY;
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const MAX_RESOURCES_BYTES = 24 * 1024 * 1024;
 
 interface StringPool {
   strings: string[];
 }
 
-interface ResourceMap {
-  ids: number[];
-}
-
 interface ResourceTable {
   values: Map<number, string>;
+  typeNames: string[];
 }
 
-interface PackageRecord {
+export interface PackageRecord {
   packageName: string;
   apkPath: string;
   system: boolean;
 }
 
+export interface ManifestMetadata {
+  name?: string;
+}
+
 export async function readInstalledApp(
+  adb: Adb,
   record: PackageRecord,
-  apk: Uint8Array,
-  iconDirectory: string,
 ): Promise<InstalledAppDto> {
-  const tempRoot = await mkdtemp(join(tmpdir(), "android-platform-app-"));
-  const apkPath = join(tempRoot, "package.apk");
-  await writeFile(apkPath, apk);
-  try {
-    const zip = new AdmZip(apkPath);
-    const manifestEntry = zip.getEntry(ANDROID_MANIFEST);
-    const arscEntry = zip.getEntry(ANDROID_RESOURCES_ARSC);
-    const metadata = manifestEntry
-      ? parseManifest(manifestEntry.getData(), arscEntry?.getData())
-      : {};
-    const name = metadata.name?.trim() || record.packageName;
-    const icon = metadata.iconPath !== undefined
-      ? await writeIcon(zip, metadata.iconPath, record.packageName, iconDirectory)
-      : null;
-    return {
-      packageName: record.packageName,
-      name,
-      iconUrl: icon === null ? null : `android-platform-file://${encodeURIComponent(icon)}`,
-      system: record.system,
-    };
-  } finally {
-    await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
-  }
-}
+  const reader = new ApkEntryReader(adb, record.apkPath);
+  const entries = await reader.entries();
+  const byName = new Map(entries.map((entry) => [entry.name, entry]));
 
-async function writeIcon(
-  zip: AdmZip,
-  iconPath: string,
-  packageName: string,
-  iconDirectory: string,
-): Promise<string | null> {
-  const entry = zip.getEntry(iconPath);
-  const data = entry?.getData();
-  if (data === undefined || !data.subarray(0, PNG_SIGNATURE.length).equals(PNG_SIGNATURE)) {
-    return null;
+  let manifestBuffer: Buffer | undefined;
+  const manifestEntry = byName.get(ANDROID_MANIFEST);
+  if (manifestEntry !== undefined) {
+    manifestBuffer = await reader.readEntry(manifestEntry);
   }
-  const filename = `${sanitizeFilename(packageName)}.png`;
-  const target = join(iconDirectory, filename);
-  await writeFile(target, data);
-  return target;
-}
 
-function sanitizeFilename(value: string): string {
-  return value.replace(/[^A-Za-z0-9_.-]/g, "_");
+  let resourcesBuffer: Buffer | undefined;
+  const resourcesEntry = byName.get(ANDROID_RESOURCES_ARSC);
+  if (
+    resourcesEntry !== undefined &&
+    resourcesEntry.compressedSize <= MAX_RESOURCES_BYTES
+  ) {
+    resourcesBuffer = await reader.readEntry(resourcesEntry);
+  }
+
+  const metadata = manifestBuffer === undefined
+    ? {}
+    : parseManifest(manifestBuffer, resourcesBuffer);
+  const name = metadata.name?.trim() || record.packageName;
+
+  return {
+    packageName: record.packageName,
+    name,
+    system: record.system,
+  };
 }
 
 export function parseManifest(
   manifest: Buffer,
   resources: Buffer | undefined,
-): { name?: string; iconPath?: string } {
+): ManifestMetadata {
   const table = resources === undefined ? undefined : parseResourceTable(resources);
   let position = 8;
   const pools: StringPool[] = [];
   let resourceMap: ResourceMap | null = null;
   let name: string | undefined;
-  let iconPath: string | undefined;
-  let iconDensity = 0;
 
   while (position + 8 <= manifest.length) {
     const type = manifest.readUInt16LE(position);
@@ -112,7 +92,9 @@ export function parseManifest(
       const elementName = stringAt(pools[0], manifest.readUInt32LE(position + 20));
       if (elementName === "application") {
         const attributeCount = manifest.readUInt16LE(position + 28);
-        let attributeOffset = position + headerSize;
+        const attributeStart = manifest.readUInt16LE(position + 24);
+        const attributeSize = manifest.readUInt16LE(position + 26);
+        let attributeOffset = position + headerSize + attributeStart;
         for (let index = 0; index < attributeCount; index += 1) {
           const attributeNameIndex = manifest.readUInt32LE(attributeOffset + 4);
           const resourceId = resourceMap.ids[attributeNameIndex];
@@ -125,22 +107,8 @@ export function parseManifest(
             : stringAt(pools[0], rawValueIndex);
           if (attributeName === "label" && name === undefined) {
             name = resolveValue(rawValue, dataType, data, table);
-          } else if (attributeName === "icon") {
-            const resolved = resolveValue(rawValue, dataType, data, table);
-            if (resolved !== undefined) {
-              if (dataType === 0x03 && resolved.endsWith(".png")) {
-                iconPath = normalizeResourcePath(resolved);
-                iconDensity = DEFAULT_ICON_DENSITY;
-              } else {
-                const candidate = resolveResourcePath(data, table);
-                if (candidate !== undefined && candidate.density >= iconDensity) {
-                  iconPath = normalizeResourcePath(candidate.path);
-                  iconDensity = candidate.density;
-                }
-              }
-            }
           }
-          attributeOffset += 20;
+          attributeOffset += attributeSize;
         }
       }
     }
@@ -148,7 +116,156 @@ export function parseManifest(
     position += size;
   }
 
-  return { name, iconPath };
+  return { name };
+}
+
+function parseResourceTable(buffer: Buffer): ResourceTable | undefined {
+  try {
+    const packageCount = buffer.readUInt32LE(8);
+    let position = buffer.readUInt16LE(2);
+    if (position < 12 || position >= buffer.length) {
+      return undefined;
+    }
+    const table: ResourceTable = {
+      values: new Map(),
+      typeNames: [],
+    };
+    let valuePool: StringPool | undefined;
+    let parsedPackages = 0;
+    while (position + 8 <= buffer.length && parsedPackages < packageCount) {
+      const type = buffer.readUInt16LE(position);
+      const size = buffer.readUInt32LE(position + 4);
+      if (size < 8 || position + size > buffer.length) {
+        break;
+      }
+      if (type === 0x0001 && valuePool === undefined) {
+        valuePool = parseStringPool(buffer, position, size);
+      }
+      if (type === 0x0200) {
+        const packagePosition = position;
+        const packageId = buffer.readUInt32LE(packagePosition + 8);
+        const typeStringsOffset = buffer.readUInt32LE(packagePosition + 268);
+        const keyStringsOffset = buffer.readUInt32LE(packagePosition + 276);
+        const typePool = parsePoolAt(buffer, packagePosition + typeStringsOffset);
+        const keyPool = parsePoolAt(buffer, packagePosition + keyStringsOffset);
+        if (typePool !== undefined) {
+          table.typeNames = typePool.strings;
+        }
+        let chunkPosition = packagePosition + keyStringsOffset;
+        while (chunkPosition + 8 < packagePosition + size) {
+          const chunkType = buffer.readUInt16LE(chunkPosition);
+          const chunkSize = buffer.readUInt32LE(chunkPosition + 4);
+          if (chunkSize < 8 || chunkPosition + chunkSize > packagePosition + size) {
+            break;
+          }
+          if (chunkType === 0x0201 && keyPool !== undefined) {
+            try {
+              parseTypeChunk(buffer, table, keyPool, valuePool, packageId, chunkPosition, chunkSize);
+            } catch {
+              // Skip malformed or truncated type chunks; earlier chunks stay valid.
+            }
+          }
+          chunkPosition += chunkSize;
+        }
+        parsedPackages += 1;
+      }
+      position += size;
+    }
+    return table;
+  } catch {
+    return undefined;
+  }
+}
+
+function parseTypeChunk(
+  buffer: Buffer,
+  table: ResourceTable,
+  keyPool: StringPool,
+  valuePool: StringPool | undefined,
+  packageId: number,
+  chunkPosition: number,
+  chunkSize: number,
+): void {
+  const typeId = buffer.readUInt8(chunkPosition + 8) & 0xff;
+  const entryCount = buffer.readUInt32LE(chunkPosition + 12);
+  const entriesStart = buffer.readUInt32LE(chunkPosition + 16);
+  const chunkHeaderSize = buffer.readUInt16LE(chunkPosition + 2);
+  const sparse = (buffer.readUInt8(chunkPosition + 9) & 0x01) !== 0;
+  const offsetsPosition = chunkPosition + chunkHeaderSize;
+  const chunkEnd = chunkPosition + chunkSize;
+  if (sparse) {
+    for (let index = 0; index < entryCount; index += 1) {
+      if (offsetsPosition + index * 4 + 4 > chunkEnd) {
+        break;
+      }
+      const entryIndex = buffer.readUInt16LE(offsetsPosition + index * 4);
+      const entryOffset = buffer.readUInt16LE(offsetsPosition + index * 4 + 2);
+      parseEntry(buffer, table, keyPool, valuePool, packageId, typeId, entryIndex, chunkPosition + entriesStart + entryOffset, chunkEnd);
+    }
+    return;
+  }
+  for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
+    if (offsetsPosition + entryIndex * 4 + 4 > chunkEnd) {
+      break;
+    }
+    const entryOffset = buffer.readUInt32LE(offsetsPosition + entryIndex * 4);
+    if (entryOffset === 0xffffffff) {
+      continue;
+    }
+    parseEntry(buffer, table, keyPool, valuePool, packageId, typeId, entryIndex, chunkPosition + entriesStart + entryOffset, chunkEnd);
+  }
+}
+
+function parseEntry(
+  buffer: Buffer,
+  table: ResourceTable,
+  keyPool: StringPool,
+  valuePool: StringPool | undefined,
+  packageId: number,
+  typeId: number,
+  entryIndex: number,
+  entryPosition: number,
+  chunkEnd: number,
+): void {
+  if (entryPosition + 16 > chunkEnd) {
+    return;
+  }
+  const entrySize = buffer.readUInt16LE(entryPosition);
+  const entryFlags = buffer.readUInt16LE(entryPosition + 2);
+  if ((entryFlags & 0x0001) !== 0) {
+    return;
+  }
+  const valuePosition = entryPosition + entrySize;
+  if (valuePosition + 8 > chunkEnd) {
+    return;
+  }
+  const dataType = buffer.readUInt8(valuePosition + 3);
+  if (dataType !== 0x03) {
+    return;
+  }
+  const data = buffer.readUInt32LE(valuePosition + 4);
+  const value = (valuePool ?? keyPool) === undefined
+    ? undefined
+    : stringAt(valuePool ?? keyPool, data);
+  if (value !== undefined && value.length > 0) {
+    const key = packageId * 0x1000000 + typeId * 0x10000 + entryIndex;
+    table.values.set(key, value);
+  }
+}
+
+function parsePoolAt(buffer: Buffer, position: number): StringPool | undefined {
+  if (position + 8 > buffer.length) {
+    return undefined;
+  }
+  const type = buffer.readUInt16LE(position);
+  if (type !== 0x0001) {
+    return undefined;
+  }
+  const size = buffer.readUInt32LE(position + 4);
+  if (size < 28 || position + size > buffer.length) {
+    return undefined;
+  }
+  return parseStringPool(buffer, position, size);
 }
 
 function parseStringPool(
@@ -181,21 +298,49 @@ function parseStringPool(
 
 function readUtf8String(buffer: Buffer, position: number): string {
   let cursor = position;
-  cursor += cursor < buffer.length && (buffer[cursor] & 0x80) !== 0 ? 2 : 1;
-  const byteLength = cursor < buffer.length && (buffer[cursor] & 0x80) !== 0
-    ? buffer.readUInt16BE(cursor) & 0x7fff
-    : buffer[cursor];
-  cursor += cursor < buffer.length && (buffer[cursor] & 0x80) !== 0 ? 2 : 1;
-  return buffer.toString("utf8", cursor, cursor + byteLength);
+  cursor += encodedLengthSize(buffer, cursor);
+  const byteLength = readEncodedLength(buffer, cursor);
+  cursor += encodedLengthSize(buffer, cursor);
+  if (cursor >= buffer.length) {
+    return "";
+  }
+  return buffer.toString("utf8", cursor, Math.min(cursor + byteLength, buffer.length));
 }
 
 function readUtf16String(buffer: Buffer, position: number): string {
   let cursor = position;
-  const characterLength = cursor < buffer.length && (buffer[cursor] & 0x80) !== 0
-    ? buffer.readUInt16LE(cursor) & 0x7fff
-    : buffer.readUInt16LE(cursor);
-  cursor += cursor < buffer.length && (buffer[cursor] & 0x80) !== 0 ? 4 : 2;
-  return buffer.toString("utf16le", cursor, cursor + characterLength * 2);
+  const first = cursor + 2 <= buffer.length ? buffer.readUInt16LE(cursor) : 0;
+  let characterLength: number;
+  if ((first & 0x8000) !== 0) {
+    characterLength = ((first & 0x7fff) << 16) | buffer.readUInt16LE(cursor + 2);
+    cursor += 4;
+  } else {
+    characterLength = first;
+    cursor += 2;
+  }
+  if (cursor >= buffer.length) {
+    return "";
+  }
+  return buffer.toString(
+    "utf16le",
+    cursor,
+    Math.min(cursor + characterLength * 2, buffer.length),
+  );
+}
+
+function readEncodedLength(buffer: Buffer, position: number): number {
+  if ((buffer[position] & 0x80) === 0) {
+    return buffer[position];
+  }
+  return ((buffer[position] & 0x7f) << 8) | buffer[position + 1];
+}
+
+function encodedLengthSize(buffer: Buffer, position: number): number {
+  return (buffer[position] & 0x80) === 0 ? 1 : 2;
+}
+
+interface ResourceMap {
+  ids: number[];
 }
 
 function parseResourceMap(
@@ -211,74 +356,6 @@ function parseResourceMap(
   return { ids };
 }
 
-function parseResourceTable(buffer: Buffer): ResourceTable | undefined {
-  try {
-    const packageCount = buffer.readUInt32LE(8);
-    let position = buffer.readUInt32LE(4);
-    const table: ResourceTable = {
-      values: new Map(),
-    };
-    for (let index = 0; index < packageCount && position < buffer.length; index += 1) {
-      const packagePosition = position;
-      const packageSize = buffer.readUInt32LE(packagePosition + 4);
-      const packageId = buffer.readUInt32LE(packagePosition + 8);
-      const typeStringsOffset = buffer.readUInt32LE(packagePosition + 268);
-      const keyStringsOffset = buffer.readUInt32LE(packagePosition + 276);
-      let chunkPosition = packagePosition + typeStringsOffset;
-      const typeStringsEnd = packagePosition + keyStringsOffset;
-      const typePools = new Map<number, StringPool>();
-      let typeIndex = 1;
-      while (chunkPosition + 8 < typeStringsEnd) {
-        const type = buffer.readUInt16LE(chunkPosition);
-        const size = buffer.readUInt32LE(chunkPosition + 4);
-        if (type === 0x0001) {
-          typePools.set(typeIndex, parseStringPool(buffer, chunkPosition, size));
-        }
-        chunkPosition += size;
-        typeIndex += 1;
-      }
-      chunkPosition = packagePosition + keyStringsOffset;
-      while (chunkPosition + 8 < packagePosition + packageSize) {
-        const type = buffer.readUInt16LE(chunkPosition);
-        const size = buffer.readUInt32LE(chunkPosition + 4);
-        if (type === 0x0201) {
-          const typeId = buffer.readUInt8(chunkPosition + 8) & 0xff;
-          const entryCount = buffer.readUInt32LE(chunkPosition + 12);
-          const entriesStart = buffer.readUInt32LE(chunkPosition + 16);
-          const offsetsPosition = chunkPosition + 20;
-          const pool = typePools.get(typeId);
-          for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
-            const entryOffset = buffer.readUInt32LE(offsetsPosition + entryIndex * 4);
-            if (entryOffset === 0xffffffff || pool === undefined) {
-              continue;
-            }
-            const entryPosition = chunkPosition + entriesStart + entryOffset;
-            const valuePosition = entryPosition + 8;
-            if (valuePosition + 8 > chunkPosition + size) {
-              continue;
-            }
-            const dataType = buffer.readUInt8(valuePosition + 3);
-            const data = buffer.readUInt32LE(valuePosition + 4);
-            if (dataType !== 0x03) {
-              continue;
-            }
-            const value = stringAt(pool, data);
-            if (value !== undefined && value.length > 0) {
-              const key = packageId * 0x1000000 + typeId * 0x10000 + entryIndex;
-              table.values.set(key, value);
-            }
-          }
-        }
-        chunkPosition += size;
-      }
-      position = packagePosition + packageSize;
-    }
-    return table;
-  } catch {
-    return undefined;
-  }
-}
-
 function resolveValue(
   rawValue: string | undefined,
   dataType: number,
@@ -289,55 +366,13 @@ function resolveValue(
     return rawValue;
   }
   if (dataType === 0x01) {
-    return resolveResourcePath(data, table)?.path;
+    return table?.values.get(data);
   }
   return rawValue;
 }
 
-function resolveResourcePath(
-  resourceId: number,
-  table: ResourceTable | undefined,
-): { path: string; density: number } | undefined {
-  if (table === undefined) {
-    return undefined;
-  }
-  const path = table.values.get(resourceId);
-  if (path === undefined) {
-    return undefined;
-  }
-  return { path, density: densityFromPath(path) };
-}
-
-function densityFromPath(path: string): number {
-  const density = /(?:^|\/)(?:drawable|mipmap)-[a-z]*?(?:hdpi|xhdpi|xxhdpi|xxxhdpi|ldpi|mdpi)/.exec(path);
-  if (density === null) {
-    const exact = /(?:^|\/)(?:drawable|mipmap)-(?:|.*-)(\d+)dpi(?:-|$)/.exec(path);
-    return exact === null ? DEFAULT_ICON_DENSITY : Number(exact[1]);
-  }
-  const marker = density[0];
-  if (marker.includes("xxxhdpi")) return 640;
-  if (marker.includes("xxhdpi")) return 480;
-  if (marker.includes("xhdpi")) return 320;
-  if (marker.includes("hdpi")) return 240;
-  if (marker.includes("mdpi")) return 160;
-  if (marker.includes("ldpi")) return 120;
-  return DEFAULT_ICON_DENSITY;
-}
-
-function normalizeResourcePath(path: string): string | undefined {
-  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
-  return normalized.includes("..") || normalized.startsWith("/") ? undefined : normalized;
-}
-
 function attributeNameFromResourceId(resourceId: number | undefined): string | undefined {
-  switch (resourceId) {
-    case 0x01010001:
-      return "label";
-    case 0x01010002:
-      return "icon";
-    default:
-      return undefined;
-  }
+  return resourceId === 0x01010001 ? "label" : undefined;
 }
 
 function stringAt(pool: StringPool, index: number): string | undefined {

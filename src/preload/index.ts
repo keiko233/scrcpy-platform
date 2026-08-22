@@ -53,6 +53,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect),
   listInstalledApps: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesPackages),
+  enrichInstalledApps: (packages) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesPackagesEnrich, { packages }),
 
   getScreenSession: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensSession),

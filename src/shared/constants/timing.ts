@@ -8,9 +8,15 @@ export const Timing = {
   /** Device session polling interval */
   DEVICE_SESSION_POLL_MS: 2000,
   /** Installed apps staleTime */
-  INSTALLED_APPS_STALE_MS: 60_000,
+  INSTALLED_APPS_STALE_MS: 10 * 60_000,
   /** Installed apps gcTime */
-  INSTALLED_APPS_GC_MS: 5 * 60_000,
+  INSTALLED_APPS_GC_MS: 30 * 60_000,
+  /** How many packages to enrich per IPC batch */
+  INSTALLED_APPS_ENRICH_BATCH_SIZE: 16,
+  /** Concurrent APK metadata extractions in the main process */
+  INSTALLED_APPS_ENRICH_CONCURRENCY: 4,
+  /** APK metadata disk cache lifetime before re-extraction */
+  INSTALLED_APPS_CACHE_TTL_MS: 24 * 60 * 60_000,
   /** Device session dispose timeout */
   DEVICE_SESSION_DISPOSE_TIMEOUT_MS: 4000,
   /** Timeout waiting for scrcpy to report virtual display id */

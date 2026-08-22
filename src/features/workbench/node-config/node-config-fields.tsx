@@ -19,7 +19,6 @@ import {
 } from "@/shared/project-contracts";
 
 import type { FieldDefinition } from "../types";
-import { PackageField } from "./package-picker";
 import { m } from "@/paraglide/messages.js";
 
 export function NumberInput({
@@ -191,14 +190,12 @@ export function FieldEditor({
   onChange,
   dataType,
   connected = false,
-  active = false,
 }: {
   field: FieldDefinition;
   value: JsonValue | undefined;
   onChange: (value: JsonValue) => void;
   dataType?: FlowDataType;
   connected?: boolean;
-  active?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -255,14 +252,6 @@ export function FieldEditor({
           disabled={connected}
           onCheckedChange={onChange}
           aria-label={field.label}
-        />
-      ) : field.kind === "package" ? (
-        <PackageField
-          value={value}
-          placeholder={field.placeholder}
-          disabled={connected}
-          active={active}
-          onChange={onChange}
         />
       ) : (
         <LiveTextInput

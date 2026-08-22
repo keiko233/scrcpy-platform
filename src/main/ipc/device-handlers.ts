@@ -4,7 +4,9 @@ import {
   ConnectDeviceInputSchema,
   type ConnectDeviceResult,
   type DisconnectDeviceResult,
+  EnrichInstalledAppsInputSchema,
   type InstalledAppDto,
+  type InstalledAppsSnapshot,
   type ListDevicesResult,
 } from "../../shared/device-contracts";
 import type { DeviceSessionService } from "../adb/device-session";
@@ -19,7 +21,15 @@ export function registerDeviceHandlers(service: DeviceSessionService): void {
 
   ipcMain.handle(
     ELECTRON_CHANNELS.devicesPackages,
-    (): Promise<InstalledAppDto[]> => service.listInstalledApps(),
+    (): Promise<InstalledAppsSnapshot> => service.listInstalledApps(),
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.devicesPackagesEnrich,
+    (_event, raw: unknown): Promise<InstalledAppDto[]> => {
+      const input = EnrichInstalledAppsInputSchema.parse(raw);
+      return service.enrichInstalledApps(input.packages);
+    },
   );
 
   ipcMain.handle(

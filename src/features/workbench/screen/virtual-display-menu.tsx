@@ -46,8 +46,12 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
   const { devices, screens } = useWorkbench();
   const [open, setOpen] = useState(false);
   const [showSystemApps, setShowSystemApps] = useState(false);
-  const appsQuery = useInstalledApps(open && connected, devices.session?.sessionId ?? null);
-  const allApps = appsQuery.data ?? [];
+  const appsQuery = useInstalledApps(
+    open && connected,
+    devices.session?.sessionId ?? null,
+    devices.session?.transportId ?? null,
+  );
+  const allApps = appsQuery.data?.apps ?? [];
   const apps = showSystemApps ? allApps : allApps.filter((app) => !app.system);
   const form = useForm({
     defaultValues: DEFAULT_VIRTUAL_DISPLAY_VALUES,
@@ -193,15 +197,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                           {visibleApps.map((item) => (
                             <ComboboxItem key={item.packageName} value={item}>
                               <div className="flex min-w-0 items-center gap-2">
-                                {item.iconUrl !== null ? (
-                                  <img
-                                    alt=""
-                                    className="size-5 rounded-md object-cover"
-                                    src={item.iconUrl}
-                                  />
-                                ) : (
-                                  <SmartphoneIcon className="size-4 text-muted-foreground" />
-                                )}
+                                <SmartphoneIcon className="size-4 text-muted-foreground" />
                                 <span className="min-w-0">
                                   <span className="block truncate text-xs font-medium">
                                     {item.name}

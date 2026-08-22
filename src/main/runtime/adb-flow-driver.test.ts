@@ -80,44 +80,6 @@ describe("AdbFlowActionDriver", () => {
     ]);
   });
 
-  test("launches packages with monkey or an explicit component", async () => {
-    const { driver, commands } = fixture();
-    await driver.execute(
-      node("launch-app", { packageName: "com.example.app", activity: "" }),
-      CONTEXT,
-      new AbortController().signal,
-    );
-    await driver.execute(
-      node("launch-app", {
-        packageName: "com.example.app",
-        activity: ".MainActivity",
-      }),
-      CONTEXT,
-      new AbortController().signal,
-    );
-
-    assert.deepEqual(commands, [
-      [
-        "monkey",
-        "--display",
-        "7",
-        "-p",
-        "com.example.app",
-        "-c",
-        "android.intent.category.LAUNCHER",
-        "1",
-      ],
-      [
-        "am",
-        "start",
-        "--display",
-        "7",
-        "-n",
-        "com.example.app/.MainActivity",
-      ],
-    ]);
-  });
-
   test("rejects invalid data, changed sessions, and aborted actions", async () => {
     const { driver, session } = fixture();
     await expect(

@@ -1,6 +1,4 @@
 import type { Adb } from "@yume-chan/adb";
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import type {
   AdbDeviceDto,
   ConnectDeviceFailure,
@@ -9,9 +7,15 @@ import type {
   DeviceSessionState,
   DisconnectDeviceResult,
   InstalledAppDto,
+  InstalledAppsSnapshot,
   ListDevicesResult,
 } from "../../shared/device-contracts";
-import { readInstalledApp } from "./installed-app-parser";
+import { Timing } from "../../shared/constants/timing";
+import { AppMetadataCacheStore } from "./app-cache";
+import {
+  readInstalledApp,
+  type PackageRecord,
+} from "./installed-app-parser";
 
 /**
  * A device reported by the underlying ADB transport.
@@ -76,7 +80,7 @@ function parsePackageNames(output: string): string[] {
 function parsePackageRecords(
   output: string,
   userPackages: ReadonlySet<string>,
-): Array<{ packageName: string; apkPath: string; system: boolean }> {
+): PackageRecord[] {
   return output
     .split(/\r?\n/)
     .map((line) => {
@@ -93,12 +97,28 @@ function parsePackageRecords(
     .filter((record) => record !== null);
 }
 
-function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `'"'"'`)}'`;
-}
-
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isCacheStale(cachedAt: number): boolean {
+  return Date.now() - cachedAt > Timing.INSTALLED_APPS_CACHE_TTL_MS;
+}
+
+async function runPool<T>(
+  items: readonly T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const item = items[cursor];
+      cursor += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 /**
@@ -117,7 +137,8 @@ export class DeviceSessionService {
   #queue: Promise<void> = Promise.resolve();
   #disposePromise: Promise<void> | null = null;
   readonly #beforeDisconnectHooks = new Set<BeforeDeviceDisconnectHook>();
-  readonly #userDataPath: string | null;
+  readonly #appCache: AppMetadataCacheStore | null;
+  #packageRecords: Map<string, PackageRecord> | null = null;
 
   constructor(
     gateway: DeviceGateway,
@@ -126,7 +147,9 @@ export class DeviceSessionService {
   ) {
     this.#gateway = gateway;
     this.sessionId = sessionId;
-    this.#userDataPath = userDataPath;
+    this.#appCache = userDataPath === null
+      ? null
+      : new AppMetadataCacheStore(userDataPath);
   }
 
   #enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -155,11 +178,93 @@ export class DeviceSessionService {
     return this.#state === "connected" ? this.#connection : null;
   }
 
-  async listInstalledApps(): Promise<InstalledAppDto[]> {
+  async listInstalledApps(): Promise<InstalledAppsSnapshot> {
     const connection = this.getConnection();
     if (connection === null) {
+      return { apps: [], pending: [] };
+    }
+    const records = await this.#loadPackageRecords(connection);
+    const cache = this.#appCache === null ? null : await this.#appCache.load();
+    const apps = [...records.values()]
+      .map((record): InstalledAppDto => {
+        const cached = cache?.[record.packageName];
+        return {
+          packageName: record.packageName,
+          name: cached?.name ?? record.packageName,
+          system: record.system,
+        };
+      })
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
+      );
+    const pending = cache === null
+      ? []
+      : [...records.values()]
+          .filter((record) => {
+            const cached = cache[record.packageName];
+            return cached === undefined || isCacheStale(cached.cachedAt);
+          })
+          .map((record) => record.packageName)
+          .sort((left, right) => {
+            const leftSystem = records.get(left)?.system ?? true;
+            const rightSystem = records.get(right)?.system ?? true;
+            return leftSystem === rightSystem ? 0 : leftSystem ? 1 : -1;
+          });
+    return { apps, pending };
+  }
+
+  async enrichInstalledApps(packages: string[]): Promise<InstalledAppDto[]> {
+    const connection = this.getConnection();
+    if (connection === null || this.#appCache === null) {
       return [];
     }
+    if (this.#packageRecords === null || this.#packageRecords.size === 0) {
+      this.#packageRecords = await this.#loadPackageRecords(connection);
+    }
+    const records = this.#packageRecords;
+    const cache = await this.#appCache.load();
+    const toProcess = packages.filter((packageName) => {
+      const record = records.get(packageName);
+      const cached = cache[packageName];
+      return record !== undefined &&
+        (cached === undefined || isCacheStale(cached.cachedAt));
+    });
+    const freshEntries: Record<string, { name: string; cachedAt: number }> = {};
+    await runPool(
+      toProcess,
+      Timing.INSTALLED_APPS_ENRICH_CONCURRENCY,
+      async (packageName) => {
+        const record = records.get(packageName);
+        if (record === undefined) {
+          return;
+        }
+        try {
+          const dto = await readInstalledApp(connection.adb, record);
+          freshEntries[packageName] = {
+            name: dto.name,
+            cachedAt: Date.now(),
+          };
+        } catch {
+          // Keep the package uncached so a later attempt can retry.
+        }
+      },
+    );
+    await this.#appCache.update(freshEntries);
+    const updatedCache = await this.#appCache.load();
+    return packages.map((packageName) => {
+      const record = records.get(packageName);
+      const cached = updatedCache[packageName];
+      return {
+        packageName,
+        name: cached?.name ?? record?.packageName ?? packageName,
+        system: record?.system ?? false,
+      } satisfies InstalledAppDto;
+    });
+  }
+
+  async #loadPackageRecords(
+    connection: DeviceConnection,
+  ): Promise<Map<string, PackageRecord>> {
     const [allOutput, userOutput] = await Promise.all([
       connection.adb.subprocess.noneProtocol.spawnWaitText([
         "pm",
@@ -175,41 +280,15 @@ export class DeviceSessionService {
       ]),
     ]);
     const userPackages = new Set(parsePackageNames(userOutput));
-    const iconDirectory = this.#userDataPath === null
-      ? null
-      : join(this.#userDataPath, "installed-app-icons");
-    if (iconDirectory !== null) {
-      await mkdir(iconDirectory, { recursive: true });
+    const records = new Map<string, PackageRecord>();
+    for (const record of parsePackageRecords(allOutput, userPackages)) {
+      const existing = records.get(record.packageName);
+      if (existing === undefined || /\/base\.apk$/.test(record.apkPath)) {
+        records.set(record.packageName, record);
+      }
     }
-    const apps = await Promise.all(
-      parsePackageRecords(allOutput, userPackages).map(async (record) => {
-        try {
-          const apk = await connection.adb.subprocess.noneProtocol.spawnWait([
-            "cat",
-            shellQuote(record.apkPath),
-          ]);
-          if (iconDirectory === null) {
-            return {
-              packageName: record.packageName,
-              name: record.packageName,
-              iconUrl: null,
-              system: record.system,
-            } satisfies InstalledAppDto;
-          }
-          return await readInstalledApp(record, apk, iconDirectory);
-        } catch {
-          return {
-            packageName: record.packageName,
-            name: record.packageName,
-            iconUrl: null,
-            system: record.system,
-          } satisfies InstalledAppDto;
-        }
-      }),
-    );
-    return apps.sort((left, right) =>
-      left.name.localeCompare(right.name, undefined, { sensitivity: "base" }),
-    );
+    this.#packageRecords = records;
+    return records;
   }
 
   registerBeforeDisconnect(hook: BeforeDeviceDisconnectHook): () => void {

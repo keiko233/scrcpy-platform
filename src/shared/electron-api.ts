@@ -4,6 +4,7 @@ import type {
   DisconnectDeviceResult,
   DeviceSessionDto,
   InstalledAppDto,
+  InstalledAppsSnapshot,
   ListDevicesResult,
 } from "./device-contracts";
 import type {
@@ -81,6 +82,7 @@ export const ELECTRON_CHANNELS = {
   devicesConnect: ElectronChannel.DevicesConnect,
   devicesDisconnect: ElectronChannel.DevicesDisconnect,
   devicesPackages: ElectronChannel.DevicesPackages,
+  devicesPackagesEnrich: ElectronChannel.DevicesPackagesEnrich,
   screensSession: ElectronChannel.ScreensSession,
   screensSettingsGet: ElectronChannel.ScreensSettingsGet,
   screensSettingsSet: ElectronChannel.ScreensSettingsSet,
@@ -162,7 +164,8 @@ export interface ElectronAPI {
   getDeviceSession(): Promise<DeviceSessionDto>;
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
   disconnectDevice(): Promise<DisconnectDeviceResult>;
-  listInstalledApps(): Promise<InstalledAppDto[]>;
+  listInstalledApps(): Promise<InstalledAppsSnapshot>;
+  enrichInstalledApps(packages: string[]): Promise<InstalledAppDto[]>;
 
   getScreenSession(): Promise<ScreenSessionDto>;
   getScrcpySettings(): Promise<ScrcpySettings>;

@@ -12,19 +12,16 @@ const APPS: readonly InstalledAppDto[] = [
   {
     packageName: "com.example.alpha",
     name: "Alpha App",
-    iconUrl: null,
     system: false,
   },
   {
     packageName: "com.android.settings",
     name: "Settings",
-    iconUrl: "data:image/png;base64,abc",
     system: true,
   },
   {
     packageName: "com.example.beta",
     name: "Beta",
-    iconUrl: null,
     system: false,
   },
 ];

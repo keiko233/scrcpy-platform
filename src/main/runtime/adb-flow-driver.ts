@@ -43,13 +43,6 @@ const SwipeDataSchema = z
   })
   .passthrough();
 
-const LaunchAppDataSchema = z
-  .object({
-    packageName: z.string().trim().min(1),
-    activity: z.string().trim().optional(),
-  })
-  .passthrough();
-
 function abortIfNeeded(signal: AbortSignal): void {
   if (signal.aborted) {
     throw new DOMException("Flow action cancelled.", "AbortError");
@@ -125,31 +118,6 @@ export class AdbFlowActionDriver implements FlowActionDriver {
           integer(data.toY),
           integer(data.durationMs),
         ];
-        break;
-      }
-      case "launch-app": {
-        const data = LaunchAppDataSchema.parse(node.data);
-        const activity = data.activity ?? "";
-        command =
-          activity.length === 0
-            ? [
-                "monkey",
-                "--display",
-                String(context.displayId),
-                "-p",
-                data.packageName,
-                "-c",
-                "android.intent.category.LAUNCHER",
-                "1",
-              ]
-            : [
-                "am",
-                "start",
-                "--display",
-                String(context.displayId),
-                "-n",
-                `${data.packageName}/${activity}`,
-              ];
         break;
       }
       default:

@@ -18,8 +18,8 @@ export const FilePath = {
   /** Persistence files under app.getPath("userData") */
   DB_FILE: "android-platform.sqlite3",
   LOG_FILE: "android-platform.log",
-  /** Cache directories under userData */
-  ICON_CACHE_DIR: "installed-app-icons",
+  /** App metadata cache file under userData */
+  APP_CACHE_FILE: "installed-apps-cache.json",
   OCR_LANGUAGES_DIR: "ocr-languages",
 } as const;
 
