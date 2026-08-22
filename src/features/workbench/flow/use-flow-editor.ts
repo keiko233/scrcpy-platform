@@ -23,16 +23,22 @@ import type { FlowBlockKind, WorkbenchEdge, WorkbenchNode } from "../types";
 import {
   applyNodesChange,
   canConnectPorts,
+  collectRemovedNodeIds,
   copySelection,
   defaultViewport,
+  DEFAULT_GROUP_HEIGHT,
+  DEFAULT_GROUP_WIDTH,
   edgesFromDocument,
+  groupSelectedNodes,
   mergeEdge,
   nodesFromDocument,
   pasteSelection,
   patchNodeData,
   toFlowDocument,
+  ungroupNodes,
   viewportFromDocument,
   type ClipboardPayload,
+  type NodeGeometry,
 } from "./flow-document";
 
 export type FlowSaveError =
@@ -59,6 +65,8 @@ export interface FlowEditor {
   addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
+  groupSelection: (geometry: ReadonlyMap<string, NodeGeometry>) => void;
+  ungroupSelection: (geometry: ReadonlyMap<string, NodeGeometry>) => void;
   copySelected: () => void;
   cutSelected: () => void;
   pasteClipboard: (position?: XYPosition) => void;
@@ -183,6 +191,9 @@ export function useFlowEditor(
         position: position ?? fallback,
         data: { ...definition.defaults },
         selected: true,
+        ...(kind === "group"
+          ? { width: DEFAULT_GROUP_WIDTH, height: DEFAULT_GROUP_HEIGHT }
+          : {}),
       };
       setNodes((current) => [
         ...current.map((item) =>
@@ -198,15 +209,22 @@ export function useFlowEditor(
 
   const deleteNode = useCallback(
     (id: string) => {
+      const removedIds = collectRemovedNodeIds(nodesRef.current, [id]);
       setNodes((current) =>
-        applyNodesChange([{ type: "remove", id }], current),
+        applyNodesChange(
+          [...removedIds].map((nodeId) => ({ type: "remove", id: nodeId })),
+          current,
+        ),
       );
       setEdges((current) =>
-        current.filter((edge) => edge.source !== id && edge.target !== id),
+        current.filter(
+          (edge) =>
+            !removedIds.has(edge.source) && !removedIds.has(edge.target),
+        ),
       );
       setDirty(true);
     },
-    [setNodes, setEdges],
+    [setNodes, setEdges, nodesRef],
   );
 
   const updateNodeData = useCallback(
@@ -219,6 +237,36 @@ export function useFlowEditor(
       setDirty(true);
     },
     [setNodes],
+  );
+
+  const groupSelection = useCallback(
+    (geometry: ReadonlyMap<string, NodeGeometry>) => {
+      const selectedIds = nodesRef.current
+        .filter((node) => node.selected)
+        .map((node) => node.id);
+      if (selectedIds.length === 0) {
+        return;
+      }
+      setNodes((current) =>
+        groupSelectedNodes(current, geometry, selectedIds),
+      );
+      setDirty(true);
+    },
+    [setNodes, nodesRef],
+  );
+
+  const ungroupSelection = useCallback(
+    (geometry: ReadonlyMap<string, NodeGeometry>) => {
+      const groupIds = nodesRef.current
+        .filter((node) => node.selected && node.type === "group")
+        .map((node) => node.id);
+      if (groupIds.length === 0) {
+        return;
+      }
+      setNodes((current) => ungroupNodes(current, geometry, groupIds));
+      setDirty(true);
+    },
+    [setNodes, nodesRef],
   );
 
   const copySelected = useCallback(() => {
@@ -397,6 +445,8 @@ export function useFlowEditor(
     addBlock,
     deleteNode,
     updateNodeData,
+    groupSelection,
+    ungroupSelection,
     copySelected,
     cutSelected,
     pasteClipboard,

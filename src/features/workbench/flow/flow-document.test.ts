@@ -8,12 +8,16 @@ import {
 import type { WorkbenchEdge, WorkbenchNode } from "../types";
 import {
   copySelection,
+  collectRemovedNodeIds,
   edgesFromDocument,
+  groupSelectedNodes,
   mergeEdge,
   nodesFromDocument,
   pasteSelection,
   toFlowDocument,
+  ungroupNodes,
   type ClipboardPayload,
+  type NodeGeometry,
 } from "./flow-document";
 
 function workbenchNode(
@@ -499,5 +503,245 @@ describe("workbench copy and paste", () => {
     const { nodes } = pasteSelection(payload, { origin: { x: 100, y: 200 } });
 
     assert.deepEqual(nodes[0]?.position, { x: 100, y: 200 });
+  });
+
+  it("copies a selected group together with its children", () => {
+    const nodes: WorkbenchNode[] = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 100, y: 100 },
+        width: 320,
+        height: 220,
+        data: { kind: "group" },
+        selected: true,
+      },
+      {
+        id: "a",
+        type: "click",
+        parentId: "g1",
+        extent: "parent",
+        position: { x: 20, y: 20 },
+        data: { kind: "click" },
+      },
+      {
+        id: "b",
+        type: "delay",
+        parentId: "g1",
+        extent: "parent",
+        position: { x: 200, y: 20 },
+        data: { kind: "delay" },
+      },
+      workbenchNode("c", "delay"),
+    ];
+
+    const payload = copySelection(nodes, []);
+
+    assert.ok(payload !== null);
+    assert.deepEqual(
+      payload.nodes.map((node) => node.id).sort(),
+      ["a", "b", "g1"],
+    );
+    const group = payload.nodes.find((node) => node.id === "g1");
+    assert.equal(group?.width, 320);
+    assert.equal(group?.height, 220);
+    const child = payload.nodes.find((node) => node.id === "a");
+    assert.equal(child?.parentId, "g1");
+  });
+
+  it("remaps group parent ids when pasting", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "g1",
+          type: "group",
+          position: { x: 100, y: 100 },
+          width: 320,
+          height: 220,
+          data: { kind: "group" },
+        },
+        {
+          id: "a",
+          type: "click",
+          position: { x: 20, y: 20 },
+          data: { kind: "click" },
+          parentId: "g1",
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = pasteSelection(payload, { offset: { x: 0, y: 0 } });
+
+    assert.equal(nodes.length, 2);
+    const group = nodes.find((node) => node.type === "group");
+    const child = nodes.find((node) => node.type === "click");
+    assert.ok(group !== undefined && child !== undefined);
+    assert.notEqual(group.id, "g1");
+    assert.equal(child.parentId, group.id);
+    assert.equal(child.extent, "parent");
+  });
+});
+
+describe("workbench grouping", () => {
+  const geometry = (): Map<string, NodeGeometry> =>
+    new Map([
+      ["a", { position: { x: 200, y: 100 }, width: 64, height: 48 }],
+      ["b", { position: { x: 320, y: 200 }, width: 64, height: 48 }],
+    ]);
+
+  it("wraps selected nodes in a group with relative child positions", () => {
+    const nodes: WorkbenchNode[] = [
+      { ...workbenchNode("a", "click"), selected: true },
+      { ...workbenchNode("b", "delay"), selected: true },
+    ];
+
+    const result = groupSelectedNodes(nodes, geometry(), ["a", "b"]);
+
+    assert.equal(result.length, 3);
+    const group = result.find((node) => node.type === "group");
+    assert.ok(group !== undefined);
+    assert.equal(group.selected, true);
+    assert.ok(group.width !== undefined && group.width >= 200);
+    assert.ok(group.height !== undefined && group.height >= 160);
+    assert.ok(group.position.x < 200);
+    assert.ok(group.position.y < 100);
+
+    const a = result.find((node) => node.id === "a");
+    const b = result.find((node) => node.id === "b");
+    assert.equal(a?.parentId, group.id);
+    assert.equal(a?.extent, "parent");
+    assert.equal(b?.parentId, group.id);
+    assert.deepEqual(a?.position, {
+      x: 200 - (group.position.x as number),
+      y: 100 - (group.position.y as number),
+    });
+  });
+
+  it("does not nest existing groups", () => {
+    const nodes: WorkbenchNode[] = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 0, y: 0 },
+        width: 320,
+        height: 220,
+        data: { kind: "group" },
+        selected: true,
+      },
+      { ...workbenchNode("a", "click"), selected: true },
+    ];
+
+    const result = groupSelectedNodes(nodes, geometry(), ["a", "g1"]);
+
+    assert.equal(result.length, 3);
+    const existing = result.find((node) => node.id === "g1");
+    assert.equal(existing?.selected, false);
+    assert.equal(existing?.parentId, undefined);
+    const created = result.find(
+      (node) => node.type === "group" && node.id !== "g1",
+    );
+    assert.ok(created !== undefined);
+    assert.equal(created.parentId, undefined);
+    assert.equal(result.find((node) => node.id === "a")?.parentId, created.id);
+  });
+
+  it("releases children to absolute positions on ungroup", () => {
+    const nodes: WorkbenchNode[] = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 100, y: 100 },
+        width: 320,
+        height: 220,
+        data: { kind: "group" },
+        selected: true,
+      },
+      {
+        id: "a",
+        type: "click",
+        parentId: "g1",
+        extent: "parent",
+        position: { x: 20, y: 30 },
+        data: { kind: "click" },
+      },
+    ];
+    const geo = new Map<string, NodeGeometry>([
+      ["a", { position: { x: 120, y: 130 }, width: 64, height: 48 }],
+    ]);
+
+    const result = ungroupNodes(nodes, geo, ["g1"]);
+
+    assert.equal(result.find((node) => node.id === "g1")?.selected, false);
+    const a = result.find((node) => node.id === "a");
+    assert.equal(a?.parentId, undefined);
+    assert.equal(a?.extent, null);
+    assert.deepEqual(a?.position, { x: 120, y: 130 });
+    assert.equal(a?.selected, true);
+  });
+
+  it("collects children when a group is removed", () => {
+    const nodes: WorkbenchNode[] = [
+      {
+        id: "g1",
+        type: "group",
+        position: { x: 0, y: 0 },
+        width: 320,
+        height: 220,
+        data: { kind: "group" },
+      },
+      {
+        id: "a",
+        type: "click",
+        parentId: "g1",
+        position: { x: 20, y: 20 },
+        data: { kind: "click" },
+      },
+      workbenchNode("c", "delay"),
+    ];
+
+    assert.deepEqual(
+      [...collectRemovedNodeIds(nodes, ["g1"])].sort(),
+      ["a", "g1"],
+    );
+  });
+
+  it("round-trips group parent ids and dimensions through the document", () => {
+    const document: FlowDocument = {
+      schemaVersion: 1,
+      nodes: [
+        {
+          id: "g1",
+          type: "group",
+          position: { x: 100, y: 100 },
+          width: 320,
+          height: 220,
+          data: { kind: "group" },
+        },
+        {
+          id: "a",
+          type: "click",
+          parentId: "g1",
+          position: { x: 20, y: 20 },
+          data: { kind: "click", x: 1, y: 2 },
+        },
+      ],
+      edges: [],
+    };
+
+    assert.doesNotThrow(() => FlowDocumentSchema.parse(document));
+
+    const nodes = nodesFromDocument(document);
+    const group = nodes.find((node) => node.id === "g1");
+    const child = nodes.find((node) => node.id === "a");
+    assert.equal(group?.width, 320);
+    assert.equal(group?.height, 220);
+    assert.equal(child?.parentId, "g1");
+    assert.equal(child?.extent, "parent");
+
+    const restored = toFlowDocument(nodes, [], { x: 0, y: 0, zoom: 1 });
+    assert.doesNotThrow(() => FlowDocumentSchema.parse(restored));
+    assert.deepEqual(restored.nodes[0]?.width, 320);
+    assert.deepEqual(restored.nodes[1]?.parentId, "g1");
   });
 });

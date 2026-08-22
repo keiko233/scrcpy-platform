@@ -292,6 +292,22 @@ body,
   @apply size-2 border border-background;
 }
 
+.wb-block-note {
+  @apply border-warning/50 bg-warning/10;
+}
+
+.wb-node-group {
+  @apply overflow-hidden;
+}
+
+.wb-node-group .react-flow__resize-control.line {
+  @apply border-warning/50;
+}
+
+.wb-node-group .react-flow__resize-control.handle {
+  @apply size-2.5 rounded-sm border border-primary bg-card;
+}
+
 /* Resizable panel separators */
 [data-group] [data-separator] {
   background: var(--border);

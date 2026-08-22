@@ -1141,6 +1141,10 @@ export class FlowRuntimeService {
         throw new Error(
           `Compare node "${node.id}" has no control flow to execute.`,
         );
+      case "note":
+        throw new Error(`Note node "${node.id}" is not executable.`);
+      case "group":
+        throw new Error(`Group node "${node.id}" is not executable.`);
     }
   }
 

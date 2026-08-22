@@ -36,14 +36,17 @@ import {
   ClipboardPasteIcon,
   CopyIcon,
   GitForkIcon,
+  LayersIcon,
   ScissorsIcon,
   Trash2Icon,
+  UngroupIcon,
 } from "lucide-react";
 
 import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { AUTOMATION_NODE_TYPES } from "../node-types";
 import type { FlowBlockKind } from "../types";
 import { useWorkbench } from "../use-workbench";
+import type { NodeGeometry } from "../flow/flow-document";
 import { m } from "@/paraglide/messages.js";
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -69,7 +72,7 @@ function EditorEmptyState() {
 
 function FlowCanvas() {
   const { flow } = useWorkbench();
-  const { screenToFlowPosition } = useReactFlow();
+  const { screenToFlowPosition, getInternalNode } = useReactFlow();
   const [panePosition, setPanePosition] = useState<XYPosition | null>(null);
 
   const {
@@ -103,6 +106,19 @@ function FlowCanvas() {
   const addBlockAtPane = (kind: FlowBlockKind) => {
     addBlock(kind, panePosition ?? undefined);
     setPanePosition(null);
+  };
+
+  const buildGeometry = (): Map<string, NodeGeometry> => {
+    const geometry = new Map<string, NodeGeometry>();
+    for (const node of nodes) {
+      const internal = getInternalNode(node.id);
+      geometry.set(node.id, {
+        position: internal?.internals.positionAbsolute ?? node.position,
+        width: internal?.measured.width ?? node.width ?? 0,
+        height: internal?.measured.height ?? node.height ?? 0,
+      });
+    }
+    return geometry;
   };
 
   useEffect(() => {
@@ -228,6 +244,27 @@ function FlowCanvas() {
             )}
             {selectedNodes.length > 0 && (
               <>
+                <ContextMenuSeparator />
+                <ContextMenuItem
+                  onClick={() => {
+                    flow.groupSelection(buildGeometry());
+                    setPanePosition(null);
+                  }}
+                >
+                  <LayersIcon />
+                  {m.flow_editor_group_selection()}
+                </ContextMenuItem>
+                {selectedNodes.some((node) => node.type === "group") && (
+                  <ContextMenuItem
+                    onClick={() => {
+                      flow.ungroupSelection(buildGeometry());
+                      setPanePosition(null);
+                    }}
+                  >
+                    <UngroupIcon />
+                    {m.flow_editor_ungroup_selection()}
+                  </ContextMenuItem>
+                )}
                 <ContextMenuSeparator />
                 <ContextMenuItem onClick={copySelected}>
                   <CopyIcon />

@@ -1,5 +1,6 @@
 import {
   ArrowRightLeftIcon,
+  BoxSelectIcon,
   ClockIcon,
   CombineIcon,
   EqualIcon,
@@ -16,6 +17,7 @@ import {
   ScaleIcon,
   ShieldCheckIcon,
   SigmaIcon,
+  StickyNoteIcon,
   type LucideIcon,
 } from "lucide-react";
 
@@ -941,6 +943,52 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.constant.inputs,
     outputPorts: FLOW_NODE_PORTS.constant.outputs,
   },
+  note: {
+    kind: "note",
+    get label() {
+      return m.block_note_label();
+    },
+    get description() {
+      return m.block_note_description();
+    },
+    icon: StickyNoteIcon,
+    defaults: { kind: "note", note: "" },
+    summarize: (data) =>
+      text(data.note) || m.block_summarize_unset(),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "note",
+          get label() {
+            return m.block_field_note_label();
+          },
+          kind: "textarea",
+          get placeholder() {
+            return m.block_field_note_placeholder();
+          },
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.note.inputs,
+    outputPorts: FLOW_NODE_PORTS.note.outputs,
+  },
+  group: {
+    kind: "group",
+    get label() {
+      return m.block_group_label();
+    },
+    get description() {
+      return m.block_group_description();
+    },
+    icon: BoxSelectIcon,
+    defaults: { kind: "group", name: "" },
+    summarize: () => "",
+    get fields(): FieldDefinition[] {
+      return [];
+    },
+    inputPorts: FLOW_NODE_PORTS.group.inputs,
+    outputPorts: FLOW_NODE_PORTS.group.outputs,
+  },
 };
 
 export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
@@ -959,6 +1007,8 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "for",
   "while",
   "assert",
+  "note",
+  "group",
 ];
 
 export const FLOW_BLOCK_KIND_ORDER: FlowBlockKind[] = [

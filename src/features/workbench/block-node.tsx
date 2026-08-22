@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { MinusIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { MinusIcon, PlusIcon, StickyNoteIcon, Trash2Icon } from "lucide-react";
 
 import {
   ContextMenu,
@@ -20,6 +21,7 @@ import {
 import { BLOCK_DEFINITIONS } from "./blocks";
 import { useFlowApi } from "./flow/flow-api-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
+import { BlockTitle, customNodeName } from "./node-title";
 import { useWorkbench } from "./use-workbench";
 import type { WorkbenchNode } from "./types";
 import { m } from "@/paraglide/messages.js";
@@ -149,13 +151,18 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
   const { deleteNode, updateNodeData } = useFlowApi();
   const { runs, flow } = useWorkbench();
+  const [configOpen, setConfigOpen] = useState(false);
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
-  const title = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
+  const customName = customNodeName(data.name);
+  const fallbackTitle = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
   const summary = definition ? definition.summarize(data) : m.block_summarize_unknown();
   const isBreakpoint = runs.breakpoints.has(id);
   const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
   const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
+  const hasFlowPorts =
+    (definition?.inputPorts.length ?? 0) > 0 ||
+    (definition?.outputPorts.length ?? 0) > 0;
   const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
   const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[data.kind];
   const dynamicDataConfig = FLOW_NODE_DYNAMIC_INPUTS[data.kind];
@@ -224,6 +231,61 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
     updateNodeData(id, { [dynamicConfig.countField]: dynamicCount - 1 });
   };
 
+  if (data.kind === "note") {
+    const noteText = typeof data.note === "string" ? data.note : "";
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          className="block"
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <div
+            className={cn(
+              "wb-flow-node wb-block-note min-w-44 !p-0",
+              selected && "selected",
+            )}
+          >
+            <div className="flex items-center gap-2 border-b border-warning/30 px-2 py-1.5">
+              <StickyNoteIcon
+                aria-hidden="true"
+                className="size-3.5 shrink-0 text-muted-foreground"
+              />
+              <div className="min-w-0 flex-1">
+                <BlockTitle
+                  name={customName}
+                  fallback={fallbackTitle}
+                  onDoubleClick={() => setConfigOpen(true)}
+                />
+              </div>
+              <NodeConfigPopover
+                nodeId={id}
+                data={data}
+                open={configOpen}
+                onOpenChange={setConfigOpen}
+              />
+            </div>
+            <div
+              className={cn(
+                "max-h-32 overflow-y-auto whitespace-pre-wrap break-words px-2 pb-2 pt-1 text-[11px] leading-4",
+                noteText.length > 0
+                  ? "text-foreground/80"
+                  : "text-muted-foreground/60",
+              )}
+            >
+              {noteText.length > 0 ? noteText : m.block_field_note_placeholder()}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuPopup align="center" sideOffset={4}>
+          <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
+            <Trash2Icon />
+            {m.block_node_delete_block()}
+          </ContextMenuItem>
+        </ContextMenuPopup>
+      </ContextMenu>
+    );
+  }
+
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -240,23 +302,25 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
           )}
         >
           <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
-            <button
-              type="button"
-              className="group/breakpoint flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
-              title={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
-              aria-label={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
-              aria-pressed={isBreakpoint}
-              onClick={() => runs.toggleBreakpoint(id)}
-            >
-              <span
-                className={cn(
-                  "size-2.5 rounded-full border",
-                  isBreakpoint
-                    ? "border-destructive bg-destructive"
-                    : "border-muted-foreground/50 bg-transparent group-hover/breakpoint:border-muted-foreground",
-                )}
-              />
-            </button>
+            {hasFlowPorts && (
+              <button
+                type="button"
+                className="group/breakpoint flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
+                title={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
+                aria-label={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
+                aria-pressed={isBreakpoint}
+                onClick={() => runs.toggleBreakpoint(id)}
+              >
+                <span
+                  className={cn(
+                    "size-2.5 rounded-full border",
+                    isBreakpoint
+                      ? "border-destructive bg-destructive"
+                      : "border-muted-foreground/50 bg-transparent group-hover/breakpoint:border-muted-foreground",
+                  )}
+                />
+              </button>
+            )}
             {Icon && (
               <Icon
                 aria-hidden="true"
@@ -264,9 +328,11 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               />
             )}
             <div className="min-w-0 flex-1">
-              <div className="truncate text-xs font-medium leading-4">
-                {title}
-              </div>
+              <BlockTitle
+                name={customName}
+                fallback={fallbackTitle}
+                onDoubleClick={() => setConfigOpen(true)}
+              />
               <div
                 className="truncate text-[10px] leading-3.5 text-muted-foreground"
                 title={summary}
@@ -274,9 +340,12 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                 {summary}
               </div>
             </div>
-            {definition.fields.length > 0 && (
-              <NodeConfigPopover nodeId={id} data={data} />
-            )}
+            <NodeConfigPopover
+              nodeId={id}
+              data={data}
+              open={configOpen}
+              onOpenChange={setConfigOpen}
+            />
           </div>
           {portRows.length > 0 && (
             <div className="py-1">

@@ -12,6 +12,7 @@ import {
   resolveFlowPort,
   type FlowDocument,
   type FlowEdge,
+  type FlowNode,
   type FlowViewport,
   type JsonValue,
 } from "../../../shared/project-contracts";
@@ -31,12 +32,24 @@ export function toFlowDocument(
 ): FlowDocument {
   return {
     schemaVersion: 1,
-    nodes: nodes.map((node) => ({
-      id: node.id,
-      position: node.position,
-      data: node.data,
-      type: node.type,
-    })),
+    nodes: nodes.map((node) => {
+      const serialized: FlowNode = {
+        id: node.id,
+        position: node.position,
+        data: node.data,
+        type: node.type,
+      };
+      if (node.parentId !== undefined) {
+        serialized.parentId = node.parentId;
+      }
+      if (node.width !== undefined && node.width !== null) {
+        serialized.width = node.width;
+      }
+      if (node.height !== undefined && node.height !== null) {
+        serialized.height = node.height;
+      }
+      return serialized;
+    }),
     edges: edges.map((edge) => {
       const serialized: FlowEdge = {
         id: edge.id,
@@ -81,6 +94,18 @@ export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
       x: typeof rawPosition.x === "number" ? rawPosition.x : 0,
       y: typeof rawPosition.y === "number" ? rawPosition.y : 0,
     };
+    const parentId =
+      typeof node.parentId === "string" && node.parentId.length > 0
+        ? node.parentId
+        : undefined;
+    const width =
+      typeof node.width === "number" && Number.isFinite(node.width)
+        ? node.width
+        : undefined;
+    const height =
+      typeof node.height === "number" && Number.isFinite(node.height)
+        ? node.height
+        : undefined;
 
     return {
       id: node.id,
@@ -91,6 +116,11 @@ export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
         kind,
       },
       type: kind,
+      ...(parentId !== undefined
+        ? { parentId, extent: "parent" as const }
+        : {}),
+      ...(width !== undefined ? { width } : {}),
+      ...(height !== undefined ? { height } : {}),
     };
   });
 }
@@ -234,6 +264,9 @@ export interface ClipboardNode {
   type: FlowBlockKind;
   position: XYPosition;
   data: WorkbenchNodeData;
+  parentId?: string;
+  width?: number;
+  height?: number;
 }
 
 export interface ClipboardEdge {
@@ -266,13 +299,44 @@ export function copySelection(
   if (selected.length === 0) {
     return null;
   }
-  const ids = new Set(selected.map((node) => node.id));
+  const copied = new Set<string>();
+  const picked: WorkbenchNode[] = [];
+  for (const node of selected) {
+    if (copied.has(node.id)) {
+      continue;
+    }
+    copied.add(node.id);
+    picked.push(node);
+    if (node.type === "group") {
+      for (const child of nodes) {
+        if (
+          child.parentId === node.id &&
+          !copied.has(child.id) &&
+          child.type !== "start" &&
+          child.type !== "end"
+        ) {
+          copied.add(child.id);
+          picked.push(child);
+        }
+      }
+    }
+  }
+  const ids = copied;
   return {
-    nodes: selected.map((node) => ({
+    nodes: picked.map((node) => ({
       id: node.id,
       type: node.type,
       position: { x: node.position.x, y: node.position.y },
       data: node.data,
+      ...(node.parentId !== undefined && node.parentId !== null
+        ? { parentId: node.parentId }
+        : {}),
+      ...(node.width !== undefined && node.width !== null
+        ? { width: node.width }
+        : {}),
+      ...(node.height !== undefined && node.height !== null
+        ? { height: node.height }
+        : {}),
     })),
     edges: edges
       .filter((edge) => ids.has(edge.source) && ids.has(edge.target))
@@ -309,7 +373,7 @@ export function pasteSelection(
   const nodes: WorkbenchNode[] = payload.nodes.map((node) => {
     const id = `node-${crypto.randomUUID()}`;
     idMap.set(node.id, id);
-    return {
+    const next: WorkbenchNode = {
       id,
       type: node.type,
       position: {
@@ -319,6 +383,17 @@ export function pasteSelection(
       data: node.data,
       selected: true,
     };
+    if (node.parentId !== undefined) {
+      next.parentId = idMap.get(node.parentId) ?? node.parentId;
+      next.extent = "parent";
+    }
+    if (node.width !== undefined) {
+      next.width = node.width;
+    }
+    if (node.height !== undefined) {
+      next.height = node.height;
+    }
+    return next;
   });
   const edges: WorkbenchEdge[] = payload.edges
     .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
@@ -337,4 +412,133 @@ export function pasteSelection(
       return next;
     });
   return { nodes, edges };
+}
+
+export interface NodeGeometry {
+  position: XYPosition;
+  width: number;
+  height: number;
+}
+
+export const GROUP_PADDING = 28;
+export const DEFAULT_GROUP_WIDTH = 320;
+export const DEFAULT_GROUP_HEIGHT = 220;
+
+/**
+ * Wraps the selected top-level nodes in a resizable group container. Existing
+ * groups and nodes already inside a group (unless the group is selected) are
+ * left untouched, keeping nesting to a single level.
+ */
+export function groupSelectedNodes(
+  nodes: WorkbenchNode[],
+  geometry: ReadonlyMap<string, NodeGeometry>,
+  selectedIds: readonly string[],
+): WorkbenchNode[] {
+  const selectedSet = new Set(selectedIds);
+  const members = nodes.filter(
+    (node) =>
+      selectedSet.has(node.id) &&
+      node.type !== "group" &&
+      (node.parentId === undefined || node.parentId === null),
+  );
+  if (members.length === 0) {
+    return nodes;
+  }
+  const memberIds = new Set(members.map((node) => node.id));
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const node of members) {
+    const geo = geometry.get(node.id);
+    const position = geo?.position ?? node.position;
+    const width = geo?.width ?? node.width ?? 0;
+    const height = geo?.height ?? node.height ?? 0;
+    minX = Math.min(minX, position.x);
+    minY = Math.min(minY, position.y);
+    maxX = Math.max(maxX, position.x + width);
+    maxY = Math.max(maxY, position.y + height);
+  }
+  if (!Number.isFinite(minX)) {
+    return nodes;
+  }
+  const groupX = minX - GROUP_PADDING;
+  const groupY = minY - GROUP_PADDING;
+  const groupWidth = maxX - minX + GROUP_PADDING * 2;
+  const groupHeight = maxY - minY + GROUP_PADDING * 2;
+  const groupId = `node-${crypto.randomUUID()}`;
+  const groupNode: WorkbenchNode = {
+    id: groupId,
+    type: "group",
+    position: { x: groupX, y: groupY },
+    width: groupWidth,
+    height: groupHeight,
+    data: { kind: "group" },
+    selected: true,
+  };
+  return [
+    ...nodes.map((node) => {
+      if (!memberIds.has(node.id)) {
+        return selectedSet.has(node.id) ? { ...node, selected: false } : node;
+      }
+      const geo = geometry.get(node.id);
+      const position = geo?.position ?? node.position;
+      return {
+        ...node,
+        parentId: groupId,
+        extent: "parent" as const,
+        position: {
+          x: position.x - groupX,
+          y: position.y - groupY,
+        },
+        selected: false,
+      };
+    }),
+    groupNode,
+  ];
+}
+
+/** Releases the direct children of the given groups back to the canvas. */
+export function ungroupNodes(
+  nodes: WorkbenchNode[],
+  geometry: ReadonlyMap<string, NodeGeometry>,
+  groupIds: readonly string[],
+): WorkbenchNode[] {
+  const groupSet = new Set(groupIds);
+  let releasedAny = false;
+  const result = nodes.map((node) => {
+    if (groupSet.has(node.id)) {
+      return { ...node, selected: false };
+    }
+    if (node.parentId !== undefined && groupSet.has(node.parentId)) {
+      const geo = geometry.get(node.id);
+      releasedAny = true;
+      return {
+        ...node,
+        parentId: undefined,
+        extent: null,
+        position: { ...(geo?.position ?? node.position) },
+        selected: true,
+      };
+    }
+    return node;
+  });
+  return releasedAny ? result : nodes;
+}
+
+/**
+ * Expands the given node ids to include every node nested inside a removed
+ * group, matching React Flow's built-in delete behavior.
+ */
+export function collectRemovedNodeIds(
+  nodes: WorkbenchNode[],
+  rootIds: readonly string[],
+): Set<string> {
+  const ids = new Set(rootIds);
+  for (const node of nodes) {
+    if (node.parentId !== undefined && ids.has(node.parentId)) {
+      ids.add(node.id);
+    }
+  }
+  return ids;
 }

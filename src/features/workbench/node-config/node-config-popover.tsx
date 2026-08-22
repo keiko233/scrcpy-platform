@@ -26,12 +26,25 @@ import { m } from "@/paraglide/messages.js";
 export function NodeConfigPopover({
   nodeId,
   data,
+  open,
+  onOpenChange,
 }: {
   nodeId: string;
   data: WorkbenchNodeData;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const { flow, screens, screenRegionSelection, screenPointSelection } = useWorkbench();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const controlled = open !== undefined;
+  const isOpen = controlled ? open : internalOpen;
+  const setOpen = (next: boolean) => {
+    if (controlled) {
+      onOpenChange?.(next);
+    } else {
+      setInternalOpen(next);
+    }
+  };
 
   const definition = BLOCK_DEFINITIONS[data.kind];
   const fields: FieldDefinition[] = (definition?.fields ?? []).filter(
@@ -58,7 +71,7 @@ export function NodeConfigPopover({
   };
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={isOpen} onOpenChange={setOpen}>
       <PopoverTrigger
         render={<Button size="icon-xs" variant="ghost" aria-label={m.node_config_configure_block_aria()} />}
         className="nodrag nowheel"
@@ -81,6 +94,23 @@ export function NodeConfigPopover({
               </div>
             </div>
           </div>
+
+          <Section
+            title={m.node_config_name_label()}
+            description={m.node_config_name_description()}
+          >
+            <FieldEditor
+              field={{
+                name: "name",
+                label: m.node_config_name_label(),
+                kind: "text",
+                placeholder: m.node_config_name_placeholder(),
+              }}
+              value={data.name}
+              active={open}
+              onChange={(value) => commit("name", value)}
+            />
+          </Section>
 
           {inputFields.length > 0 && (
             <Section

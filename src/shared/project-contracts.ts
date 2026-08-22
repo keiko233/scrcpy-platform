@@ -39,6 +39,8 @@ export const FLOW_NODE_KINDS = [
   "assert",
   "screen-region",
   "constant",
+  "note",
+  "group",
 ] as const;
 
 export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
@@ -61,6 +63,8 @@ export const FLOW_NODE_PORTS = {
   assert: { inputs: ["in"], outputs: ["next"] },
   "screen-region": { inputs: [], outputs: [] },
   constant: { inputs: [], outputs: [] },
+  note: { inputs: [], outputs: [] },
+  group: { inputs: [], outputs: [] },
 } as const satisfies Record<
   FlowNodeKind,
   { inputs: readonly string[]; outputs: readonly string[] }
@@ -203,6 +207,8 @@ export const FLOW_NODE_DATA_PORTS = {
     inputs: [],
     outputs: [outputPort("value", "Value", "any")],
   },
+  note: { inputs: [], outputs: [] },
+  group: { inputs: [], outputs: [] },
 } as const satisfies Record<FlowNodeKind, FlowNodeDataPorts>;
 
 export type FlowPortDirection = "input" | "output";
@@ -361,6 +367,9 @@ export const FlowNodeSchema = z
     type: z.enum(FLOW_NODE_KINDS),
     position: FlowPositionSchema,
     data: FlowNodeDataSchema,
+    parentId: z.string().min(1).optional(),
+    width: z.number().finite().positive().optional(),
+    height: z.number().finite().positive().optional(),
   })
   .strict()
   .superRefine((node, ctx) => {
