@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  useFlowRunQuery,
+  useResumeFlowRun,
+  useStartFlowRun,
+  useStopFlowRun,
+} from "@/hooks/query/use-flow-run";
 import type {
   FlowRunDto,
   FlowRunLogEntryDto,
@@ -37,41 +43,25 @@ function describeStartFailure(result: Extract<StartFlowRunResult, { status: "err
   }
 }
 
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 export function useFlowRun(): FlowRunManager {
-  const [run, setRun] = useState<FlowRunDto | null>(null);
+  const runQuery = useFlowRunQuery();
+  const startFlowRunMutation = useStartFlowRun();
+  const stopFlowRunMutation = useStopFlowRun();
+  const resumeFlowRunMutation = useResumeFlowRun();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
   const [logs, setLogs] = useState<FlowRunLogEntryDto[]>([]);
   const [breakpoints, setBreakpoints] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
 
-  useEffect(() => {
-    let disposed = false;
-    const unsubscribe = window.androidPlatform.onFlowRun((next) => {
-      if (!disposed) {
-        setRun(next);
-        setError(next.state === "failed" ? next.error : null);
-      }
-    });
-    void window.androidPlatform
-      .getFlowRun()
-      .then((current) => {
-        if (!disposed) {
-          setRun(current);
-          setError(current?.state === "failed" ? current.error : null);
-        }
-      })
-      .catch((cause) => {
-        if (!disposed) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
-      });
-    return () => {
-      disposed = true;
-      unsubscribe();
-    };
-  }, []);
+  const run = runQuery.data ?? null;
+  const runError = run !== null && run.state === "failed" ? run.error : null;
+  const error = localError ?? runError;
 
   useEffect(() => {
     return window.androidPlatform.onFlowRunLog((entry) => {
@@ -82,27 +72,26 @@ export function useFlowRun(): FlowRunManager {
   const start = useCallback(
     async (input: StartFlowRunInput) => {
       setBusy(true);
-      setError(null);
+      setLocalError(null);
       try {
-        const result = await window.androidPlatform.startFlowRun({
+        const result = await startFlowRunMutation.mutateAsync({
           ...input,
           breakpoints: [...breakpoints],
         });
         if (result.status === "error") {
-          setError(describeStartFailure(result));
+          setLocalError(describeStartFailure(result));
           return false;
         }
         setLogs([]);
-        setRun(result.run);
         return true;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setLocalError(errorMessage(cause));
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [breakpoints],
+    [breakpoints, startFlowRunMutation],
   );
 
   const stop = useCallback(async () => {
@@ -111,20 +100,21 @@ export function useFlowRun(): FlowRunManager {
     }
     setBusy(true);
     try {
-      const result = await window.androidPlatform.stopFlowRun({ runId: run.runId });
+      const result = await stopFlowRunMutation.mutateAsync({
+        runId: run.runId,
+      });
       if (result.status === "error") {
-        setError("The active flow run no longer exists.");
+        setLocalError("The active flow run no longer exists.");
         return false;
       }
-      setRun(result.run);
       return true;
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setLocalError(errorMessage(cause));
       return false;
     } finally {
       setBusy(false);
     }
-  }, [run]);
+  }, [run, stopFlowRunMutation]);
 
   const resume = useCallback(
     async (action: ResumeAction) => {
@@ -133,28 +123,27 @@ export function useFlowRun(): FlowRunManager {
       }
       setBusy(true);
       try {
-        const result = await window.androidPlatform.resumeFlowRun({
+        const result = await resumeFlowRunMutation.mutateAsync({
           runId: run.runId,
           action,
         });
         if (result.status === "error") {
-          setError(
+          setLocalError(
             result.error === "run-not-found"
               ? "The active flow run no longer exists."
               : "The flow run is not paused.",
           );
           return false;
         }
-        setRun(result.run);
         return true;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setLocalError(errorMessage(cause));
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [run],
+    [run, resumeFlowRunMutation],
   );
 
   const toggleBreakpoint = useCallback((nodeId: string) => {
@@ -169,7 +158,7 @@ export function useFlowRun(): FlowRunManager {
     });
   }, []);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => setLocalError(null), []);
   return {
     run,
     busy,

@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { SettingsIcon } from "lucide-react";
 
 import {
@@ -8,25 +7,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useSystemInfo } from "@/hooks/query/use-system-info";
 import { useLanguage } from "@/i18n/language";
 import { m } from "@/paraglide/messages.js";
-import type { SystemInfo } from "@/shared/electron-api";
 
 export function SettingsScreen() {
   const { language, setLanguage } = useLanguage();
-  const [info, setInfo] = useState<SystemInfo | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    void window.androidPlatform.getSystemInfo().then((value) => {
-      if (active) {
-        setInfo(value);
-      }
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
+  const infoQuery = useSystemInfo();
+  const info = infoQuery.data ?? null;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4 text-xs">

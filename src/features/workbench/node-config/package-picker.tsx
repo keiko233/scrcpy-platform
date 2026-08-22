@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/combobox";
 import type { JsonValue } from "@/shared/project-contracts";
 
-import { useInstalledApps } from "../device/use-installed-apps";
+import { useInstalledApps } from "@/hooks/query/use-installed-apps";
 import { useWorkbench } from "../use-workbench";
 import { filterInstalledApps, findInstalledApp } from "./app-list";
 import { m } from "@/paraglide/messages.js";

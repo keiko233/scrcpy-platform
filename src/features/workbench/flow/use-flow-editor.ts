@@ -10,8 +10,11 @@ import type {
   XYPosition,
 } from "@xyflow/react";
 import { useEdgesState, useNodesState } from "@xyflow/react";
+import { useQueryClient } from "@tanstack/react-query";
 import useLatest from "react-use/lib/useLatest";
 
+import { scriptQueryFn, scriptQueryKey } from "@/hooks/query/use-script";
+import { useSaveScriptDraft } from "@/hooks/query/use-scripts";
 import type {
   ScriptDto,
   FlowDocument,
@@ -97,6 +100,9 @@ export function useFlowEditor(
   const [saveState, setSaveState] = useState<"idle" | "saving">("idle");
   const [error, setError] = useState<FlowSaveError>(null);
   const [clipboard, setClipboard] = useState<ClipboardPayload | null>(null);
+
+  const queryClient = useQueryClient();
+  const saveDraftMutation = useSaveScriptDraft();
 
   const nodesRef = useLatest(nodes);
   const edgesRef = useLatest(edges);
@@ -339,7 +345,7 @@ export function useFlowEditor(
       viewportRef.current,
     );
     try {
-      const result = await window.androidPlatform.saveScriptDraft({
+      const result = await saveDraftMutation.mutateAsync({
         scriptId: script.id,
         expectedDraftVersion: script.draftVersion,
         document,
@@ -358,15 +364,16 @@ export function useFlowEditor(
     } finally {
       setSaveState("idle");
     }
-  }, [script, applyScriptUpdate]);
+  }, [script, applyScriptUpdate, saveDraftMutation]);
 
   const reloadLatest = useCallback(async (): Promise<boolean> => {
     if (script === null) {
       return false;
     }
     try {
-      const fresh = await window.androidPlatform.getScript({
-        scriptId: script.id,
+      const fresh = await queryClient.fetchQuery({
+        queryKey: scriptQueryKey(script.id),
+        queryFn: scriptQueryFn(script.id),
       });
       if (fresh === null) {
         setError("script-not-found");
@@ -380,7 +387,7 @@ export function useFlowEditor(
       setError("save-failed");
       return false;
     }
-  }, [script, applyScriptUpdate, loadDocument]);
+  }, [script, applyScriptUpdate, loadDocument, queryClient]);
 
   const forceSave = useCallback(async (): Promise<boolean> => {
     if (script === null) {
@@ -389,8 +396,9 @@ export function useFlowEditor(
     setSaveState("saving");
     setError(null);
     try {
-      const fresh = await window.androidPlatform.getScript({
-        scriptId: script.id,
+      const fresh = await queryClient.fetchQuery({
+        queryKey: scriptQueryKey(script.id),
+        queryFn: scriptQueryFn(script.id),
       });
       if (fresh === null) {
         setError("script-not-found");
@@ -402,7 +410,7 @@ export function useFlowEditor(
         edgesRef.current,
         viewportRef.current,
       );
-      const result = await window.androidPlatform.saveScriptDraft({
+      const result = await saveDraftMutation.mutateAsync({
         scriptId: script.id,
         expectedDraftVersion: fresh.draftVersion,
         document,
@@ -421,7 +429,7 @@ export function useFlowEditor(
     } finally {
       setSaveState("idle");
     }
-  }, [script, applyScriptUpdate]);
+  }, [script, applyScriptUpdate, saveDraftMutation, queryClient]);
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;

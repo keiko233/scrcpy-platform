@@ -1,7 +1,10 @@
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 
+import {
+  deviceSessionQueryFn,
+  deviceSessionQueryKey,
+} from "@/hooks/query/use-device-session";
 import { Titlebar } from "@/features/shell/titlebar";
-import { getDeviceSessionState } from "@/stores/device-session-state";
 
 import { DeviceStatus } from "./_modules/device-status";
 import { DisplayTabs } from "./_modules/display-tabs";
@@ -28,8 +31,15 @@ export const Route = createFileRoute("/(platform)")({
       </div>
     </WorkbenchProvider>
   ),
-  beforeLoad: async () => {
-    if ((await getDeviceSessionState()) !== "connected") {
+  beforeLoad: async ({ context }) => {
+    const state = await context.queryClient
+      .fetchQuery({
+        queryKey: deviceSessionQueryKey,
+        queryFn: deviceSessionQueryFn,
+      })
+      .then((session) => session.state)
+      .catch(() => "disconnected" as const);
+    if (state !== "connected") {
       throw redirect({ to: "/pair" });
     }
   },

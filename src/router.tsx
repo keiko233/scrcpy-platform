@@ -1,11 +1,9 @@
-import { QueryClient } from "@tanstack/react-query";
 import {
   createHashHistory,
   createRouter as createTanStackRouter,
 } from "@tanstack/react-router";
+import { queryClient } from "./lib/query-client";
 import { routeTree } from "./route-tree.gen";
-
-export const queryClient = new QueryClient();
 
 export function getRouter() {
   const router = createTanStackRouter({

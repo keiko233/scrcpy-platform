@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 
 import { BugIcon, SearchIcon, Trash2Icon } from "lucide-react";
 
@@ -6,29 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { LogMessage } from "@/features/workbench/debug/log-message";
+import { useLogs } from "@/hooks/query/use-logs";
 import { m } from "@/paraglide/messages.js";
-import type { LogEntry, LogLevel } from "@/shared/electron-api";
+import type { LogLevel } from "@/shared/electron-api";
 
 import { Route, type DebugSearch } from "../index";
 
 export function DebugScreen() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    void window.androidPlatform.listLogs().then((entries) => {
-      if (active) setLogs(entries);
-    });
-    const unsubscribe = window.androidPlatform.onLog((entry) => {
-      setLogs((current) => [entry, ...current].slice(0, 500));
-    });
-    return () => {
-      active = false;
-      unsubscribe();
-    };
-  }, []);
+  const { logs, clearLogs } = useLogs();
 
   const query = search.q ?? "";
 
@@ -42,9 +29,8 @@ export function DebugScreen() {
     );
   }, [logs, query, search.level]);
 
-  async function clearLogs(): Promise<void> {
-    await window.androidPlatform.clearLogs();
-    setLogs([]);
+  function handleClearLogs(): void {
+    void clearLogs();
   }
 
   function updateSearch(patch: Partial<DebugSearch>): void {
@@ -108,7 +94,7 @@ export function DebugScreen() {
             variant="ghost"
             size="icon-xs"
             title={m.debug_clear_logs()}
-            onClick={() => void clearLogs()}
+            onClick={() => handleClearLogs()}
           >
             <Trash2Icon />
           </Button>

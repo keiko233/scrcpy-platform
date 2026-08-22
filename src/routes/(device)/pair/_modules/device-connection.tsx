@@ -35,6 +35,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
+import { useScrcpySettings, useSetScrcpySettings } from "@/hooks/query/use-scrcpy-settings";
 import type { DeviceManager } from "@/features/workbench/device/use-devices";
 import { m } from "@/paraglide/messages.js";
 
@@ -66,38 +67,32 @@ function ScrcpySettingsDialog() {
     SCRCPY_SETTINGS_STORAGE_KEY,
     ScrcpySettingsSchema.nullable().default(null),
   );
-  const [settings, setSettings] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
   const [draft, setDraft] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const settingsQuery = useScrcpySettings();
+  const applySettings = useSetScrcpySettings();
+  const settings = settingsQuery.data ?? DEFAULT_SCRCPY_SETTINGS;
+
   useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      if (savedSettings !== null) {
-        const current = await window.androidPlatform.setScrcpySettings(savedSettings);
-        if (!cancelled) {
-          setSettings(current);
-          setDraft(current);
-        }
-        return;
-      }
-      const current = await window.androidPlatform.getScrcpySettings();
-      if (!cancelled) {
-        setSettings(current);
-        setDraft(current);
-      }
-    };
-    void load().catch((cause) => {
-      if (!cancelled) {
+    if (savedSettings !== null) {
+      void applySettings.mutateAsync(savedSettings).catch((cause) => {
         setError(cause instanceof Error ? cause.message : String(cause));
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
+      });
+    }
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (settingsQuery.error !== null) {
+      setError(
+        settingsQuery.error instanceof Error
+          ? settingsQuery.error.message
+          : String(settingsQuery.error),
+      );
+    }
+  }, [settingsQuery.error]);
 
   const validation = ScrcpySettingsSchema.safeParse(draft);
 
@@ -109,9 +104,8 @@ function ScrcpySettingsDialog() {
     setSaving(true);
     setError(null);
     try {
-      const next = await window.androidPlatform.setScrcpySettings(validation.data);
+      const next = await applySettings.mutateAsync(validation.data);
       setSavedSettings(next);
-      setSettings(next);
       setDraft(next);
       setOpen(false);
     } catch (cause) {

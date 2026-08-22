@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import useInterval from "react-use/lib/useInterval";
+import { useQueryClient } from "@tanstack/react-query";
 
+import {
+  screenSessionQueryKey,
+  useScreenSession,
+} from "@/hooks/query/use-screen-session";
 import type {
   CreateVirtualDisplayInput,
   DeviceButton,
@@ -9,8 +13,6 @@ import type {
   ScreenSessionDto,
 } from "@/shared/screen-contracts";
 import type { DeviceManager } from "../device/use-devices";
-
-const SCREEN_POLL_MS = 1000;
 
 export interface ScreenManager {
   screen: ScreenSessionDto | null;
@@ -25,22 +27,41 @@ export interface ScreenManager {
   clearError: () => void;
 }
 
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 export function useScreens(devices: DeviceManager): ScreenManager {
-  const [screen, setScreen] = useState<ScreenSessionDto | null>(null);
+  const queryClient = useQueryClient();
+  const sessionQuery = useScreenSession();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [operationError, setOperationError] = useState<string | null>(null);
   const operationCountRef = useRef(0);
   const autoStartedTargetRef = useRef<string | null>(null);
 
-  const applyResult = useCallback((result: ScreenOperationResult): boolean => {
-    if (result.status === "ok") {
-      setScreen(result.screen);
-      setError(null);
-      return true;
-    }
-    setError(result.error.message);
-    return false;
-  }, []);
+  const screen = sessionQuery.data ?? null;
+  const screenError = sessionQuery.isError
+    ? errorMessage(sessionQuery.error)
+    : screen !== null && screen.errorMessage !== null
+      ? screen.errorMessage
+      : null;
+  const error = operationError ?? screenError;
+
+  const applyResult = useCallback(
+    (result: ScreenOperationResult): boolean => {
+      if (result.status === "ok") {
+        queryClient.setQueryData<ScreenSessionDto>(
+          screenSessionQueryKey,
+          result.screen,
+        );
+        setOperationError(null);
+        return true;
+      }
+      setOperationError(result.error.message);
+      return false;
+    },
+    [queryClient],
+  );
 
   const run = useCallback(
     async (operation: () => Promise<ScreenOperationResult>): Promise<boolean> => {
@@ -49,7 +70,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
       try {
         return applyResult(await operation());
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setOperationError(errorMessage(cause));
         return false;
       } finally {
         operationCountRef.current -= 1;
@@ -94,29 +115,11 @@ export function useScreens(devices: DeviceManager): ScreenManager {
     async (input: InjectScreenTouchInput) => {
       const result = await window.androidPlatform.injectScreenTouch(input);
       if (result.status === "error") {
-        setError(result.error.message);
+        setOperationError(result.error.message);
       }
     },
     [],
   );
-
-  const load = useCallback(async () => {
-    try {
-      const current = await window.androidPlatform.getScreenSession();
-      setScreen(current);
-      if (current.errorMessage !== null) {
-        setError(current.errorMessage);
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  useInterval(() => void load(), SCREEN_POLL_MS);
 
   useEffect(() => {
     const session = devices.session;
@@ -149,11 +152,11 @@ export function useScreens(devices: DeviceManager): ScreenManager {
         );
       }
     })().catch((cause) => {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setOperationError(errorMessage(cause));
     });
   }, [applyResult, devices.session]);
 
-  const clearError = useCallback(() => setError(null), []);
+  const clearError = useCallback(() => setOperationError(null), []);
 
   return {
     screen,

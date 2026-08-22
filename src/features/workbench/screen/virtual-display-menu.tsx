@@ -24,7 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { CreateVirtualDisplayInputSchema } from "@/shared/screen-contracts";
 
-import { useInstalledApps } from "../device/use-installed-apps";
+import { useInstalledApps } from "@/hooks/query/use-installed-apps";
 import { useWorkbench } from "../use-workbench";
 import { m } from "@/paraglide/messages.js";
 

@@ -1,5 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
+import { useCreateProject, useProjects } from "@/hooks/query/use-projects";
+import { useCreateScript, useScripts, scriptsQueryKey } from "@/hooks/query/use-scripts";
+import {
+  useCreateRevision,
+  useRevisions,
+  useRestoreRevision,
+} from "@/hooks/query/use-revisions";
 import type {
   ProjectDto,
   RevisionDto,
@@ -37,17 +45,31 @@ function slugify(value: string): string {
   return slug.length > 0 ? slug : "script";
 }
 
+function errorMessage(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
+}
+
 export function useScriptLibrary(): ScriptLibrary {
-  const [projects, setProjects] = useState<ProjectDto[]>([]);
-  const [scripts, setScripts] = useState<ScriptDto[]>([]);
-  const [revisions, setRevisions] = useState<RevisionDto[]>([]);
+  const queryClient = useQueryClient();
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(
     null,
   );
   const [selectedScriptId, setSelectedScriptId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const projectsQuery = useProjects();
+  const scriptsQuery = useScripts(selectedProjectId);
+  const revisionsQuery = useRevisions(selectedScriptId);
+  const createProjectMutation = useCreateProject();
+  const createScriptMutation = useCreateScript();
+  const createRevisionMutation = useCreateRevision();
+  const restoreRevisionMutation = useRestoreRevision();
+
+  const projects = projectsQuery.data ?? [];
+  const scripts = scriptsQuery.data ?? [];
+  const revisions = revisionsQuery.data ?? [];
+  const loading = projectsQuery.isLoading;
 
   const selectedProject =
     projects.find((project) => project.id === selectedProjectId) ?? null;
@@ -55,49 +77,18 @@ export function useScriptLibrary(): ScriptLibrary {
     scripts.find((script) => script.id === selectedScriptId) ?? null;
 
   const refreshProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await window.androidPlatform.listProjects();
-      setProjects(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void refreshProjects();
-  }, [refreshProjects]);
+    await projectsQuery.refetch();
+  }, [projectsQuery]);
 
   const selectProject = useCallback(async (projectId: string) => {
     setSelectedProjectId(projectId);
     setSelectedScriptId(null);
-    setScripts([]);
-    setRevisions([]);
     setError(null);
-    try {
-      const result = await window.androidPlatform.listScripts({ projectId });
-      setScripts(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
   }, []);
 
   const selectScript = useCallback(async (scriptId: string | null) => {
     setSelectedScriptId(scriptId);
-    setRevisions([]);
     setError(null);
-    if (scriptId === null) {
-      return;
-    }
-    try {
-      const result = await window.androidPlatform.listRevisions({ scriptId });
-      setRevisions(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
   }, []);
 
   const createProject = useCallback(
@@ -105,17 +96,15 @@ export function useScriptLibrary(): ScriptLibrary {
       setBusy(true);
       setError(null);
       try {
-        const project = await window.androidPlatform.createProject({ name });
-        setProjects((current) => [...current, project]);
-        return project;
+        return await createProjectMutation.mutateAsync({ name });
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(errorMessage(cause));
         return null;
       } finally {
         setBusy(false);
       }
     },
-    [],
+    [createProjectMutation],
   );
 
   const createScript = useCallback(
@@ -128,13 +117,12 @@ export function useScriptLibrary(): ScriptLibrary {
       setBusy(true);
       setError(null);
       try {
-        const result = await window.androidPlatform.createScript({
+        const result = await createScriptMutation.mutateAsync({
           projectId: selectedProjectId,
           name,
           path,
         });
         if (result.status === "ok") {
-          setScripts((current) => [...current, result.script]);
           await selectScript(result.script.id);
           return result.script;
         }
@@ -145,13 +133,13 @@ export function useScriptLibrary(): ScriptLibrary {
         );
         return null;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(errorMessage(cause));
         return null;
       } finally {
         setBusy(false);
       }
     },
-    [selectedProjectId, selectScript],
+    [selectedProjectId, createScriptMutation, selectScript],
   );
 
   const createRevision = useCallback(
@@ -162,24 +150,23 @@ export function useScriptLibrary(): ScriptLibrary {
       setBusy(true);
       setError(null);
       try {
-        const result = await window.androidPlatform.createRevision({
+        const result = await createRevisionMutation.mutateAsync({
           scriptId: selectedScriptId,
           message: message ?? null,
         });
         if (result.status === "ok") {
-          setRevisions((current) => [...current, result.revision]);
           return true;
         }
         setError("The script no longer exists.");
         return false;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(errorMessage(cause));
         return false;
       } finally {
         setBusy(false);
       }
     },
-    [selectedScriptId],
+    [selectedScriptId, createRevisionMutation],
   );
 
   const restoreRevision = useCallback(
@@ -190,7 +177,7 @@ export function useScriptLibrary(): ScriptLibrary {
       setBusy(true);
       setError(null);
       try {
-        const result = await window.androidPlatform.restoreRevision({
+        const result = await restoreRevisionMutation.mutateAsync({
           scriptId: selectedScript.id,
           revisionId: revision.id,
           expectedDraftVersion: selectedScript.draftVersion,
@@ -208,22 +195,33 @@ export function useScriptLibrary(): ScriptLibrary {
         );
         return false;
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        setError(errorMessage(cause));
         return false;
       } finally {
         setBusy(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectedScript?.id, selectedScript?.draftVersion],
+    [selectedScript?.id, selectedScript?.draftVersion, restoreRevisionMutation],
   );
 
-  const applyScriptUpdate = useCallback((script: ScriptDto) => {
-    setScripts((current) =>
-      current.map((item) => (item.id === script.id ? script : item)),
-    );
-    setSelectedScriptId(script.id);
-  }, []);
+  const applyScriptUpdate = useCallback(
+    (script: ScriptDto) => {
+      queryClient.setQueryData<ScriptDto[]>(
+        scriptsQueryKey(script.projectId),
+        (current) => {
+          if (current === undefined) {
+            return [script];
+          }
+          return current.map((item) =>
+            item.id === script.id ? script : item,
+          );
+        },
+      );
+      setSelectedScriptId(script.id);
+    },
+    [queryClient],
+  );
 
   const clearError = useCallback(() => setError(null), []);
 
