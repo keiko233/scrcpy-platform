@@ -1,7 +1,9 @@
 import type { ScrcpyMediaStreamPacket } from "@yume-chan/scrcpy";
+import { MediaConstants } from "@/shared/constants/app";
+import { Timing } from "@/shared/constants/timing";
 
-const DEFAULT_SAMPLE_RATE = 48_000;
-const FRAME_TIMESTAMP_STEP_US = 20_000;
+const DEFAULT_SAMPLE_RATE = MediaConstants.AUDIO_SAMPLE_RATE;
+const FRAME_TIMESTAMP_STEP_US = Timing.FRAME_TIMESTAMP_STEP_US;
 
 function codecToWebCodec(codec: string): string {
   switch (codec) {

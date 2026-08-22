@@ -40,13 +40,15 @@ import {
   parseDisplayIds,
 } from "./display-catalog";
 import { DisplayIdDeviceMessageParser } from "./display-id-message";
+import { FilePath, MediaConstants } from "../../shared/constants/app";
+import { Timing } from "../../shared/constants/timing";
 
-const SCRCPY_SERVER_PATH = "/data/local/tmp/android-platform-scrcpy-server.jar";
+const SCRCPY_SERVER_PATH = FilePath.SCRCPY_SERVER;
 
 // scrcpy always captures 48kHz stereo PCM before encoding (see `AudioConfig` in
 // the server). The renderer needs these to configure its audio decoder.
-const AUDIO_SAMPLE_RATE = 48_000;
-const AUDIO_CHANNELS = 2;
+const AUDIO_SAMPLE_RATE = MediaConstants.AUDIO_SAMPLE_RATE;
+const AUDIO_CHANNELS = MediaConstants.AUDIO_CHANNELS;
 
 type ScrcpyOptions = AdbScrcpyOptions3_3_3<true>;
 type ScrcpyClient = AdbScrcpyClient<ScrcpyOptions>;
@@ -239,7 +241,7 @@ export class ScreenSessionService {
 
         const reportedDisplayId = await Promise.race([
           displayIdMessage.displayId.catch(() => undefined),
-          delay(1500).then(() => undefined),
+          delay(Timing.SCRCPY_DISPLAY_REPORT_TIMEOUT_MS).then(() => undefined),
         ]);
         const discovered =
           reportedDisplayId === undefined
@@ -801,36 +803,36 @@ export class ScreenSessionService {
   }
 
   async #waitForVideoSize(managed: ManagedScrcpyClient): Promise<void> {
-    for (let attempt = 0; attempt < 300; attempt += 1) {
+    for (let attempt = 0; attempt < Timing.VIDEO_SIZE_WAIT_ATTEMPTS; attempt += 1) {
       if (managed.width > 0 && managed.height > 0) {
         console.info("scrcpy video size available", {
           scid: managed.scid,
           width: managed.width,
           height: managed.height,
-          waitedMs: attempt * 10,
+          waitedMs: attempt * Timing.VIDEO_SIZE_POLL_STEP_MS,
         });
         return;
       }
       if (managed.closing) {
         console.warn("scrcpy closed while waiting for video size", {
           scid: managed.scid,
-          waitedMs: attempt * 10,
+          waitedMs: attempt * Timing.VIDEO_SIZE_POLL_STEP_MS,
         });
         throw new Error("scrcpy closed before reporting a video size");
       }
       if (attempt > 0 && attempt % 50 === 0) {
         console.debug("waiting for scrcpy video size", {
           scid: managed.scid,
-          waitedMs: attempt * 10,
+          waitedMs: attempt * Timing.VIDEO_SIZE_POLL_STEP_MS,
           width: managed.width,
           height: managed.height,
         });
       }
-      await delay(10);
+      await delay(Timing.VIDEO_SIZE_POLL_STEP_MS);
     }
     console.error("scrcpy video size timeout", {
       scid: managed.scid,
-      waitedMs: 3000,
+      waitedMs: Timing.VIDEO_SIZE_WAIT_ATTEMPTS * Timing.VIDEO_SIZE_POLL_STEP_MS,
       width: managed.width,
       height: managed.height,
     });
@@ -880,7 +882,7 @@ export class ScreenSessionService {
         managed.audioDone,
         managed.outputDone,
       ]).then(() => undefined),
-      delay(500),
+      delay(Timing.STREAM_CLOSE_GRACE_MS),
     ]);
   }
 
@@ -994,7 +996,7 @@ export class ScreenSessionService {
     let displays = [...before];
     let candidate: number | undefined;
     let stableObservations = 0;
-    for (let attempt = 0; attempt < 50; attempt += 1) {
+    for (let attempt = 0; attempt < Timing.VIRTUAL_DISPLAY_WAIT_ATTEMPTS; attempt += 1) {
       displays = await this.#listDisplays();
       const displayId = findAddedVirtualDisplayId(before, displays);
       if (displayId !== undefined) {
@@ -1007,14 +1009,14 @@ export class ScreenSessionService {
         // Some devices briefly publish a placeholder ID while scrcpy finishes
         // configuring the virtual display. Require three consecutive catalog
         // reads before binding a monitor/control stream to the new ID.
-        if (stableObservations >= 3) {
+        if (stableObservations >= Timing.VIRTUAL_DISPLAY_STABLE_COUNT) {
           return { displays, displayId };
         }
       } else {
         candidate = undefined;
         stableObservations = 0;
       }
-      await delay(100);
+      await delay(Timing.VIRTUAL_DISPLAY_POLL_MS);
     }
     return { displays };
   }

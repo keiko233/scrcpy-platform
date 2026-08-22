@@ -1,8 +1,9 @@
 import type { JsonValue } from "./project-contracts";
+import { ExpressionLimits } from "./constants/limits";
 
-const MAX_EXPRESSION_LENGTH = 4096;
-const MAX_TOKENS = 512;
-const MAX_DEPTH = 64;
+const MAX_EXPRESSION_LENGTH = ExpressionLimits.MAX_LENGTH;
+const MAX_TOKENS = ExpressionLimits.MAX_TOKENS;
+const MAX_DEPTH = ExpressionLimits.MAX_DEPTH;
 
 type TokenKind =
   | "number"

@@ -7,9 +7,8 @@ import {
   type ScriptDto,
 } from "../../shared/project-contracts";
 import { migrateFlowDocument } from "../../shared/flow-migration";
+import { INITIAL_DRAFT_VERSION } from "../../shared/constants/app";
 import type { PersistenceDatabase } from "./database";
-
-const INITIAL_DRAFT_VERSION = 1;
 
 export type NotFoundKind = "project" | "script" | "revision";
 

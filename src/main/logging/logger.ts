@@ -11,9 +11,11 @@ import {
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { LogEntry, LogLevel } from "../../shared/electron-api";
+import { ElectronChannel } from "../../shared/constants/enums";
+import { LogLimits } from "../../shared/constants/limits";
 
-const LOG_CHANNEL = "logs:entry";
-const MAX_LOG_FILE_BYTES = 10 * 1024 * 1024;
+const LOG_CHANNEL = ElectronChannel.LogsEntry;
+const MAX_LOG_FILE_BYTES = LogLimits.MAX_FILE_BYTES;
 const ANSI_RESET = "\u001b[0m";
 const ANSI_DIM = "\u001b[2m";
 const ANSI_SOURCE = "\u001b[90m";
@@ -53,9 +55,11 @@ export class Logger {
     this.write(level, args, "renderer", location);
   }
 
-  list(limit = 500): LogEntry[] {
+  list(limit = LogLimits.DEFAULT_LIST_LIMIT): LogEntry[] {
     const entries = this.readEntries();
-    return entries.slice(-Math.max(1, Math.min(limit, 2000))).reverse();
+    return entries
+      .slice(-Math.max(LogLimits.MIN_LIST_LIMIT, Math.min(limit, LogLimits.MAX_LIST_LIMIT)))
+      .reverse();
   }
 
   clear(): void {

@@ -6,13 +6,15 @@ import {
 import { useEffect } from "react";
 
 import type { LogEntry } from "@/shared/electron-api";
+import { QueryKey } from "@/shared/constants/enums";
+import { LogLimits } from "@/shared/constants/limits";
 
-export const LOGS_QUERY_KEY = "logs" as const;
+export const LOGS_QUERY_KEY = QueryKey.Logs;
 export const logsQueryKey = [LOGS_QUERY_KEY] as const;
 export const logsQueryFn = (): Promise<LogEntry[]> =>
   window.androidPlatform.listLogs();
 
-const MAX_LOGS = 500;
+const MAX_LOGS = LogLimits.MAX_FRONTEND_LOGS;
 
 export interface LogsManager {
   logs: LogEntry[];

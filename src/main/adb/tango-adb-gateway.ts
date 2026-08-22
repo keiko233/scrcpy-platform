@@ -3,6 +3,7 @@ import type { Adb } from "@yume-chan/adb";
 import { AdbServerNodeTcpConnector } from "@yume-chan/adb-server-node-tcp";
 import type { SocketConnectOpts } from "node:net";
 import type { AdbDeviceDto } from "../../shared/device-contracts";
+import { AdbConstants } from "../../shared/constants/app";
 import {
   DeviceServerUnavailableError,
   type DeviceConnection,
@@ -10,8 +11,8 @@ import {
   type DeviceInfo,
 } from "./device-session";
 
-export const ADB_SERVER_DEFAULT_HOST = "localhost";
-export const ADB_SERVER_DEFAULT_PORT = 5037;
+export const ADB_SERVER_DEFAULT_HOST = AdbConstants.DEFAULT_HOST;
+export const ADB_SERVER_DEFAULT_PORT = AdbConstants.DEFAULT_PORT;
 
 /**
  * Maps an `AdbServerClient.Device` to a structured-cloneable DTO.
@@ -117,11 +118,7 @@ function isAdbServerUnavailable(error: unknown): boolean {
   if (error instanceof Error && "code" in error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (
-      code === "ECONNREFUSED" ||
-      code === "ECONNRESET" ||
-      code === "ETIMEDOUT" ||
-      code === "EHOSTUNREACH" ||
-      code === "EADDRNOTAVAIL"
+      (AdbConstants.UNAVAILABLE_CODES as readonly string[]).includes(code as string)
     ) {
       return true;
     }

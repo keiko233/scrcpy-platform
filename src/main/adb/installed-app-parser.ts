@@ -3,10 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import AdmZip from "adm-zip";
 import type { InstalledAppDto } from "../../shared/device-contracts";
+import { AppConstants, FilePath, MediaConstants } from "../../shared/constants/app";
 
-const ANDROID_RESOURCES_ARSC = "resources.arsc";
-const ANDROID_MANIFEST = "AndroidManifest.xml";
-const DEFAULT_ICON_DENSITY = 160;
+const ANDROID_RESOURCES_ARSC = FilePath.ANDROID_RESOURCES_ARSC;
+const ANDROID_MANIFEST = FilePath.ANDROID_MANIFEST;
+const DEFAULT_ICON_DENSITY = MediaConstants.DEFAULT_ICON_DENSITY;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 
 interface StringPool {

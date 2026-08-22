@@ -1,6 +1,14 @@
 import { z } from "zod";
 
 import type { FlowNode } from "../../shared/project-contracts";
+import { MediaConstants } from "../../shared/constants/app";
+import {
+  OcrCharSet,
+  OcrLanguage,
+  OcrLanguageOption,
+  OcrMatchMode,
+} from "../../shared/constants/enums";
+import { Timing } from "../../shared/constants/timing";
 import type { FlowActionContext } from "./flow-runtime";
 
 export interface OcrRectangle {
@@ -50,26 +58,48 @@ export interface FlowRecognitionDriver {
   dispose(): Promise<void>;
 }
 
-export const OCR_LANGUAGES = ["eng", "chi_sim"] as const;
-export type OcrLanguage = (typeof OCR_LANGUAGES)[number];
+export const OCR_LANGUAGES = [OcrLanguage.Eng, OcrLanguage.ChiSim] as const;
+export type { OcrLanguage } from "../../shared/constants/enums";
 
 const OcrNodeDataSchema = z
   .object({
     expectedText: z.string().default(""),
-    matchMode: z.enum(["contains", "exact", "regex"]).default("contains"),
+    matchMode: z
+      .enum([OcrMatchMode.Contains, OcrMatchMode.Exact, OcrMatchMode.Regex])
+      .default(OcrMatchMode.Contains),
     caseSensitive: z.boolean().default(false),
     languages: z
-      .enum(["eng", "chi_sim", "eng+chi_sim"])
-      .default("eng+chi_sim"),
+      .enum([
+        OcrLanguage.Eng,
+        OcrLanguage.ChiSim,
+        OcrLanguageOption.EngChiSim,
+      ])
+      .default(OcrLanguageOption.EngChiSim),
     charSet: z
-      .enum(["any", "digits", "number", "letters", "alphanumeric"])
-      .default("any"),
+      .enum([
+        OcrCharSet.Any,
+        OcrCharSet.Digits,
+        OcrCharSet.Number,
+        OcrCharSet.Letters,
+        OcrCharSet.Alphanumeric,
+      ])
+      .default(OcrCharSet.Any),
     x: z.number().finite().nonnegative().default(0),
     y: z.number().finite().nonnegative().default(0),
     width: z.number().finite().positive().optional(),
     height: z.number().finite().positive().optional(),
-    timeoutMs: z.number().finite().nonnegative().max(300_000).default(5_000),
-    intervalMs: z.number().finite().min(100).max(10_000).default(500),
+    timeoutMs: z
+      .number()
+      .finite()
+      .nonnegative()
+      .max(Timing.OCR_MAX_TIMEOUT_MS)
+      .default(Timing.OCR_DEFAULT_TIMEOUT_MS),
+    intervalMs: z
+      .number()
+      .finite()
+      .min(Timing.OCR_MIN_INTERVAL_MS)
+      .max(Timing.OCR_MAX_INTERVAL_MS)
+      .default(Timing.OCR_DEFAULT_INTERVAL_MS),
     failOnTimeout: z.boolean().default(true),
   })
   .passthrough();
@@ -79,7 +109,7 @@ interface PngSize {
   height: number;
 }
 
-const PNG_SIGNATURE = [137, 80, 78, 71, 13, 10, 26, 10] as const;
+const PNG_SIGNATURE = MediaConstants.PNG_SIGNATURE;
 
 function abortIfNeeded(signal: AbortSignal): void {
   if (signal.aborted) {

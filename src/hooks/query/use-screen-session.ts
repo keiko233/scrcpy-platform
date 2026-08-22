@@ -1,13 +1,15 @@
 import { useQuery } from "@tanstack/react-query";
 
 import type { ScreenSessionDto } from "@/shared/screen-contracts";
+import { QueryKey } from "@/shared/constants/enums";
+import { Timing } from "@/shared/constants/timing";
 
-export const SCREEN_SESSION_QUERY_KEY = "screen-session" as const;
+export const SCREEN_SESSION_QUERY_KEY = QueryKey.ScreenSession;
 export const screenSessionQueryKey = [SCREEN_SESSION_QUERY_KEY] as const;
 export const screenSessionQueryFn = (): Promise<ScreenSessionDto> =>
   window.androidPlatform.getScreenSession();
 
-const SCREEN_POLL_MS = 1000;
+const SCREEN_POLL_MS = Timing.SCREEN_POLL_MS;
 
 export function useScreenSession() {
   return useQuery({

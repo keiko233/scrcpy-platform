@@ -17,6 +17,7 @@ import {
   type JsonValue,
 } from "../../../shared/project-contracts";
 
+import { UiConstants } from "../../../shared/constants/app";
 import type {
   FlowBlockKind,
   WorkbenchEdge,
@@ -368,7 +369,7 @@ export function pasteSelection(
   const offset =
     options?.origin !== undefined
       ? { x: options.origin.x - minX, y: options.origin.y - minY }
-      : (options?.offset ?? { x: 40, y: 40 });
+      : (options?.offset ?? { x: UiConstants.PASTE_OFFSET_X, y: UiConstants.PASTE_OFFSET_Y });
   const idMap = new Map<string, string>();
   const nodes: WorkbenchNode[] = payload.nodes.map((node) => {
     const id = `node-${crypto.randomUUID()}`;
@@ -420,9 +421,9 @@ export interface NodeGeometry {
   height: number;
 }
 
-export const GROUP_PADDING = 28;
-export const DEFAULT_GROUP_WIDTH = 320;
-export const DEFAULT_GROUP_HEIGHT = 220;
+export const GROUP_PADDING = UiConstants.GROUP_PADDING;
+export const DEFAULT_GROUP_WIDTH = UiConstants.GROUP_DEFAULT_WIDTH;
+export const DEFAULT_GROUP_HEIGHT = UiConstants.GROUP_DEFAULT_HEIGHT;
 
 /**
  * Wraps the selected top-level nodes in a resizable group container. Existing
