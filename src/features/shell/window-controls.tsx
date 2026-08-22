@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { CopyIcon, MinusIcon, SquareIcon, XIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { m } from "@/paraglide/messages.js";
 
 import { useSystemPlatform } from "./use-system-platform";
 
@@ -36,15 +37,18 @@ export function WindowButtons(): React.ReactElement | null {
   return (
     <div className="app-no-drag flex h-full items-stretch">
       <button
-        aria-label="Minimize"
+        aria-label={m.window_controls_minimize()}
         className={BUTTON_CLASS}
         onClick={() => void window.androidPlatform.windowMinimize()}
         type="button"
       >
         <MinusIcon className="size-3.5" />
       </button>
+
       <button
-        aria-label={maximized ? "Restore" : "Maximize"}
+        aria-label={
+          maximized ? m.window_controls_restore() : m.window_controls_maximize()
+        }
         className={BUTTON_CLASS}
         onClick={() => void window.androidPlatform.windowToggleMaximize()}
         type="button"
@@ -56,7 +60,7 @@ export function WindowButtons(): React.ReactElement | null {
         )}
       </button>
       <button
-        aria-label="Close"
+        aria-label={m.window_controls_close()}
         className={cn(BUTTON_CLASS, "hover:bg-red-600 hover:text-white")}
         onClick={() => void window.androidPlatform.windowClose()}
         type="button"

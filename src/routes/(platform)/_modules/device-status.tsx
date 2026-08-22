@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useWorkbench } from "@/features/workbench/use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 export function DeviceStatus(): React.ReactElement | null {
   const { devices, flow } = useWorkbench();
@@ -22,9 +23,7 @@ export function DeviceStatus(): React.ReactElement | null {
 
   const handleDisconnect = () => {
     if (flow.dirty) {
-      const discard = window.confirm(
-        "Disconnect the device? Unsaved changes will be discarded.",
-      );
+      const discard = window.confirm(m.device_status_confirm_disconnect());
       if (!discard) {
         return;
       }
@@ -36,10 +35,10 @@ export function DeviceStatus(): React.ReactElement | null {
     <div className="app-no-drag flex items-center gap-2 px-2">
       <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <span className="size-1.5 rounded-full bg-success" />
-        Connected
+        {m.device_status_connected()}
       </span>
       <Button
-        aria-label="Disconnect device"
+        aria-label={m.device_status_disconnect_aria_label()}
         disabled={disconnecting}
         loading={disconnecting}
         onClick={handleDisconnect}
@@ -47,7 +46,7 @@ export function DeviceStatus(): React.ReactElement | null {
         variant="ghost"
       >
         <UnplugIcon />
-        Disconnect
+        {m.device_status_disconnect()}
       </Button>
     </div>
   );

@@ -9,7 +9,6 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import {
-  FLOW_DATA_TYPE_LABELS,
   FLOW_NODE_DATA_PORTS,
   type FlowDataType,
 } from "@/shared/project-contracts";
@@ -19,6 +18,7 @@ import { useFlowApi } from "./flow/flow-api-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
 import { useWorkbench } from "./use-workbench";
 import type { WorkbenchNode } from "./types";
+import { m } from "@/paraglide/messages.js";
 
 type NodePort = {
   id: string;
@@ -35,6 +35,95 @@ const PORT_TYPE_CLASS_NAMES: Record<NodePort["dataType"], string> = {
   "screen-region": "!bg-amber-500",
 };
 
+function getDataTypeLabel(type: NodePort["dataType"]): string {
+  switch (type) {
+    case "flow":
+      return m.data_type_flow();
+    case "any":
+      return m.data_type_any();
+    case "string":
+      return m.data_type_string();
+    case "number":
+      return m.data_type_number();
+    case "boolean":
+      return m.data_type_boolean();
+    case "screen-region":
+      return m.data_type_screen_region();
+    default:
+      return type;
+  }
+}
+
+function getPortDisplayLabel(
+  kind: string,
+  port: NodePort,
+): string {
+  if (port.dataType === "flow") {
+    return port.label;
+  }
+  const key = `${kind}:${port.id}`;
+  switch (key) {
+    case "click:x":
+      return m.port_click_x();
+    case "click:y":
+      return m.port_click_y();
+    case "swipe:fromX":
+      return m.port_swipe_from_x();
+    case "swipe:fromY":
+      return m.port_swipe_from_y();
+    case "swipe:toX":
+      return m.port_swipe_to_x();
+    case "swipe:toY":
+      return m.port_swipe_to_y();
+    case "swipe:durationMs":
+      return m.port_swipe_duration_ms();
+    case "ocr:region":
+      return m.port_ocr_region();
+    case "ocr:expectedText":
+      return m.port_ocr_expected_text();
+    case "ocr:text":
+      return m.port_ocr_text();
+    case "ocr:confidence":
+      return m.port_ocr_confidence();
+    case "ocr:matched":
+      return m.port_ocr_matched();
+    case "delay:ms":
+      return m.port_delay_ms();
+    case "launch-app:packageName":
+      return m.port_launch_app_package_name();
+    case "launch-app:activity":
+      return m.port_launch_app_activity();
+    case "set-variable:expression":
+      return m.port_set_variable_expression();
+    case "set-variable:value":
+      return m.port_set_variable_value();
+    case "calculate:values":
+      return m.port_calculate_values();
+    case "calculate:value":
+      return m.port_calculate_value();
+    case "if:condition":
+      return m.port_if_condition();
+    case "for:from":
+      return m.port_for_from();
+    case "for:to":
+      return m.port_for_to();
+    case "for:step":
+      return m.port_for_step();
+    case "for:index":
+      return m.port_for_index();
+    case "while:condition":
+      return m.port_while_condition();
+    case "assert:condition":
+      return m.port_assert_condition();
+    case "assert:message":
+      return m.port_assert_message();
+    case "screen-region:region":
+      return m.port_screen_region_region();
+    default:
+      return port.label;
+  }
+}
+
 function PortType({ type }: { type: NodePort["dataType"] }) {
   return (
     <span
@@ -48,7 +137,7 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
         type === "screen-region" && "bg-amber-500/12 text-amber-600",
       )}
     >
-      {type === "flow" ? "Flow" : FLOW_DATA_TYPE_LABELS[type]}
+      {getDataTypeLabel(type)}
     </span>
   );
 }
@@ -58,24 +147,24 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
   const { runs } = useWorkbench();
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
-  const title = definition?.label ?? String(data.kind ?? "block");
-  const summary = definition ? definition.summarize(data) : "Unknown block";
+  const title = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
+  const summary = definition ? definition.summarize(data) : m.block_summarize_unknown();
   const isBreakpoint = runs.breakpoints.has(id);
   const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
   const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
   const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
   const inputPorts: NodePort[] = [
-    ...(definition?.inputPorts ?? []).map((id) => ({
-      id,
-      label: id,
+    ...(definition?.inputPorts ?? []).map((portId) => ({
+      id: portId,
+      label: portId,
       dataType: "flow" as const,
     })),
     ...dataPorts.inputs,
   ];
   const outputPorts: NodePort[] = [
-    ...(definition?.outputPorts ?? []).map((id) => ({
-      id,
-      label: id,
+    ...(definition?.outputPorts ?? []).map((portId) => ({
+      id: portId,
+      label: portId,
       dataType: "flow" as const,
     })),
     ...dataPorts.outputs,
@@ -104,12 +193,8 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             <button
               type="button"
               className="group/breakpoint flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
-              title={
-                isBreakpoint ? "Remove breakpoint" : "Add breakpoint"
-              }
-              aria-label={
-                isBreakpoint ? "Remove breakpoint" : "Add breakpoint"
-              }
+              title={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
+              aria-label={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
               aria-pressed={isBreakpoint}
               onClick={() => runs.toggleBreakpoint(id)}
             >
@@ -145,55 +230,59 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
           </div>
           {portRows.length > 0 && (
             <div className="py-1">
-              {portRows.map((row, index) => (
-                <div
-                  key={`${row.input?.id ?? ""}:${row.output?.id ?? ""}:${index}`}
-                  className="grid min-h-5 grid-cols-2 text-[10px]"
-                >
-                  <div className="relative flex min-w-0 items-center gap-1.5 pl-2 pr-1">
-                    {row.input && (
-                      <>
-                        <Handle
-                          id={row.input.id}
-                          type="target"
-                          position={Position.Left}
-                          className={cn(
-                            "!left-0 !top-1/2 !size-3",
-                            PORT_TYPE_CLASS_NAMES[row.input.dataType],
-                          )}
-                          title={`${row.input.label}: ${row.input.dataType}`}
-                          aria-label={`Input ${row.input.label}, type ${row.input.dataType}`}
-                        />
-                        <span className="truncate" title={row.input.label}>
-                          {row.input.label}
-                        </span>
-                        <PortType type={row.input.dataType} />
-                      </>
-                    )}
+              {portRows.map((row, index) => {
+                const inputLabel = row.input ? getPortDisplayLabel(data.kind, row.input) : "";
+                const outputLabel = row.output ? getPortDisplayLabel(data.kind, row.output) : "";
+                return (
+                  <div
+                    key={`${row.input?.id ?? ""}:${row.output?.id ?? ""}:${index}`}
+                    className="grid min-h-5 grid-cols-2 text-[10px]"
+                  >
+                    <div className="relative flex min-w-0 items-center gap-1.5 pl-2 pr-1">
+                      {row.input && (
+                        <>
+                          <Handle
+                            id={row.input.id}
+                            type="target"
+                            position={Position.Left}
+                            className={cn(
+                              "!left-0 !top-1/2 !size-3",
+                              PORT_TYPE_CLASS_NAMES[row.input.dataType],
+                            )}
+                            title={`${inputLabel}: ${getDataTypeLabel(row.input.dataType)}`}
+                            aria-label={`Input ${inputLabel}, type ${getDataTypeLabel(row.input.dataType)}`}
+                          />
+                          <span className="truncate" title={inputLabel}>
+                            {inputLabel}
+                          </span>
+                          <PortType type={row.input.dataType} />
+                        </>
+                      )}
+                    </div>
+                    <div className="relative flex min-w-0 items-center justify-end gap-1.5 pl-1 pr-2 text-right">
+                      {row.output && (
+                        <>
+                          <PortType type={row.output.dataType} />
+                          <span className="truncate" title={outputLabel}>
+                            {outputLabel}
+                          </span>
+                          <Handle
+                            id={row.output.id}
+                            type="source"
+                            position={Position.Right}
+                            className={cn(
+                              "!right-0 !top-1/2 !size-3",
+                              PORT_TYPE_CLASS_NAMES[row.output.dataType],
+                            )}
+                            title={`${outputLabel}: ${getDataTypeLabel(row.output.dataType)}`}
+                            aria-label={`Output ${outputLabel}, type ${getDataTypeLabel(row.output.dataType)}`}
+                          />
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <div className="relative flex min-w-0 items-center justify-end gap-1.5 pl-1 pr-2 text-right">
-                    {row.output && (
-                      <>
-                        <PortType type={row.output.dataType} />
-                        <span className="truncate" title={row.output.label}>
-                          {row.output.label}
-                        </span>
-                        <Handle
-                          id={row.output.id}
-                          type="source"
-                          position={Position.Right}
-                          className={cn(
-                            "!right-0 !top-1/2 !size-3",
-                            PORT_TYPE_CLASS_NAMES[row.output.dataType],
-                          )}
-                          title={`${row.output.label}: ${row.output.dataType}`}
-                          aria-label={`Output ${row.output.label}, type ${row.output.dataType}`}
-                        />
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -201,7 +290,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
       <ContextMenuPopup align="center" sideOffset={4}>
         <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
           <Trash2Icon />
-          Delete block
+          {m.block_node_delete_block()}
         </ContextMenuItem>
       </ContextMenuPopup>
     </ContextMenu>

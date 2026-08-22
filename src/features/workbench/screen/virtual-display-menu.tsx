@@ -26,6 +26,7 @@ import { CreateVirtualDisplayInputSchema } from "@/shared/screen-contracts";
 
 import { useInstalledApps } from "../device/use-installed-apps";
 import { useWorkbench } from "../use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 type VirtualDisplayFormValues = {
   width: string;
@@ -45,14 +46,9 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
   const { devices, screens } = useWorkbench();
   const [open, setOpen] = useState(false);
   const [showSystemApps, setShowSystemApps] = useState(false);
-  const appsQuery = useInstalledApps(
-    open && connected,
-    devices.session?.sessionId ?? null,
-  );
+  const appsQuery = useInstalledApps(open && connected, devices.session?.sessionId ?? null);
   const allApps = appsQuery.data ?? [];
-  const apps = showSystemApps
-    ? allApps
-    : allApps.filter((app) => !app.system);
+  const apps = showSystemApps ? allApps : allApps.filter((app) => !app.system);
   const form = useForm({
     defaultValues: DEFAULT_VIRTUAL_DISPLAY_VALUES,
     onSubmit: async ({ value }) => {
@@ -86,14 +82,14 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
         >
           <div className="flex items-center gap-2 text-xs font-medium">
             <PlusIcon className="size-3.5" />
-            Virtual display
+            {m.virtual_display_title()}
           </div>
 
           <div className="grid grid-cols-3 gap-1.5">
             <form.Field name="width">
               {(field) => (
                 <label className="grid gap-1 text-[10px] text-muted-foreground">
-                  Width
+                  {m.virtual_display_width()}
                   <Input
                     nativeInput
                     max={7680}
@@ -109,7 +105,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
             <form.Field name="height">
               {(field) => (
                 <label className="grid gap-1 text-[10px] text-muted-foreground">
-                  Height
+                  {m.virtual_display_height()}
                   <Input
                     nativeInput
                     max={7680}
@@ -125,7 +121,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
             <form.Field name="dpi">
               {(field) => (
                 <label className="grid gap-1 text-[10px] text-muted-foreground">
-                  DPI
+                  {m.virtual_display_dpi()}
                   <Input
                     nativeInput
                     max={960}
@@ -142,9 +138,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
 
           <form.Field name="packageName">
             {(field) => {
-              const selectedApp =
-                allApps.find((app) => app.packageName === field.state.value) ??
-                null;
+              const selectedApp = allApps.find((app) => app.packageName === field.state.value) ?? null;
               const query = field.state.value.trim().toLowerCase();
               const visibleApps = apps.filter(
                 (app) =>
@@ -155,15 +149,13 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
               return (
                 <div className="grid gap-1">
                   <div className="flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-                    <span>App package (optional)</span>
+                    <span>{m.virtual_display_app_package()}</span>
                     <label className="flex items-center gap-1.5">
                       <Checkbox
                         checked={showSystemApps}
-                        onCheckedChange={(checked) =>
-                          setShowSystemApps(checked === true)
-                        }
+                        onCheckedChange={(checked) => setShowSystemApps(checked === true)}
                       />
-                      Show system apps
+                      {m.virtual_display_show_system_apps()}
                     </label>
                   </div>
                   <Combobox
@@ -173,16 +165,14 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                     itemToStringValue={(app) => app.packageName}
                     items={visibleApps}
                     onInputValueChange={(value) => field.handleChange(value)}
-                    onValueChange={(app) =>
-                      field.handleChange(app?.packageName ?? "")
-                    }
+                    onValueChange={(app) => field.handleChange(app?.packageName ?? "")}
                     value={selectedApp}
                   >
                     <ComboboxInput
                       placeholder={
                         appsQuery.isPending
-                          ? "Loading apps..."
-                          : "com.example.app"
+                          ? m.virtual_display_placeholder_loading()
+                          : m.virtual_display_placeholder_default()
                       }
                       showClear
                       size="sm"
@@ -190,22 +180,15 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                     <ComboboxPopup className="w-72">
                       <ComboboxStatus>
                         {appsQuery.isPending
-                          ? "Loading installed apps..."
-                          : apps.length === 0 &&
-                              !showSystemApps &&
-                              allApps.length > 0
-                            ? "No user apps found. Enable system apps to see more."
-                            : `${apps.length} apps`}
+                          ? m.virtual_display_loading_apps()
+                          : apps.length === 0 && !showSystemApps && allApps.length > 0
+                            ? m.virtual_display_no_user_apps()
+                            : m.virtual_display_apps_count({ count: apps.length })}
                       </ComboboxStatus>
-                      <ScrollArea
-                        className="max-h-64"
-                        overscrollContain
-                        scrollFade
-                        scrollbarGutter
-                      >
+                      <ScrollArea className="max-h-64" overscrollContain scrollFade scrollbarGutter>
                         <ComboboxPrimitive.List className="not-empty:px-1 not-empty:py-1">
                           {visibleApps.length === 0 && (
-                            <ComboboxEmpty>No apps found.</ComboboxEmpty>
+                            <ComboboxEmpty>{m.virtual_display_no_apps()}</ComboboxEmpty>
                           )}
                           {visibleApps.map((item) => (
                             <ComboboxItem key={item.packageName} value={item}>
@@ -229,7 +212,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                                 </span>
                                 {item.system && (
                                   <Badge size="sm" variant="outline">
-                                    System
+                                    {m.virtual_display_system()}
                                   </Badge>
                                 )}
                               </div>
@@ -247,14 +230,12 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
           <div>
             <Button
               className="flex-1"
-              disabled={
-                !connected || screens.screen?.ownedVirtualDisplayId !== null
-              }
+              disabled={!connected || screens.screen?.ownedVirtualDisplayId !== null}
               loading={screens.busy}
               size="xs"
               type="submit"
             >
-              Create and open
+              {m.virtual_display_create_and_open()}
             </Button>
           </div>
         </form>

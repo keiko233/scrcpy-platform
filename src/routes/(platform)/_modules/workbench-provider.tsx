@@ -12,6 +12,7 @@ import {
   WorkbenchContext,
   type WorkbenchContextValue,
 } from "@/features/workbench/use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 export function WorkbenchProvider({
   children,
@@ -99,8 +100,10 @@ export function WorkbenchProvider({
       if (flow.dirty && projectId !== selectedProjectId) {
         const discard = window.confirm(
           selectedScript
-            ? `Discard unsaved changes to "${selectedScript.name}" and switch projects?`
-            : "Discard unsaved changes and switch projects?",
+            ? m.workbench_confirm_discard_project_with_name({
+                name: selectedScript.name,
+              })
+            : m.workbench_confirm_discard_project_without_name(),
         );
         if (!discard) {
           return;
@@ -117,8 +120,8 @@ export function WorkbenchProvider({
       if (flow.dirty && scriptId !== (current?.id ?? null)) {
         const discard = window.confirm(
           current
-            ? `Discard unsaved changes to "${current.name}" and switch scripts?`
-            : "Discard unsaved changes and switch scripts?",
+            ? m.workbench_confirm_discard_script_with_name({ name: current.name })
+            : m.workbench_confirm_discard_script_without_name(),
         );
         if (!discard) {
           return;
@@ -132,7 +135,12 @@ export function WorkbenchProvider({
   const restoreRevisionSafe = useCallback(
     async (revision: RevisionDto): Promise<boolean> => {
       const confirmed = window.confirm(
-        `Rollback to revision ${revision.revisionNumber}? This replaces the current draft${flow.dirty ? " and discards unsaved changes" : ""}.`,
+        m.workbench_confirm_rollback({
+          revisionNumber: revision.revisionNumber,
+          discardSuffix: flow.dirty
+            ? m.workbench_confirm_rollback_discard_suffix()
+            : "",
+        }),
       );
       if (!confirmed) {
         return false;

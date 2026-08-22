@@ -11,16 +11,14 @@ import {
 } from "lucide-react";
 import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { useWorkbench } from "../use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 export function WorkbenchToolbar() {
   const { library, flow, devices, screens, runs } = useWorkbench();
   const { selectedProject, selectedScript } = library;
 
   const canSave =
-    selectedScript !== null &&
-    flow.dirty &&
-    flow.saveState === "idle" &&
-    flow.error === null;
+    selectedScript !== null && flow.dirty && flow.saveState === "idle" && flow.error === null;
   const running = runs.run?.state === "running" || runs.run?.state === "paused";
   const session = devices.session;
   const displayId = screens.screen?.activeDisplayId ?? null;
@@ -33,17 +31,17 @@ export function WorkbenchToolbar() {
     displayId !== null;
 
   const runTooltip = running
-    ? "Stop the active flow run"
-    : runs.error ??
+    ? m.workbench_toolbar_stop_active_run()
+    : (runs.error ??
       (selectedScript === null
-        ? "Select a script to run"
+        ? m.run_panel_select_script_to_run()
         : flow.dirty
-          ? "Save the draft before running it"
+          ? m.run_panel_save_before_run()
           : session?.state !== "connected"
-            ? "Connect an Android device before running"
+            ? m.run_panel_connect_device_before_run()
             : displayId === null
-              ? "Select an Android display before running"
-              : "Run the saved flow in the background");
+              ? m.run_panel_select_display_before_run()
+              : m.workbench_toolbar_run_saved_flow()));
 
   const toggleRun = () => {
     if (running) {
@@ -72,11 +70,9 @@ export function WorkbenchToolbar() {
       <div className="flex min-w-0 items-center gap-2 pr-2">
         <ShieldAlertIcon className="size-4 shrink-0 text-muted-foreground" />
         <div className="flex min-w-0 flex-col leading-none">
-          <span className="truncate text-xs font-semibold">
-            Android Automation
-          </span>
+          <span className="truncate text-xs font-semibold">{m.workbench_toolbar_title()}</span>
           <span className="truncate text-[10px] text-muted-foreground">
-            {selectedProject ? selectedProject.name : "no project"}
+            {selectedProject ? selectedProject.name : m.workbench_toolbar_no_project()}
             {selectedScript ? ` · ${selectedScript.name}` : ""}
           </span>
         </div>
@@ -91,17 +87,12 @@ export function WorkbenchToolbar() {
         )}
         aria-live="polite"
       >
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            flow.dirty ? "bg-warning" : "bg-border",
-          )}
-        />
+        <span className={cn("size-1.5 rounded-full", flow.dirty ? "bg-warning" : "bg-border")} />
         {selectedScript === null
-          ? "No script"
+          ? m.workbench_toolbar_no_script()
           : flow.dirty
-            ? "Unsaved changes"
-            : "Saved"}
+            ? m.workbench_toolbar_unsaved_changes()
+            : m.workbench_toolbar_saved()}
       </span>
 
       <div className="flex-1" />
@@ -109,13 +100,9 @@ export function WorkbenchToolbar() {
       <MenuRoot>
         <MenuTrigger
           render={
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={selectedScript === null}
-            >
+            <Button size="sm" variant="outline" disabled={selectedScript === null}>
               <PlusIcon />
-              Block
+              {m.workbench_toolbar_block()}
             </Button>
           }
         />
@@ -144,18 +131,18 @@ export function WorkbenchToolbar() {
               onClick={() => void flow.save()}
             >
               <SaveIcon />
-              Save
+              {m.workbench_toolbar_save()}
             </Button>
           }
         />
         <TooltipContent>
           {flow.saveState === "saving"
-            ? "Saving…"
+            ? m.workbench_toolbar_saving()
             : canSave
-              ? "Save the current graph"
+              ? m.workbench_toolbar_save_current_graph()
               : selectedScript === null
-                ? "Select a script to save"
-                : "Nothing to save"}
+                ? m.workbench_toolbar_select_script_to_save()
+                : m.workbench_toolbar_nothing_to_save()}
         </TooltipContent>
       </Tooltip>
 
@@ -169,17 +156,15 @@ export function WorkbenchToolbar() {
               variant={running ? "destructive-outline" : "outline"}
               loading={runs.busy}
               disabled={running ? runs.busy : !canRun}
-              aria-label={running ? "Stop flow" : "Run flow"}
+              aria-label={running ? m.workbench_toolbar_stop_flow_aria() : m.workbench_toolbar_run_flow_aria()}
               onClick={toggleRun}
             >
               {running ? <SquareIcon /> : <PlayIcon />}
-              {running ? "Stop" : "Run"}
+              {running ? m.workbench_toolbar_stop() : m.workbench_toolbar_run()}
             </Button>
           }
         />
-        <TooltipContent>
-          {runTooltip}
-        </TooltipContent>
+        <TooltipContent>{runTooltip}</TooltipContent>
       </Tooltip>
     </div>
   );

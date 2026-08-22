@@ -1,4 +1,5 @@
 import { fileURLToPath, URL } from "node:url";
+import { paraglideVitePlugin } from "@inlang/paraglide-js";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { devtools } from "@tanstack/devtools-vite";
@@ -55,6 +56,11 @@ export default defineConfig({
         babel: {
           plugins: ["babel-plugin-react-compiler"],
         },
+      }),
+      paraglideVitePlugin({
+        project: "./project.inlang",
+        outdir: "./src/paraglide",
+        emitTsDeclarations: true,
       }),
     ],
   },

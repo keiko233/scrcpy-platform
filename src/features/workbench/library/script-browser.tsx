@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { useWorkbench } from "../use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 function formatDate(value: string): string {
   const date = new Date(value);
@@ -81,21 +82,10 @@ function InlineForm({
           }
         }}
       />
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!canSubmit}
-        loading={busy}
-        onClick={() => void submit()}
-      >
+      <Button size="sm" variant="outline" disabled={!canSubmit} loading={busy} onClick={() => void submit()}>
         {submitLabel}
       </Button>
-      <Button
-        size="icon-sm"
-        variant="ghost"
-        aria-label="Cancel"
-        onClick={onCancel}
-      >
+      <Button size="icon-sm" variant="ghost" aria-label={m.script_browser_cancel_aria()} onClick={onCancel}>
         <XIcon />
       </Button>
     </div>
@@ -103,13 +93,7 @@ function InlineForm({
 }
 
 export function ScriptBrowser() {
-  const {
-    library,
-    flow,
-    restoreRevisionSafe,
-    selectProjectSafe,
-    selectScriptSafe,
-  } = useWorkbench();
+  const { library, flow, restoreRevisionSafe, selectProjectSafe, selectScriptSafe } = useWorkbench();
   const {
     projects,
     scripts,
@@ -132,21 +116,21 @@ export function ScriptBrowser() {
     if (flow.dirty && !(await flow.save())) {
       return false;
     }
-    return createRevision("Checkpoint from workbench");
+    return createRevision(m.script_browser_checkpoint_fallback());
   };
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
       <div className="flex h-7 shrink-0 items-center gap-2 border-b bg-muted/40 px-2 text-xs font-medium text-muted-foreground">
         <FolderIcon className="size-3.5" />
-        Files
+        {m.script_browser_files()}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto p-1.5">
         {error !== null && (
           <Alert variant="warning" className="gap-1.5 px-2.5 py-1.5 text-xs">
             <AlertTriangleIcon />
-            <AlertTitle className="text-xs">Library error</AlertTitle>
+            <AlertTitle className="text-xs">{m.script_browser_library_error()}</AlertTitle>
             <AlertDescription className="text-[11px]">{error}</AlertDescription>
           </Alert>
         )}
@@ -154,19 +138,17 @@ export function ScriptBrowser() {
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
             <Spinner className="size-4" />
-            Loading projects…
+            {m.script_browser_loading_projects()}
           </div>
         ) : projects.length === 0 ? (
           <Empty className="gap-3 px-3 py-6">
             <FolderPlusIcon className="size-5 text-muted-foreground" />
-            <p className="text-xs font-medium">No projects yet</p>
-            <p className="text-[11px] text-muted-foreground">
-              Create a project to start building flows.
-            </p>
+            <p className="text-xs font-medium">{m.script_browser_no_projects()}</p>
+            <p className="text-[11px] text-muted-foreground">{m.script_browser_no_projects_description()}</p>
             {creatingProject ? (
               <InlineForm
-                placeholder="Project name"
-                submitLabel="Create"
+                placeholder={m.script_browser_project_name_placeholder()}
+                submitLabel={m.script_browser_create()}
                 busy={busy}
                 onSubmit={async (name) => {
                   const project = await createProject(name);
@@ -178,13 +160,9 @@ export function ScriptBrowser() {
                 onCancel={() => setCreatingProject(false)}
               />
             ) : (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setCreatingProject(true)}
-              >
+              <Button size="sm" variant="outline" onClick={() => setCreatingProject(true)}>
                 <FolderPlusIcon />
-                Create project
+                {m.script_browser_create_project()}
               </Button>
             )}
           </Empty>
@@ -200,7 +178,7 @@ export function ScriptBrowser() {
                 }}
               >
                 <SelectTrigger size="sm">
-                  <SelectValue placeholder="Choose a project" />
+                  <SelectValue placeholder={m.script_browser_choose_project()} />
                 </SelectTrigger>
                 <SelectContent>
                   {projects.map((project) => (
@@ -213,7 +191,7 @@ export function ScriptBrowser() {
               <Button
                 size="icon-sm"
                 variant="outline"
-                aria-label="Create project"
+                aria-label={m.script_browser_create_project_aria()}
                 onClick={() => setCreatingProject((open) => !open)}
               >
                 <FolderPlusIcon />
@@ -222,8 +200,8 @@ export function ScriptBrowser() {
 
             {creatingProject && (
               <InlineForm
-                placeholder="Project name"
-                submitLabel="Create"
+                placeholder={m.script_browser_project_name_placeholder()}
+                submitLabel={m.script_browser_create()}
                 busy={busy}
                 onSubmit={async (name) => {
                   const project = await createProject(name);
@@ -240,15 +218,12 @@ export function ScriptBrowser() {
               <div className="mt-1 flex flex-col gap-1">
                 {scripts.length === 0 ? (
                   <p className="px-1 py-1 text-[11px] text-muted-foreground">
-                    No scripts in this project yet.
+                    {m.script_browser_no_scripts()}
                   </p>
                 ) : (
                   scripts.map((script) => {
                     const isSelected = script.id === selectedScriptId;
-                    const isDirty =
-                      isSelected &&
-                      script.id === selectedScript?.id &&
-                      flow.dirty;
+                    const isDirty = isSelected && script.id === selectedScript?.id && flow.dirty;
                     return (
                       <button
                         key={script.id}
@@ -268,7 +243,7 @@ export function ScriptBrowser() {
                             {isDirty && (
                               <span
                                 className="ms-1 inline-block size-1.5 rounded-full bg-warning align-middle"
-                                aria-label="Unsaved changes"
+                                aria-label={m.script_browser_unsaved_changes_aria()}
                               />
                             )}
                           </span>
@@ -289,12 +264,12 @@ export function ScriptBrowser() {
                   onClick={() => setCreatingScript((open) => !open)}
                 >
                   <PlusIcon />
-                  New script
+                  {m.script_browser_new_script()}
                 </Button>
                 {creatingScript && (
                   <InlineForm
-                    placeholder="Script name (e.g. Login flow)"
-                    submitLabel="Create"
+                    placeholder={m.script_browser_script_name_placeholder()}
+                    submitLabel={m.script_browser_create()}
                     busy={busy}
                     onSubmit={createScript}
                     onCancel={() => setCreatingScript(false)}
@@ -310,35 +285,27 @@ export function ScriptBrowser() {
 
       <div className="flex h-8 shrink-0 items-center gap-2 pl-1.5">
         <HistoryIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-[10px] font-medium text-muted-foreground">
-          Versions
-        </span>
+        <span className="text-[10px] font-medium text-muted-foreground">{m.script_browser_versions()}</span>
 
         <div className="flex-1" />
 
         <Button
           size="sm"
           variant="secondary"
-          disabled={
-            selectedScript === null || busy || flow.saveState === "saving"
-          }
+          disabled={selectedScript === null || busy || flow.saveState === "saving"}
           loading={busy || flow.saveState === "saving"}
           onClick={() => void createRevisionAction()}
         >
           <PlusIcon />
-          Checkpoint
+          {m.script_browser_checkpoint()}
         </Button>
       </div>
 
       <div className="max-h-36 min-h-0 overflow-y-auto border-t p-1.5">
         {selectedScript === null ? (
-          <p className="px-1 py-1 text-[11px] text-muted-foreground">
-            Select a script to see its version history.
-          </p>
+          <p className="px-1 py-1 text-[11px] text-muted-foreground">{m.script_browser_select_script_history()}</p>
         ) : revisions.length === 0 ? (
-          <p className="px-1 py-1 text-[11px] text-muted-foreground">
-            No revisions yet. Create a checkpoint to snapshot this draft.
-          </p>
+          <p className="px-1 py-1 text-[11px] text-muted-foreground">{m.script_browser_no_revisions()}</p>
         ) : (
           <ul className="flex flex-col gap-0.5">
             {[...revisions].reverse().map((revision) => (
@@ -354,17 +321,17 @@ export function ScriptBrowser() {
                     </span>
                   </div>
                   <div className="truncate text-[10px] text-muted-foreground">
-                    {revision.message ?? "Checkpoint"}
+                    {revision.message ?? m.script_browser_checkpoint_fallback()}
                   </div>
                 </div>
                 <Button
                   size="xs"
                   variant="outline"
-                  aria-label={`Rollback to revision ${revision.revisionNumber}`}
+                  aria-label={m.script_browser_rollback_aria({ revisionNumber: revision.revisionNumber })}
                   onClick={() => void restoreRevisionSafe(revision)}
                 >
                   <RotateCcwIcon />
-                  Rollback
+                  {m.script_browser_rollback()}
                 </Button>
               </li>
             ))}

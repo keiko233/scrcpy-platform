@@ -36,6 +36,7 @@ import { useEffect, useState } from "react";
 
 import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
 import type { DeviceManager } from "@/features/workbench/device/use-devices";
+import { m } from "@/paraglide/messages.js";
 
 const SCRCPY_SETTINGS_STORAGE_KEY = "android-platform:scrcpy-settings";
 
@@ -61,15 +62,12 @@ function SettingRow({
 
 function ScrcpySettingsDialog() {
   const [open, setOpen] = useState(false);
-  const [savedSettings, setSavedSettings] =
-    useSafeLocalStorage(
-      SCRCPY_SETTINGS_STORAGE_KEY,
-      ScrcpySettingsSchema.nullable(),
-      null,
-    );
-  const [settings, setSettings] = useState<ScrcpySettings>(
-    DEFAULT_SCRCPY_SETTINGS,
+  const [savedSettings, setSavedSettings] = useSafeLocalStorage(
+    SCRCPY_SETTINGS_STORAGE_KEY,
+    ScrcpySettingsSchema.nullable(),
+    null,
   );
+  const [settings, setSettings] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
   const [draft, setDraft] = useState<ScrcpySettings>(DEFAULT_SCRCPY_SETTINGS);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -78,9 +76,7 @@ function ScrcpySettingsDialog() {
     let cancelled = false;
     const load = async () => {
       if (savedSettings !== null) {
-        const current = await window.androidPlatform.setScrcpySettings(
-          savedSettings,
-        );
+        const current = await window.androidPlatform.setScrcpySettings(savedSettings);
         if (!cancelled) {
           setSettings(current);
           setDraft(current);
@@ -101,22 +97,20 @@ function ScrcpySettingsDialog() {
     return () => {
       cancelled = true;
     };
-  // oxlint-disable-next-line react-hooks/exhaustive-deps
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const validation = ScrcpySettingsSchema.safeParse(draft);
 
   const save = async () => {
     if (!validation.success) {
-      setError("Check the numeric values and try again.");
+      setError(m.pair_scrcpy_error_check_values());
       return;
     }
     setSaving(true);
     setError(null);
     try {
-      const next = await window.androidPlatform.setScrcpySettings(
-        validation.data,
-      );
+      const next = await window.androidPlatform.setScrcpySettings(validation.data);
       setSavedSettings(next);
       setSettings(next);
       setDraft(next);
@@ -140,27 +134,24 @@ function ScrcpySettingsDialog() {
       }}
     >
       <DialogTrigger
-        aria-label="Configure scrcpy"
+        aria-label={m.pair_scrcpy_configure_aria()}
         render={<Button size="icon-sm" variant="outline" />}
       >
         <Settings2Icon />
       </DialogTrigger>
       <DialogPopup className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>scrcpy options</DialogTitle>
-          <DialogDescription>
-            Configure media transport and device behavior for the next screen
-            stream. Auto size keeps the device's original resolution.
-          </DialogDescription>
+          <DialogTitle>{m.pair_scrcpy_title()}</DialogTitle>
+          <DialogDescription>{m.pair_scrcpy_description()}</DialogDescription>
         </DialogHeader>
         <DialogPanel className="divide-y py-0">
           <section className="py-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Video
+              {m.pair_scrcpy_video()}
             </h3>
             <SettingRow
-              title="Codec"
-              description="H.265 is the default; device encoder support varies."
+              title={m.pair_scrcpy_codec()}
+              description={m.pair_scrcpy_codec_description()}
             >
               <Select
                 value={draft.videoCodec}
@@ -176,7 +167,7 @@ function ScrcpySettingsDialog() {
                 <SelectTrigger
                   size="sm"
                   className="w-full"
-                  aria-label="Video codec"
+                  aria-label={m.pair_scrcpy_codec()}
                 >
                   <SelectValue />
                 </SelectTrigger>
@@ -188,8 +179,8 @@ function ScrcpySettingsDialog() {
               </Select>
             </SettingRow>
             <SettingRow
-              title="Maximum size"
-              description="Limit the longest edge, or leave it automatic."
+              title={m.pair_scrcpy_max_size()}
+              description={m.pair_scrcpy_max_size_description()}
             >
               <div className="flex w-full items-center gap-2">
                 <Input
@@ -201,8 +192,8 @@ function ScrcpySettingsDialog() {
                   step={16}
                   disabled={draft.maxSize === null}
                   value={draft.maxSize ?? ""}
-                  placeholder="Auto"
-                  aria-label="Maximum video size"
+                  placeholder={m.pair_scrcpy_max_size_placeholder()}
+                  aria-label={m.pair_scrcpy_max_size_aria()}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -212,7 +203,7 @@ function ScrcpySettingsDialog() {
                 />
                 <label className="flex shrink-0 items-center gap-1.5 text-xs">
                   <Switch
-                    aria-label="Use automatic video size"
+                    aria-label={m.pair_scrcpy_auto_size_aria()}
                     checked={draft.maxSize === null}
                     onCheckedChange={(checked) =>
                       setDraft((current) => ({
@@ -221,11 +212,14 @@ function ScrcpySettingsDialog() {
                       }))
                     }
                   />
-                  Auto
+                  {m.pair_scrcpy_auto()}
                 </label>
               </div>
             </SettingRow>
-            <SettingRow title="Frame rate" description="Maximum frames per second.">
+            <SettingRow
+              title={m.pair_scrcpy_frame_rate()}
+              description={m.pair_scrcpy_frame_rate_description()}
+            >
               <div className="flex w-full items-center gap-2">
                 <Input
                   size="sm"
@@ -234,7 +228,7 @@ function ScrcpySettingsDialog() {
                   min={1}
                   max={240}
                   value={draft.maxFps}
-                  aria-label="Maximum frame rate"
+                  aria-label={m.pair_scrcpy_frame_rate_aria()}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -242,10 +236,15 @@ function ScrcpySettingsDialog() {
                     }))
                   }
                 />
-                <span className="w-10 text-xs text-muted-foreground">FPS</span>
+                <span className="w-10 text-xs text-muted-foreground">
+                  {m.pair_scrcpy_fps()}
+                </span>
               </div>
             </SettingRow>
-            <SettingRow title="Video bitrate" description="Target encoder bitrate.">
+            <SettingRow
+              title={m.pair_scrcpy_video_bitrate()}
+              description={m.pair_scrcpy_video_bitrate_description()}
+            >
               <div className="flex w-full items-center gap-2">
                 <Input
                   size="sm"
@@ -255,7 +254,7 @@ function ScrcpySettingsDialog() {
                   max={100}
                   step={1}
                   value={draft.videoBitRate / 1_000_000}
-                  aria-label="Video bitrate in megabits per second"
+                  aria-label={m.pair_scrcpy_video_bitrate_aria()}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -263,28 +262,29 @@ function ScrcpySettingsDialog() {
                     }))
                   }
                 />
-                <span className="w-10 text-xs text-muted-foreground">Mbps</span>
+                <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_mbps()}</span>
               </div>
             </SettingRow>
           </section>
 
           <section className="py-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Audio
+              {m.pair_scrcpy_audio()}
             </h3>
             <SettingRow
-              title="Transmit audio"
-              description="Send Android audio through the scrcpy transport."
+              title={m.pair_scrcpy_transmit_audio()}
+              description={m.pair_scrcpy_transmit_audio_description()}
             >
               <Switch
-                aria-label="Transmit audio"
+                aria-label={m.pair_scrcpy_transmit_audio_aria()}
                 checked={draft.audio}
-                onCheckedChange={(audio) =>
-                  setDraft((current) => ({ ...current, audio }))
-                }
+                onCheckedChange={(audio) => setDraft((current) => ({ ...current, audio }))}
               />
             </SettingRow>
-            <SettingRow title="Source" description="Audio captured by the Android device.">
+            <SettingRow
+              title={m.pair_scrcpy_audio_source()}
+              description={m.pair_scrcpy_audio_source_description()}
+            >
               <Select
                 disabled={!draft.audio}
                 value={draft.audioSource}
@@ -297,21 +297,20 @@ function ScrcpySettingsDialog() {
                   }
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full"
-                  aria-label="Audio source"
-                >
+                <SelectTrigger size="sm" className="w-full" aria-label={m.pair_scrcpy_audio_source_aria()}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="output">Device output</SelectItem>
-                  <SelectItem value="playback">Playback capture</SelectItem>
-                  <SelectItem value="mic">Microphone</SelectItem>
+                  <SelectItem value="output">{m.pair_scrcpy_audio_source_output()}</SelectItem>
+                  <SelectItem value="playback">{m.pair_scrcpy_audio_source_playback()}</SelectItem>
+                  <SelectItem value="mic">{m.pair_scrcpy_audio_source_mic()}</SelectItem>
                 </SelectContent>
               </Select>
             </SettingRow>
-            <SettingRow title="Audio codec" description="Opus is recommended for low latency.">
+            <SettingRow
+              title={m.pair_scrcpy_audio_codec()}
+              description={m.pair_scrcpy_audio_codec_description()}
+            >
               <Select
                 disabled={!draft.audio}
                 value={draft.audioCodec}
@@ -324,11 +323,7 @@ function ScrcpySettingsDialog() {
                   }
                 }}
               >
-                <SelectTrigger
-                  size="sm"
-                  className="w-full"
-                  aria-label="Audio codec"
-                >
+                <SelectTrigger size="sm" className="w-full" aria-label={m.pair_scrcpy_audio_codec_aria()}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -338,7 +333,10 @@ function ScrcpySettingsDialog() {
                 </SelectContent>
               </Select>
             </SettingRow>
-            <SettingRow title="Audio bitrate" description="Ignored by lossless FLAC encoders.">
+            <SettingRow
+              title={m.pair_scrcpy_audio_bitrate()}
+              description={m.pair_scrcpy_audio_bitrate_description()}
+            >
               <div className="flex w-full items-center gap-2">
                 <Input
                   size="sm"
@@ -349,7 +347,7 @@ function ScrcpySettingsDialog() {
                   step={16}
                   disabled={!draft.audio || draft.audioCodec === "flac"}
                   value={draft.audioBitRate / 1000}
-                  aria-label="Audio bitrate in kilobits per second"
+                  aria-label={m.pair_scrcpy_audio_bitrate_aria()}
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -357,45 +355,51 @@ function ScrcpySettingsDialog() {
                     }))
                   }
                 />
-                <span className="w-10 text-xs text-muted-foreground">Kbps</span>
+                <span className="w-10 text-xs text-muted-foreground">{m.pair_scrcpy_kbps()}</span>
               </div>
             </SettingRow>
           </section>
 
           <section className="py-3">
             <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Device behavior
+              {m.pair_scrcpy_device_behavior()}
             </h3>
-            <SettingRow title="Screen off" description="Turn the physical screen off after scrcpy starts.">
+            <SettingRow
+              title={m.pair_scrcpy_screen_off()}
+              description={m.pair_scrcpy_screen_off_description()}
+            >
               <Switch
-                aria-label="Turn screen off after scrcpy starts"
+                aria-label={m.pair_scrcpy_screen_off_aria()}
                 checked={draft.turnScreenOff}
-                onCheckedChange={(turnScreenOff) =>
-                  setDraft((current) => ({ ...current, turnScreenOff }))
-                }
+                onCheckedChange={(turnScreenOff) => setDraft((current) => ({ ...current, turnScreenOff }))}
               />
             </SettingRow>
-            <SettingRow title="Stay awake" description="Prevent the device from sleeping while plugged in.">
+            <SettingRow
+              title={m.pair_scrcpy_stay_awake()}
+              description={m.pair_scrcpy_stay_awake_description()}
+            >
               <Switch
-                aria-label="Keep device awake"
+                aria-label={m.pair_scrcpy_stay_awake_aria()}
                 checked={draft.stayAwake}
-                onCheckedChange={(stayAwake) =>
-                  setDraft((current) => ({ ...current, stayAwake }))
-                }
+                onCheckedChange={(stayAwake) => setDraft((current) => ({ ...current, stayAwake }))}
               />
             </SettingRow>
-            <SettingRow title="Show touches" description="Show Android touch feedback on the device.">
+            <SettingRow
+              title={m.pair_scrcpy_show_touches()}
+              description={m.pair_scrcpy_show_touches_description()}
+            >
               <Switch
-                aria-label="Show touches"
+                aria-label={m.pair_scrcpy_show_touches_aria()}
                 checked={draft.showTouches}
-                onCheckedChange={(showTouches) =>
-                  setDraft((current) => ({ ...current, showTouches }))
-                }
+                onCheckedChange={(showTouches) => setDraft((current) => ({ ...current, showTouches }))}
               />
             </SettingRow>
-            <SettingRow title="Power off on close" description="Turn the device screen off when scrcpy exits.">
+            <SettingRow
+              title={m.pair_scrcpy_power_off_on_close()}
+              description={m.pair_scrcpy_power_off_on_close_description()}
+            >
               <Switch
-                aria-label="Power screen off when scrcpy closes"
+                aria-label={m.pair_scrcpy_power_off_on_close_aria()}
                 checked={draft.powerOffOnClose}
                 onCheckedChange={(powerOffOnClose) =>
                   setDraft((current) => ({ ...current, powerOffOnClose }))
@@ -403,23 +407,14 @@ function ScrcpySettingsDialog() {
               />
             </SettingRow>
           </section>
-          {error !== null && (
-            <p className="py-3 text-xs text-destructive-foreground">{error}</p>
-          )}
+          {error !== null && <p className="py-3 text-xs text-destructive-foreground">{error}</p>}
         </DialogPanel>
         <DialogFooter>
-          <DialogClose
-            render={<Button variant="outline" />}
-            onClick={() => setDraft(settings)}
-          >
-            Cancel
+          <DialogClose render={<Button variant="outline" />} onClick={() => setDraft(settings)}>
+            {m.pair_scrcpy_cancel()}
           </DialogClose>
-          <Button
-            loading={saving}
-            disabled={!validation.success}
-            onClick={() => void save()}
-          >
-            Save options
+          <Button loading={saving} disabled={!validation.success} onClick={() => void save()}>
+            {m.pair_scrcpy_save()}
           </Button>
         </DialogFooter>
       </DialogPopup>
@@ -451,20 +446,17 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
   const busy = connecting;
   const state = session?.state ?? "disconnected";
   const canConnect =
-    selectedTransportId !== null &&
-    devices.some((device) => device.transportId === selectedTransportId);
+    selectedTransportId !== null && devices.some((device) => device.transportId === selectedTransportId);
 
-  const currentDevice = devices.find(
-    (device) => device.transportId === selectedTransportId,
-  );
+  const currentDevice = devices.find((device) => device.transportId === selectedTransportId);
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2 p-2">
       <div className="flex items-center gap-2">
         <div className="flex min-w-0 flex-1 flex-col leading-tight">
-          <span className="text-xs font-medium">Device connection</span>
+          <span className="text-xs font-medium">{m.pair_device_connection()}</span>
           <span className="truncate text-[10px] text-muted-foreground">
-            ADB transport selection
+            {m.pair_device_connection_subtitle()}
           </span>
         </div>
 
@@ -473,20 +465,18 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
           variant="outline"
           onClick={() => void refresh()}
           loading={loadingDevices}
-          aria-label="Refresh device list"
+          aria-label={m.pair_refresh_aria()}
         >
           <RefreshCwIcon />
-          <span>Refresh</span>
+          <span>{m.pair_refresh()}</span>
         </Button>
       </div>
 
       {listError !== null && (
         <Alert variant="warning" className="gap-1.5 px-2.5 py-2 text-xs">
           <AlertTriangleIcon />
-          <AlertTitle className="text-xs">Device list unavailable</AlertTitle>
-          <AlertDescription className="text-[11px]">
-            {listError}
-          </AlertDescription>
+          <AlertTitle className="text-xs">{m.pair_device_list_unavailable()}</AlertTitle>
+          <AlertDescription className="text-[11px]">{listError}</AlertDescription>
         </Alert>
       )}
 
@@ -502,16 +492,9 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
         >
           <SelectTrigger size="sm" className="min-w-0 flex-1">
             <SelectValue
-              placeholder={
-                devices.length === 0 ? "No devices detected" : "Select a device"
-              }
+              placeholder={devices.length === 0 ? m.pair_no_devices() : m.pair_select_device()}
             >
-              {currentDevice &&
-                deviceLabel(
-                  currentDevice.serial,
-                  currentDevice.state,
-                  currentDevice.model,
-                )}
+              {currentDevice && deviceLabel(currentDevice.serial, currentDevice.state, currentDevice.model)}
             </SelectValue>
           </SelectTrigger>
 
@@ -536,13 +519,13 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
           onClick={() => void connect()}
         >
           <PlugIcon />
-          Connect
+          {m.pair_connect()}
         </Button>
         {(listError !== null || sessionError !== null) && (
           <Button
             size="icon-sm"
             variant="ghost"
-            aria-label="Clear status labels"
+            aria-label={m.pair_clear_status()}
             onClick={() => {
               clearError();
               clearSessionError();
@@ -552,8 +535,6 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
           </Button>
         )}
       </div>
-
-
     </div>
   );
 }

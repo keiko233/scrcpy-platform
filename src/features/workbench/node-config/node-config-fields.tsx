@@ -14,13 +14,13 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import {
-  FLOW_DATA_TYPE_LABELS,
   type FlowDataType,
   type JsonValue,
 } from "@/shared/project-contracts";
 
 import type { FieldDefinition } from "../types";
 import { PackageField } from "./package-picker";
+import { m } from "@/paraglide/messages.js";
 
 export function NumberInput({
   value,
@@ -66,6 +66,23 @@ export function NumberInput({
   );
 }
 
+function getDataTypeLabel(type: FlowDataType): string {
+  switch (type) {
+    case "any":
+      return m.data_type_any();
+    case "string":
+      return m.data_type_string();
+    case "number":
+      return m.data_type_number();
+    case "boolean":
+      return m.data_type_boolean();
+    case "screen-region":
+      return m.data_type_screen_region();
+    default:
+      return type;
+  }
+}
+
 export function DataTypeBadge({ type }: { type: FlowDataType }) {
   return (
     <span
@@ -78,7 +95,7 @@ export function DataTypeBadge({ type }: { type: FlowDataType }) {
         type === "screen-region" && "bg-amber-500/12 text-amber-600",
       )}
     >
-      {FLOW_DATA_TYPE_LABELS[type]}
+      {getDataTypeLabel(type)}
     </span>
   );
 }
@@ -131,7 +148,7 @@ export function FieldEditor({
         {dataType && <DataTypeBadge type={dataType} />}
         {connected && (
           <Badge size="sm" variant="secondary" className="ml-auto">
-            connected
+            {m.node_config_connected()}
           </Badge>
         )}
       </div>

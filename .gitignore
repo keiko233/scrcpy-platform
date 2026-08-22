@@ -13,6 +13,8 @@ dist-ssr
 out
 *.local
 
+src/paraglide
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

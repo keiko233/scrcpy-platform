@@ -14,6 +14,7 @@ import type { FlowRunLogEntryDto, FlowRunLogLevel } from "@/shared/run-contracts
 
 import { useWorkbench } from "../use-workbench";
 import { LogMessage } from "./log-message";
+import { m } from "@/paraglide/messages.js";
 
 const LEVEL_CLASS_NAMES: Record<FlowRunLogLevel, string> = {
   debug: "text-muted-foreground",
@@ -38,6 +39,23 @@ function stateVariant(
       return "secondary";
     default:
       return "default";
+  }
+}
+
+function getRunStateLabel(state: string): string {
+  switch (state) {
+    case "running":
+      return m.run_state_running();
+    case "paused":
+      return m.run_state_paused();
+    case "completed":
+      return m.run_state_completed();
+    case "failed":
+      return m.run_state_failed();
+    case "cancelled":
+      return m.run_state_cancelled();
+    default:
+      return m.run_state_unknown();
   }
 }
 
@@ -82,9 +100,7 @@ export function RunPanel() {
 
   const visibleLogs = useMemo(
     () =>
-      level === "all"
-        ? runs.logs
-        : runs.logs.filter((entry) => entry.level === level),
+      level === "all" ? runs.logs : runs.logs.filter((entry) => entry.level === level),
     [level, runs.logs],
   );
 
@@ -95,31 +111,33 @@ export function RunPanel() {
     }
   }, [visibleLogs.length]);
 
-  const runTooltip = runs.error ??
+  const runTooltip =
+    runs.error ??
     (selectedScript === null
-      ? "Select a script to run"
+      ? m.run_panel_select_script_to_run()
       : flow.dirty
-        ? "Save the draft before running it"
+        ? m.run_panel_save_before_run()
         : session?.state !== "connected"
-          ? "Connect an Android device before running"
+          ? m.run_panel_connect_device_before_run()
           : displayId === null
-            ? "Select an Android display before running"
-            : "Run the flow with the selected breakpoints");
+            ? m.run_panel_select_display_before_run()
+            : m.run_panel_run_with_breakpoints());
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-card">
       <div className="flex shrink-0 items-center gap-1.5 border-b px-2 py-1.5">
         <BugIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium">Run</span>
+        <span className="text-xs font-medium">{m.run_panel_title()}</span>
         {runs.run !== null && (
           <Badge size="sm" variant={stateVariant(runs.run.state)}>
-            {runs.run.state}
+            {getRunStateLabel(runs.run.state)}
           </Badge>
         )}
         {runs.breakpoints.size > 0 && (
           <span className="text-[10px] text-muted-foreground">
-            {runs.breakpoints.size} breakpoint
-            {runs.breakpoints.size === 1 ? "" : "s"}
+            {runs.breakpoints.size === 1
+              ? m.run_panel_breakpoints({ count: runs.breakpoints.size })
+              : m.run_panel_breakpoints_plural({ count: runs.breakpoints.size })}
           </span>
         )}
       </div>
@@ -137,11 +155,11 @@ export function RunPanel() {
                     onClick={() => void runs.resume("continue")}
                   >
                     <PlayIcon />
-                    Continue
+                    {m.run_panel_continue()}
                   </Button>
                 }
               />
-              <TooltipContent>Resume to the next breakpoint</TooltipContent>
+              <TooltipContent>{m.run_panel_resume_next_breakpoint()}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -153,11 +171,11 @@ export function RunPanel() {
                     onClick={() => void runs.resume("step")}
                   >
                     <StepForwardIcon />
-                    Step
+                    {m.run_panel_step()}
                   </Button>
                 }
               />
-              <TooltipContent>Advance one node, then pause</TooltipContent>
+              <TooltipContent>{m.run_panel_step_advance()}</TooltipContent>
             </Tooltip>
             <Tooltip>
               <TooltipTrigger
@@ -169,25 +187,20 @@ export function RunPanel() {
                     onClick={() => void runs.stop()}
                   >
                     <SquareIcon />
-                    Stop
+                    {m.run_panel_stop()}
                   </Button>
                 }
               />
-              <TooltipContent>Cancel the active run</TooltipContent>
+              <TooltipContent>{m.run_panel_cancel_run()}</TooltipContent>
             </Tooltip>
           </>
         ) : (
           <Tooltip>
             <TooltipTrigger
               render={
-                <Button
-                  size="sm"
-                  variant="default"
-                  disabled={!canRun}
-                  onClick={start}
-                >
+                <Button size="sm" variant="default" disabled={!canRun} onClick={start}>
                   <PlayIcon />
-                  Run
+                  {m.run_panel_run()}
                 </Button>
               }
             />
@@ -199,40 +212,46 @@ export function RunPanel() {
 
         <div className="ml-auto flex items-center gap-1">
           <select
-            aria-label="Run log level"
+            aria-label={m.run_panel_run_log_level_aria()}
             value={level}
-            onChange={(event) =>
-              setLevel(event.target.value as FlowRunLogLevel | "all")
-            }
+            onChange={(event) => setLevel(event.target.value as FlowRunLogLevel | "all")}
             className="h-7 rounded-md border bg-background px-1.5 text-[11px]"
           >
-            <option value="all">All</option>
-            <option value="debug">Debug</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="error">Error</option>
+            <option value="all">{m.debug_level_all()}</option>
+            <option value="debug">{m.debug_level_debug()}</option>
+            <option value="info">{m.debug_level_info()}</option>
+            <option value="warn">{m.debug_level_warn()}</option>
+            <option value="error">{m.debug_level_error()}</option>
           </select>
         </div>
       </div>
 
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto font-mono text-[10px]"
-      >
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto font-mono text-[10px]">
         {visibleLogs.length === 0 ? (
           <div className="p-3 text-muted-foreground">
-            {runs.run === null
-              ? "No run yet. Click Run to execute the script."
-              : "No logs for this run."}
+            {runs.run === null ? m.run_panel_no_run() : m.run_panel_no_logs()}
           </div>
         ) : (
-          visibleLogs.map((entry) => (
-            <RunLogRow key={entry.id} entry={entry} />
-          ))
+          visibleLogs.map((entry) => <RunLogRow key={entry.id} entry={entry} />)
         )}
       </div>
     </div>
   );
+}
+
+function getLevelLabel(level: FlowRunLogLevel): string {
+  switch (level) {
+    case "debug":
+      return m.debug_level_debug();
+    case "info":
+      return m.debug_level_info();
+    case "warn":
+      return m.debug_level_warn();
+    case "error":
+      return m.debug_level_error();
+    default:
+      return level;
+  }
 }
 
 function RunLogRow({ entry }: { entry: FlowRunLogEntryDto }) {
@@ -240,14 +259,9 @@ function RunLogRow({ entry }: { entry: FlowRunLogEntryDto }) {
     <div className="border-b px-2 py-1.5 last:border-b-0">
       <div className="flex gap-2 text-[9px] text-muted-foreground">
         <span>{entry.createdAt}</span>
-        <span className={LEVEL_CLASS_NAMES[entry.level]}>
-          {entry.level.toUpperCase()}
-        </span>
+        <span className={LEVEL_CLASS_NAMES[entry.level]}>{getLevelLabel(entry.level)}</span>
         {entry.nodeId !== null && (
-          <span
-            className="truncate text-fuchsia-700 dark:text-fuchsia-300"
-            title={entry.nodeId}
-          >
+          <span className="truncate text-fuchsia-700 dark:text-fuchsia-300" title={entry.nodeId}>
             {entry.nodeId}
           </span>
         )}

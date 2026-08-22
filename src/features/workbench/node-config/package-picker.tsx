@@ -23,6 +23,7 @@ import type { JsonValue } from "@/shared/project-contracts";
 import { useInstalledApps } from "../device/use-installed-apps";
 import { useWorkbench } from "../use-workbench";
 import { filterInstalledApps, findInstalledApp } from "./app-list";
+import { m } from "@/paraglide/messages.js";
 
 const LIST_HEIGHT = 224;
 const ROW_ESTIMATE = 52;
@@ -120,7 +121,7 @@ export function PackageField({
       <ComboboxInput
         autoComplete="none"
         placeholder={
-          appsQuery.isPending ? "Loading apps..." : placeholder ?? "com.example.app"
+          appsQuery.isPending ? m.package_picker_loading_apps() : placeholder ?? "com.example.app"
         }
         showClear
         size="sm"
@@ -129,13 +130,13 @@ export function PackageField({
       <ComboboxPopup className="w-72">
         <ComboboxStatus>
           {appsQuery.isPending
-            ? "Loading installed apps..."
+            ? m.package_picker_loading_installed_apps()
             : appsQuery.isError
-              ? "Could not load installed apps."
-              : `${filteredApps.length} apps`}
+              ? m.package_picker_load_error()
+              : m.package_picker_apps_count({ count: filteredApps.length })}
         </ComboboxStatus>
         {filteredApps.length === 0 && !appsQuery.isPending && (
-          <ComboboxEmpty>No apps found.</ComboboxEmpty>
+          <ComboboxEmpty>{m.package_picker_no_apps()}</ComboboxEmpty>
         )}
         <ComboboxPrimitive.List className="max-w-full overflow-hidden p-0">
           <div
@@ -197,7 +198,7 @@ export function PackageField({
                       </span>
                       {app.system && (
                         <Badge size="sm" variant="outline" className="shrink-0">
-                          System
+                          {m.package_picker_system()}
                         </Badge>
                       )}
                     </div>

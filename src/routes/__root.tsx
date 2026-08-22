@@ -4,6 +4,8 @@ import { Outlet, createRootRouteWithContext } from "@tanstack/react-router";
 import { ThemeProvider } from "tanstack-theme-kit";
 
 import { AnchoredToastProvider, ToastProvider } from "@/components/ui/toast";
+import { LanguageProvider } from "@/i18n/language";
+import { m } from "@/paraglide/messages.js";
 
 // import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
@@ -16,7 +18,7 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
   notFoundComponent: () => {
     return (
       <div className="flex h-screen w-screen items-center justify-center">
-        <h1 className="text-3xl font-bold">404 - Not Found</h1>
+        <h1 className="text-3xl font-bold">{m.app_not_found_title()}</h1>
       </div>
     );
   },
@@ -32,11 +34,13 @@ function RootComponent() {
         enableSystem
         disableTransitionOnChange
       >
-        <ToastProvider>
-          <AnchoredToastProvider>
-            <Outlet />
-          </AnchoredToastProvider>
-        </ToastProvider>
+        <LanguageProvider>
+          <ToastProvider>
+            <AnchoredToastProvider>
+              <Outlet />
+            </AnchoredToastProvider>
+          </ToastProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

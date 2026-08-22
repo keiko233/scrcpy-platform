@@ -6,12 +6,15 @@ import type { AndroidDisplayDto } from "@/shared/screen-contracts";
 
 import { VirtualDisplayMenu } from "@/features/workbench/screen/virtual-display-menu";
 import { useWorkbench } from "@/features/workbench/use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 function labelFor(display: AndroidDisplayDto): string {
   if (display.kind === "virtual") {
-    return "Virtual";
+    return m.display_tabs_virtual();
   }
-  return display.primary ? "Primary Physical" : "Physical";
+  return display.primary
+    ? m.display_tabs_primary_physical()
+    : m.display_tabs_physical();
 }
 
 export function DisplayTabs() {
@@ -46,7 +49,7 @@ export function DisplayTabs() {
             <span>{labelFor(display)}</span>
             {display.ownedBySession && (
               <span
-                aria-label="Destroy virtual display"
+                aria-label={m.display_tabs_destroy_virtual_display_aria()}
                 className="ml-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
                 onClick={(event) => {
                   event.stopPropagation();
@@ -61,7 +64,7 @@ export function DisplayTabs() {
                 }}
                 role="button"
                 tabIndex={0}
-                title="Destroy virtual display"
+                title={m.display_tabs_destroy_virtual_display()}
               >
                 <XIcon className="size-3" />
               </span>

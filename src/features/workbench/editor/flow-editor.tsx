@@ -40,6 +40,7 @@ import { BLOCK_DEFINITIONS, FLOW_BLOCK_KIND_ORDER } from "../blocks";
 import { AUTOMATION_NODE_TYPES } from "../node-types";
 import type { FlowBlockKind } from "../types";
 import { useWorkbench } from "../use-workbench";
+import { m } from "@/paraglide/messages.js";
 
 function EditorEmptyState() {
   return (
@@ -47,10 +48,8 @@ function EditorEmptyState() {
       <EmptyMedia variant="icon">
         <GitForkIcon />
       </EmptyMedia>
-      <EmptyTitle className="text-sm">No script open</EmptyTitle>
-      <EmptyDescription>
-        Select or create a script in the Files panel to start building a flow.
-      </EmptyDescription>
+      <EmptyTitle className="text-sm">{m.flow_editor_no_script_open()}</EmptyTitle>
+      <EmptyDescription>{m.flow_editor_no_script_description()}</EmptyDescription>
     </Empty>
   );
 }
@@ -81,9 +80,7 @@ function FlowCanvas() {
 
   const handlePaneContextMenu = (event: ReactMouseEvent) => {
     event.preventDefault();
-    setPanePosition(
-      screenToFlowPosition({ x: event.clientX, y: event.clientY }),
-    );
+    setPanePosition(screenToFlowPosition({ x: event.clientX, y: event.clientY }));
   };
 
   const addBlockAtPane = (kind: FlowBlockKind) => {
@@ -102,39 +99,31 @@ function FlowCanvas() {
             <AlertTriangleIcon />
             <AlertTitle className="text-xs">
               {error === "stale-draft"
-                ? "Draft changed on disk"
+                ? m.flow_editor_draft_changed()
                 : error === "script-not-found"
-                  ? "Script not found"
-                  : "Draft could not be saved"}
+                  ? m.flow_editor_script_not_found()
+                  : m.flow_editor_draft_not_saved()}
             </AlertTitle>
             <AlertDescription className="text-[11px]">
               {error === "stale-draft"
-                ? "Another edit landed while you were working. Load the latest draft, or overwrite it with your local graph."
+                ? m.flow_editor_draft_changed_description()
                 : error === "script-not-found"
-                  ? "This script no longer exists in the library."
-                  : "The desktop service returned an unexpected error. Your local graph remains unsaved."}
+                  ? m.flow_editor_script_not_found_description()
+                  : m.flow_editor_draft_not_saved_description()}
             </AlertDescription>
           </Alert>
           {error === "stale-draft" ? (
             <>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => void reloadLatest()}
-              >
-                Load latest
+              <Button size="sm" variant="outline" onClick={() => void reloadLatest()}>
+                {m.flow_editor_load_latest()}
               </Button>
-              <Button
-                size="sm"
-                variant="default"
-                onClick={() => void forceSave()}
-              >
-                Overwrite
+              <Button size="sm" variant="default" onClick={() => void forceSave()}>
+                {m.flow_editor_overwrite()}
               </Button>
             </>
           ) : (
             <Button size="sm" variant="default" onClick={clearError}>
-              Dismiss
+              {m.flow_editor_dismiss()}
             </Button>
           )}
         </div>
@@ -142,10 +131,7 @@ function FlowCanvas() {
 
       <div className="min-h-0 flex-1">
         <ContextMenu>
-          <ContextMenuTrigger
-            className="block h-full"
-            onContextMenu={handlePaneContextMenu}
-          >
+          <ContextMenuTrigger className="block h-full" onContextMenu={handlePaneContextMenu}>
             <ReactFlow
               nodes={nodes}
               edges={edges}
@@ -170,15 +156,12 @@ function FlowCanvas() {
 
           <ContextMenuPopup align="center" sideOffset={6}>
             <ContextMenuGroup>
-              <ContextMenuGroupLabel>Add block at pointer</ContextMenuGroupLabel>
+              <ContextMenuGroupLabel>{m.flow_editor_add_block_at_pointer()}</ContextMenuGroupLabel>
               {FLOW_BLOCK_KIND_ORDER.map((kind) => {
                 const definition = BLOCK_DEFINITIONS[kind];
                 const Icon = definition.icon;
                 return (
-                  <ContextMenuItem
-                    key={kind}
-                    onClick={() => addBlockAtPane(kind)}
-                  >
+                  <ContextMenuItem key={kind} onClick={() => addBlockAtPane(kind)}>
                     <Icon />
                     {definition.label}
                   </ContextMenuItem>
@@ -195,7 +178,7 @@ function FlowCanvas() {
                   }}
                 >
                   <Trash2Icon />
-                  Delete {selectedNodes.length} selected
+                  {m.flow_editor_delete_selected({ count: selectedNodes.length })}
                 </ContextMenuItem>
               </>
             )}
@@ -214,7 +197,7 @@ export function FlowEditorPanel() {
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-card">
       <div className="flex items-center min-h-0 overflow-hidden bg-muted/40 p-1 text-sm gap-1">
         <GitForkIcon className="size-3.5" />
-        Flow editor
+        {m.flow_editor_flow_editor_title()}
         <span className="ms-auto flex min-w-0 items-center gap-2 truncate">
           {selectedScript ? (
             <>
@@ -225,12 +208,12 @@ export function FlowEditorPanel() {
               {flow.dirty && (
                 <span
                   className="inline-block size-1.5 shrink-0 rounded-full bg-warning"
-                  aria-label="Unsaved changes"
+                  aria-label={m.flow_editor_unsaved_changes_aria()}
                 />
               )}
             </>
           ) : (
-            <span className="text-muted-foreground">no script</span>
+            <span className="text-muted-foreground">{m.flow_editor_no_script()}</span>
           )}
         </span>
       </div>

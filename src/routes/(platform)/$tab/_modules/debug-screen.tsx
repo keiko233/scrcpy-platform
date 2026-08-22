@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { LogEntry, LogLevel } from "@/shared/electron-api";
 import { LogMessage } from "@/features/workbench/debug/log-message";
+import { m } from "@/paraglide/messages.js";
 
 export function DebugScreen() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -48,11 +49,26 @@ export function DebugScreen() {
     error: "text-destructive-foreground",
   };
 
+  function getLevelLabel(level: LogLevel): string {
+    switch (level) {
+      case "debug":
+        return m.debug_level_debug();
+      case "info":
+        return m.debug_level_info();
+      case "warn":
+        return m.debug_level_warn();
+      case "error":
+        return m.debug_level_error();
+      default:
+        return level;
+    }
+  }
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden">
       <div className="flex shrink-0 items-center gap-1.5 border-b p-2">
         <BugIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium">Logs</span>
+        <span className="text-xs font-medium">{m.debug_logs_title()}</span>
 
         <span className="text-[10px] text-muted-foreground">
           {visibleLogs.length}
@@ -60,24 +76,24 @@ export function DebugScreen() {
 
         <div className="ml-auto flex items-center gap-1">
           <select
-            aria-label="Log level"
+            aria-label={m.debug_log_level_aria()}
             value={level}
             onChange={(event) =>
               setLevel(event.target.value as LogLevel | "all")
             }
             className="h-7 rounded-md border bg-background px-1.5 text-[11px]"
           >
-            <option value="all">All</option>
-            <option value="debug">Debug</option>
-            <option value="info">Info</option>
-            <option value="warn">Warn</option>
-            <option value="error">Error</option>
+            <option value="all">{m.debug_level_all()}</option>
+            <option value="debug">{m.debug_level_debug()}</option>
+            <option value="info">{m.debug_level_info()}</option>
+            <option value="warn">{m.debug_level_warn()}</option>
+            <option value="error">{m.debug_level_error()}</option>
           </select>
 
           <Button
             variant="ghost"
             size="icon-xs"
-            title="Clear logs"
+            title={m.debug_clear_logs()}
             onClick={() => void clearLogs()}
           >
             <Trash2Icon />
@@ -92,7 +108,7 @@ export function DebugScreen() {
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter logs"
+            placeholder={m.debug_filter_placeholder()}
             className="h-7 pl-7 text-[11px]"
           />
         </div>
@@ -100,7 +116,7 @@ export function DebugScreen() {
 
       <ScrollArea className="min-h-0 flex-1 font-mono text-[10px]">
         {visibleLogs.length === 0 ? (
-          <div className="p-3 text-muted-foreground">No logs</div>
+          <div className="p-3 text-muted-foreground">{m.debug_no_logs()}</div>
         ) : (
           visibleLogs.map((entry) => (
             <div
@@ -110,7 +126,7 @@ export function DebugScreen() {
               <div className="flex gap-2 text-[9px] text-muted-foreground">
                 <span>{entry.createdAt}</span>
                 <span className={levelClassName[entry.level]}>
-                  {entry.level.toUpperCase()}
+                  {getLevelLabel(entry.level)}
                 </span>
 
                 <span className="text-muted-foreground">[{entry.source}]</span>
