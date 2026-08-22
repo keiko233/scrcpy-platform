@@ -1,5 +1,10 @@
 import { compileFlow } from "../../shared/flow-graph";
-import { evaluateExpression, expressionTruthy } from "../../shared/expression";
+import {
+  aggregateValues,
+  evaluateExpression,
+  expressionTruthy,
+  type AggregateOperation,
+} from "../../shared/expression";
 import {
   FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
@@ -175,6 +180,45 @@ function finiteNumberInput(node: FlowNode, field: string): number {
     );
   }
   return value;
+}
+
+function calculateOperation(node: FlowNode): AggregateOperation {
+  const operation = requiredString(node, "operation", { trim: true });
+  const operations: readonly AggregateOperation[] = [
+    "max",
+    "min",
+    "sum",
+    "avg",
+    "count",
+  ];
+  if (!operations.includes(operation as AggregateOperation)) {
+    throw new Error(
+      `Calculate node "${node.id}" has unsupported operation "${operation}".`,
+    );
+  }
+  return operation as AggregateOperation;
+}
+
+function calculateValues(
+  node: FlowNode,
+  connectedInputs: ReadonlySet<string>,
+  variables: Readonly<Record<string, JsonValue>>,
+): JsonValue[] {
+  if (connectedInputs.has("values")) {
+    const value = node.data.values;
+    return Array.isArray(value) ? value : [value];
+  }
+  const raw = node.data.values;
+  if (typeof raw !== "string" || raw.trim().length === 0) {
+    throw new Error(
+      `Calculate node "${node.id}" requires at least one comma-separated value.`,
+    );
+  }
+  return raw
+    .split(",")
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0)
+    .map((part) => evaluateExpression(part, variables));
 }
 
 function finiteNonnegative(value: unknown, nodeId: string, field: string): number {
@@ -822,6 +866,19 @@ export class FlowRuntimeService {
           value,
         });
         return executionResult("next", { value });
+      }
+      case "calculate": {
+        const name = variableName(node, "variable");
+        const operation = calculateOperation(node);
+        const values = calculateValues(node, connectedInputs, variables);
+        const result = aggregateValues(operation, values);
+        variables[name] = result;
+        this.#emitLog(node.id, "info", `Calculated ${name} = ${formatLogValue(result)}`, {
+          operation,
+          value: result,
+          count: values.length,
+        });
+        return executionResult("next", { value: result });
       }
       case "if": {
         const condition = connectedInputs.has("condition")

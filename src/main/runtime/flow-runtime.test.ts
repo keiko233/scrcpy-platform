@@ -418,6 +418,52 @@ describe("FlowRuntimeService", () => {
     assert.equal(completed.variables.target, 42);
   });
 
+  test("aggregates expressions and stores the result variable", async () => {
+    const document = linearDocument([
+      node("seed-a", "set-variable", { name: "a", expression: "4" }),
+      node("seed-b", "set-variable", { name: "b", expression: "9" }),
+      node("calc", "calculate", {
+        operation: "max",
+        values: "$a, $b, 2",
+        variable: "result",
+      }),
+      node("assert", "assert", { condition: "$result == 9" }),
+    ]);
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(completed.variables, { a: 4, b: 9, result: 9 });
+  });
+
+  test("counts values supplied through a connected data input", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("source", "set-variable", { name: "raw", expression: "1" }),
+        node("calc", "calculate", { operation: "count", values: "", variable: "n" }),
+        node("assert", "assert", { condition: "$n == 1" }),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "source", "next", "in"],
+        ["e2", "source", "calc", "next", "in"],
+        ["data-1", "source", "calc", "value", "values"],
+        ["e3", "calc", "assert", "next", "in"],
+        ["e4", "assert", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(completed.variables.n, 1);
+  });
+
   test("overrides action fields with connected typed input values", async () => {
     const document = linearDocument([
       node("source", "set-variable", { name: "coordinate", expression: "17" }),

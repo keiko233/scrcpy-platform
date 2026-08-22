@@ -4,7 +4,15 @@ const MAX_EXPRESSION_LENGTH = 4096;
 const MAX_TOKENS = 512;
 const MAX_DEPTH = 64;
 
-type TokenKind = "number" | "string" | "identifier" | "operator" | "(" | ")" | "eof";
+type TokenKind =
+  | "number"
+  | "string"
+  | "identifier"
+  | "operator"
+  | "("
+  | ")"
+  | ","
+  | "eof";
 
 interface Token {
   kind: TokenKind;
@@ -22,7 +30,8 @@ type ExpressionNode =
       operator: string;
       left: ExpressionNode;
       right: ExpressionNode;
-    };
+    }
+  | { type: "call"; name: string; args: ExpressionNode[] };
 
 export type ExpressionVariables = Readonly<Record<string, JsonValue>>;
 
@@ -83,6 +92,11 @@ function tokenize(source: string): Token[] {
     }
     if (character === "(" || character === ")") {
       push({ kind: character, text: character, offset });
+      offset += 1;
+      continue;
+    }
+    if (character === ",") {
+      push({ kind: ",", text: ",", offset });
       offset += 1;
       continue;
     }
@@ -259,9 +273,13 @@ class Parser {
       if (token.text === "null") {
         return { type: "literal", value: null };
       }
+      const name = token.text.startsWith("$") ? token.text.slice(1) : token.text;
+      if (this.#peek().kind === "(") {
+        return this.#parseCall(name, token.offset);
+      }
       return {
         type: "variable",
-        name: token.text.startsWith("$") ? token.text.slice(1) : token.text,
+        name,
       };
     }
     if (token.kind === "(") {
@@ -281,6 +299,28 @@ class Parser {
       token.kind === "eof" ? "Expected a value" : `Unexpected token "${token.text}"`,
       token.offset,
     );
+  }
+
+  #parseCall(name: string, offset: number): ExpressionNode {
+    this.#take();
+    this.#depth += 1;
+    if (this.#depth > MAX_DEPTH) {
+      throw new ExpressionError(`Expression exceeds depth ${MAX_DEPTH}`, offset);
+    }
+    const args: ExpressionNode[] = [];
+    if (this.#peek().kind !== ")") {
+      args.push(this.#parseNullish());
+      while (this.#peek().kind === ",") {
+        this.#take();
+        args.push(this.#parseNullish());
+      }
+    }
+    const closing = this.#take();
+    this.#depth -= 1;
+    if (closing.kind !== ")") {
+      throw new ExpressionError("Expected closing parenthesis", closing.offset);
+    }
+    return { type: "call", name, args };
   }
 }
 
@@ -325,6 +365,12 @@ function evaluate(node: ExpressionNode, variables: ExpressionVariables, depth = 
       throw new ExpressionError(`Variable "${node.name}" is not defined`);
     }
     return variables[node.name];
+  }
+  if (node.type === "call") {
+    return evaluateCall(
+      node.name,
+      node.args.map((argument) => evaluate(argument, variables, depth + 1)),
+    );
   }
   if (node.type === "unary") {
     const value = evaluate(node.operand, variables, depth + 1);
@@ -387,6 +433,131 @@ function evaluate(node: ExpressionNode, variables: ExpressionVariables, depth = 
     }
     default:
       throw new ExpressionError(`Unsupported operator ${node.operator}`);
+  }
+}
+
+export type AggregateOperation = "max" | "min" | "sum" | "avg" | "count";
+
+function functionError(name: string, message: string): ExpressionError {
+  return new ExpressionError(`Function ${name} ${message}`);
+}
+
+function requireArguments(name: string, args: JsonValue[], count: number): void {
+  if (args.length !== count) {
+    throw functionError(
+      name,
+      `requires exactly ${count} argument${count === 1 ? "" : "s"}, got ${args.length}`,
+    );
+  }
+}
+
+function numericArgument(name: string, value: JsonValue): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw functionError(name, "requires a numeric argument");
+  }
+  return value;
+}
+
+function stringArgument(name: string, value: JsonValue): string {
+  if (typeof value !== "string") {
+    throw functionError(name, "requires a string argument");
+  }
+  return value;
+}
+
+export function aggregateValues(
+  operation: AggregateOperation,
+  values: JsonValue[],
+): number {
+  if (operation === "count") {
+    return values.length;
+  }
+  if (values.length === 0) {
+    throw functionError(operation, "requires at least one argument");
+  }
+  const numbers = values.map((value) => numericArgument(operation, value));
+  const total = numbers.reduce((sum, value) => sum + value, 0);
+  switch (operation) {
+    case "max":
+      return Math.max(...numbers);
+    case "min":
+      return Math.min(...numbers);
+    case "sum":
+      return total;
+    case "avg":
+      return total / numbers.length;
+    default:
+      throw functionError(operation, "is not a supported aggregate operation");
+  }
+}
+
+function evaluateCall(name: string, args: JsonValue[]): JsonValue {
+  switch (name) {
+    case "max":
+    case "min":
+    case "sum":
+    case "avg":
+    case "count":
+      return aggregateValues(name, args);
+    case "abs":
+      requireArguments(name, args, 1);
+      return Math.abs(numericArgument(name, args[0]));
+    case "round":
+      requireArguments(name, args, 1);
+      return Math.round(numericArgument(name, args[0]));
+    case "floor":
+      requireArguments(name, args, 1);
+      return Math.floor(numericArgument(name, args[0]));
+    case "ceil":
+      requireArguments(name, args, 1);
+      return Math.ceil(numericArgument(name, args[0]));
+    case "len": {
+      requireArguments(name, args, 1);
+      const value = args[0];
+      if (typeof value === "string" || Array.isArray(value)) {
+        return value.length;
+      }
+      throw functionError(name, "requires a string or array argument");
+    }
+    case "trim":
+      requireArguments(name, args, 1);
+      return stringArgument(name, args[0]).trim();
+    case "lower":
+      requireArguments(name, args, 1);
+      return stringArgument(name, args[0]).toLowerCase();
+    case "upper":
+      requireArguments(name, args, 1);
+      return stringArgument(name, args[0]).toUpperCase();
+    case "contains": {
+      requireArguments(name, args, 2);
+      const haystack = args[0];
+      const needle = args[1];
+      if (typeof haystack === "string" && typeof needle === "string") {
+        return haystack.includes(needle);
+      }
+      if (Array.isArray(haystack)) {
+        return haystack.some((item) => item === needle);
+      }
+      throw functionError(name, "requires a string or array first argument");
+    }
+    case "startsWith":
+    case "endsWith": {
+      requireArguments(name, args, 2);
+      const value = stringArgument(name, args[0]);
+      const part = stringArgument(name, args[1]);
+      return name === "startsWith"
+        ? value.startsWith(part)
+        : value.endsWith(part);
+    }
+    case "replace": {
+      requireArguments(name, args, 3);
+      const value = stringArgument(name, args[0]);
+      const search = stringArgument(name, args[1]);
+      const replacement = stringArgument(name, args[2]);
+      return value.split(search).join(replacement);
+    }
+    default:
+      throw new ExpressionError(`Unknown function "${name}"`);
   }
 }
 

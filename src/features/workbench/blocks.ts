@@ -12,6 +12,7 @@ import {
   ScanSquareIcon,
   ScanTextIcon,
   ShieldCheckIcon,
+  SigmaIcon,
   VariableIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -261,6 +262,38 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS["set-variable"].inputs,
     outputPorts: FLOW_NODE_PORTS["set-variable"].outputs,
   },
+  calculate: {
+    kind: "calculate",
+    label: "Calculate",
+    description: "Aggregate a list of expressions with max, min, sum, average, or count.",
+    icon: SigmaIcon,
+    defaults: { kind: "calculate", operation: "max", values: "", variable: "result" },
+    summarize: (data) =>
+      `${text(data.variable) || "(unset)"} = ${text(data.operation)}(${text(data.values)})`,
+    fields: [
+      {
+        name: "operation",
+        label: "Operation",
+        kind: "select",
+        options: [
+          { value: "max", label: "Maximum" },
+          { value: "min", label: "Minimum" },
+          { value: "sum", label: "Sum" },
+          { value: "avg", label: "Average" },
+          { value: "count", label: "Count" },
+        ],
+      },
+      {
+        name: "values",
+        label: "Values",
+        kind: "textarea",
+        placeholder: "$a, $b, 10, $c * 2",
+      },
+      { name: "variable", label: "Result variable", kind: "text", placeholder: "result" },
+    ],
+    inputPorts: FLOW_NODE_PORTS.calculate.inputs,
+    outputPorts: FLOW_NODE_PORTS.calculate.outputs,
+  },
   if: {
     kind: "if",
     label: "If",
@@ -397,6 +430,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "delay",
   "launch-app",
   "set-variable",
+  "calculate",
   "if",
   "merge",
   "for",
