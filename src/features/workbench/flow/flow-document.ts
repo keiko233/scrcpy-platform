@@ -75,7 +75,7 @@ export function toFlowDocument(
 }
 
 export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
-  return document.nodes.map((node) => {
+  const nodes = document.nodes.map((node) => {
     const rawData: Record<string, JsonValue> =
       typeof node.data === "object" &&
       node.data !== null &&
@@ -119,13 +119,15 @@ export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
         kind,
       } as WorkbenchNode["data"],
       type: kind,
-      ...(parentId !== undefined
-        ? { parentId, extent: "parent" as const }
+      ...(parentId !== undefined ? { parentId } : {}),
+      ...(kind === "group"
+        ? { zIndex: GROUP_Z_INDEX, draggable: false }
         : {}),
       ...(width !== undefined ? { width } : {}),
       ...(height !== undefined ? { height } : {}),
     };
   });
+  return orderNodesParentFirst(nodes);
 }
 
 export function edgesFromDocument(document: FlowDocument): WorkbenchEdge[] {
@@ -196,6 +198,9 @@ export function mergeEdge(
   if (edges.some(isExactDuplicate)) {
     return edges;
   }
+  const targetNode = nodes.find((node) => node.id === connection.target);
+  const allowsFlowFanIn =
+    targetNode?.data.kind === "end" && ports.target.role === "flow";
   const next: WorkbenchEdge = {
     ...connection,
     id: `edge-${crypto.randomUUID()}`,
@@ -204,7 +209,8 @@ export function mergeEdge(
     ...edges.filter(
       (edge) =>
         !(
-          (edge.target === next.target &&
+          (!allowsFlowFanIn &&
+            edge.target === next.target &&
             (edge.targetHandle ?? null) === targetHandle) ||
           (ports.source.role === "flow" &&
             edge.source === next.source &&
@@ -490,10 +496,12 @@ export function pasteSelection(
       },
       data: node.data,
       selected: true,
+      ...(node.type === "group"
+        ? { zIndex: GROUP_Z_INDEX, draggable: true }
+        : {}),
     };
     if (node.parentId !== undefined) {
       next.parentId = idMap.get(node.parentId) ?? node.parentId;
-      next.extent = "parent";
     }
     if (node.width !== undefined) {
       next.width = node.width;
@@ -531,6 +539,189 @@ export interface NodeGeometry {
 export const GROUP_PADDING = UiConstants.GROUP_PADDING;
 export const DEFAULT_GROUP_WIDTH = UiConstants.GROUP_DEFAULT_WIDTH;
 export const DEFAULT_GROUP_HEIGHT = UiConstants.GROUP_DEFAULT_HEIGHT;
+/** Keeps an unparented group behind ordinary nodes that overlap its canvas. */
+export const GROUP_Z_INDEX = -1;
+
+function orderNodesParentFirst(nodes: WorkbenchNode[]): WorkbenchNode[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const ordered: WorkbenchNode[] = [];
+  const visited = new Set<string>();
+  const visiting = new Set<string>();
+
+  const append = (node: WorkbenchNode) => {
+    if (visited.has(node.id)) {
+      return;
+    }
+    // Invalid documents can contain a parent cycle. Keep those nodes usable
+    // instead of recursing forever; the schema still preserves the data.
+    if (visiting.has(node.id)) {
+      visited.add(node.id);
+      ordered.push(node);
+      return;
+    }
+    visiting.add(node.id);
+    if (node.parentId !== undefined) {
+      const parent = byId.get(node.parentId);
+      if (parent !== undefined) {
+        append(parent);
+      }
+    }
+    visiting.delete(node.id);
+    if (!visited.has(node.id)) {
+      visited.add(node.id);
+      ordered.push(node);
+    }
+  };
+
+  for (const node of nodes) {
+    append(node);
+  }
+  return ordered;
+}
+
+function absolutePositionOf(
+  node: WorkbenchNode,
+  nodesById: ReadonlyMap<string, WorkbenchNode>,
+  geometry: ReadonlyMap<string, NodeGeometry>,
+  cache: Map<string, XYPosition>,
+  visiting = new Set<string>(),
+): XYPosition {
+  const measured = geometry.get(node.id)?.position;
+  if (measured !== undefined) {
+    return measured;
+  }
+  const cached = cache.get(node.id);
+  if (cached !== undefined) {
+    return cached;
+  }
+  if (visiting.has(node.id)) {
+    return node.position;
+  }
+  visiting.add(node.id);
+  const parent =
+    node.parentId === undefined ? undefined : nodesById.get(node.parentId);
+  const parentPosition =
+    parent === undefined
+      ? { x: 0, y: 0 }
+      : absolutePositionOf(parent, nodesById, geometry, cache, visiting);
+  const position = {
+    x: parentPosition.x + node.position.x,
+    y: parentPosition.y + node.position.y,
+  };
+  visiting.delete(node.id);
+  cache.set(node.id, position);
+  return position;
+}
+
+function nodeRect(
+  node: WorkbenchNode,
+  nodesById: ReadonlyMap<string, WorkbenchNode>,
+  geometry: ReadonlyMap<string, NodeGeometry>,
+  positionCache: Map<string, XYPosition>,
+): NodeGeometry {
+  const measured = geometry.get(node.id);
+  return {
+    position: absolutePositionOf(node, nodesById, geometry, positionCache),
+    width:
+      measured?.width ??
+      node.measured?.width ??
+      node.width ??
+      node.initialWidth ??
+      0,
+    height:
+      measured?.height ??
+      node.measured?.height ??
+      node.height ??
+      node.initialHeight ??
+      0,
+  };
+}
+
+function isRectInside(inner: NodeGeometry, outer: NodeGeometry): boolean {
+  return (
+    inner.position.x >= outer.position.x &&
+    inner.position.y >= outer.position.y &&
+    inner.position.x + inner.width <= outer.position.x + outer.width &&
+    inner.position.y + inner.height <= outer.position.y + outer.height
+  );
+}
+
+/**
+ * Synchronizes group membership with the visible rectangles on the canvas.
+ *
+ * Top-level blocks dropped fully inside a group become direct children and
+ * existing children that are resized outside the group are released while
+ * retaining their absolute canvas position. React Flow then handles the
+ * parent-child movement as a normal sub-flow operation.
+ */
+export function reconcileGroupMembership(
+  nodes: WorkbenchNode[],
+  geometry: ReadonlyMap<string, NodeGeometry> = new Map(),
+): WorkbenchNode[] {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const positionCache = new Map<string, XYPosition>();
+  const rectangles = new Map<string, NodeGeometry>();
+  for (const node of nodes) {
+    rectangles.set(node.id, nodeRect(node, nodesById, geometry, positionCache));
+  }
+
+  const groups = nodes.filter(
+    (node) => node.type === "group" && node.parentId === undefined,
+  );
+  if (groups.length === 0) {
+    return nodes;
+  }
+
+  let changed = false;
+  let result = nodes;
+  for (const group of groups) {
+    const groupRect = rectangles.get(group.id);
+    if (groupRect === undefined) {
+      continue;
+    }
+    result = result.map((node) => {
+      if (node.parentId !== group.id) {
+        return node;
+      }
+      const childRect = rectangles.get(node.id);
+      if (childRect === undefined || isRectInside(childRect, groupRect)) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        parentId: undefined,
+        extent: null,
+        position: { ...childRect.position },
+      };
+    });
+
+    result = result.map((node) => {
+      if (
+        node.type === "group" ||
+        node.parentId !== undefined ||
+        node.id === group.id
+      ) {
+        return node;
+      }
+      const childRect = rectangles.get(node.id);
+      if (childRect === undefined || !isRectInside(childRect, groupRect)) {
+        return node;
+      }
+      changed = true;
+      return {
+        ...node,
+        parentId: group.id,
+        position: {
+          x: childRect.position.x - groupRect.position.x,
+          y: childRect.position.y - groupRect.position.y,
+        },
+      };
+    });
+  }
+
+  return changed ? orderNodesParentFirst(result) : nodes;
+}
 
 /**
  * Wraps the selected top-level nodes in a resizable group container. Existing
@@ -581,29 +772,34 @@ export function groupSelectedNodes(
     position: { x: groupX, y: groupY },
     width: groupWidth,
     height: groupHeight,
+    zIndex: GROUP_Z_INDEX,
     data: { kind: "group" },
     selected: true,
+    draggable: true,
   };
-  return [
-    ...nodes.map((node) => {
-      if (!memberIds.has(node.id)) {
-        return selectedSet.has(node.id) ? { ...node, selected: false } : node;
-      }
-      const geo = geometry.get(node.id);
-      const position = geo?.position ?? node.position;
+  const result = nodes.map((node) => {
+    if (!memberIds.has(node.id)) {
+      return selectedSet.has(node.id) ? { ...node, selected: false } : node;
+    }
+    const geo = geometry.get(node.id);
+    const position = geo?.position ?? node.position;
       return {
         ...node,
         parentId: groupId,
-        extent: "parent" as const,
         position: {
-          x: position.x - groupX,
-          y: position.y - groupY,
-        },
-        selected: false,
-      };
-    }),
-    groupNode,
-  ];
+        x: position.x - groupX,
+        y: position.y - groupY,
+      },
+      selected: false,
+    };
+  });
+  const firstMemberIndex = Math.min(
+    ...result.map((node, index) =>
+      memberIds.has(node.id) ? index : Number.POSITIVE_INFINITY,
+    ),
+  );
+  result.splice(firstMemberIndex, 0, groupNode);
+  return result;
 }
 
 /** Releases the direct children of the given groups back to the canvas. */

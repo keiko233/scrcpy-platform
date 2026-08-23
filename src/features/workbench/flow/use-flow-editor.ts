@@ -37,6 +37,7 @@ import {
   defaultViewport,
   DEFAULT_GROUP_HEIGHT,
   DEFAULT_GROUP_WIDTH,
+  GROUP_Z_INDEX,
   edgesFromDocument,
   groupSelectedNodes,
   mergeEdge,
@@ -44,6 +45,7 @@ import {
   pasteSelection,
   patchNodeData,
   parseClipboardPayload,
+  reconcileGroupMembership,
   readStoredClipboardPayload,
   serializeClipboardPayload,
   storeClipboardPayload,
@@ -75,7 +77,11 @@ export interface FlowEditor {
   isValidConnection: IsValidConnection<WorkbenchEdge>;
   onViewportChange: (viewport: Viewport) => void;
   getDocument: () => FlowDocument;
-  addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
+  addBlock: (
+    kind: FlowBlockKind,
+    position?: XYPosition,
+    parentId?: string,
+  ) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
   groupSelection: (geometry: ReadonlyMap<string, NodeGeometry>) => void;
@@ -115,6 +121,28 @@ function isStructuralChange(
   change: NodeChange<WorkbenchNode> | EdgeChange<WorkbenchEdge>,
 ): boolean {
   return change.type !== "select";
+}
+
+function shouldReconcileGroups(
+  changes: NodeChange<WorkbenchNode>[],
+): boolean {
+  return changes.some(
+    (change) =>
+      change.type === "dimensions" ||
+      (change.type === "position" && change.dragging === false),
+  );
+}
+
+function syncGroupDraggable(nodes: WorkbenchNode[]): WorkbenchNode[] {
+  // A group must receive a completed click before its next pointer gesture
+  // can start a drag. This prevents accidental moves while panning over it.
+  return nodes.map((node) => {
+    if (node.type !== "group") {
+      return node;
+    }
+    const draggable = node.selected === true;
+    return node.draggable === draggable ? node : { ...node, draggable };
+  });
 }
 
 export interface FlowEditorOptions {
@@ -214,6 +242,7 @@ export function useFlowEditor(
 
   const onNodesChange = useCallback<OnNodesChange<WorkbenchNode>>(
     (changes) => {
+      const reconcileGroups = shouldReconcileGroups(changes);
       if (changes.some(isStructuralChange)) {
         const positionChanges = changes.filter(
           (change) => change.type === "position",
@@ -239,11 +268,22 @@ export function useFlowEditor(
         }
       }
       rawOnNodesChange(changes);
+      if (changes.some((change) => change.type === "select")) {
+        setNodes((current) => syncGroupDraggable(current));
+      }
+      if (reconcileGroups) {
+        setNodes((current) => {
+          if (!current.some((node) => node.type === "group")) {
+            return current;
+          }
+          return reconcileGroupMembership(current);
+        });
+      }
       if (changes.some(isStructuralChange)) {
         setDirty(true);
       }
     },
-    [rawOnNodesChange, recordHistory],
+    [rawOnNodesChange, recordHistory, setNodes],
   );
 
   const onEdgesChange = useCallback<OnEdgesChange<WorkbenchEdge>>(
@@ -293,9 +333,19 @@ export function useFlowEditor(
   );
 
   const addBlock = useCallback(
-    (kind: FlowBlockKind, position?: XYPosition): string => {
+    (
+      kind: FlowBlockKind,
+      position?: XYPosition,
+      parentId?: string,
+    ): string => {
       const definition = BLOCK_DEFINITIONS[kind];
       const id = `node-${crypto.randomUUID()}`;
+      const parent =
+        parentId === undefined
+          ? undefined
+          : nodesRef.current.find(
+              (node) => node.id === parentId && node.type === "group",
+            );
       const last = nodesRef.current[nodesRef.current.length - 1];
       const fallback: XYPosition = last
         ? { x: last.position.x + 32, y: last.position.y + 32 }
@@ -303,20 +353,30 @@ export function useFlowEditor(
       const node: WorkbenchNode = {
         id,
         type: kind,
-        position: position ?? fallback,
+        position: position ?? (parent ? { x: 16, y: 44 } : fallback),
         data: { ...definition.defaults },
         selected: true,
+        ...(parent
+          ? { parentId: parent.id }
+          : {}),
         ...(kind === "group"
-          ? { width: DEFAULT_GROUP_WIDTH, height: DEFAULT_GROUP_HEIGHT }
+          ? {
+              width: DEFAULT_GROUP_WIDTH,
+              height: DEFAULT_GROUP_HEIGHT,
+              zIndex: GROUP_Z_INDEX,
+              draggable: true,
+            }
           : {}),
       };
       recordHistory();
-      setNodes((current) => [
-        ...current.map((item) =>
-          item.selected ? { ...item, selected: false } : item,
-        ),
-        node,
-      ]);
+      setNodes((current) =>
+        syncGroupDraggable([
+          ...current.map((item) =>
+            item.selected ? { ...item, selected: false } : item,
+          ),
+          node,
+        ]),
+      );
       setDirty(true);
       return id;
     },
@@ -418,7 +478,7 @@ export function useFlowEditor(
       }
       recordHistory();
       setNodes((current) =>
-        groupSelectedNodes(current, geometry, selectedIds),
+        syncGroupDraggable(groupSelectedNodes(current, geometry, selectedIds)),
       );
       setDirty(true);
     },
@@ -488,12 +548,14 @@ export function useFlowEditor(
           payload,
           position !== undefined ? { origin: position } : undefined,
         );
-        setNodes((current) => [
-          ...current.map((node) =>
-            node.selected ? { ...node, selected: false } : node,
-          ),
-          ...pasted.nodes,
-        ]);
+        setNodes((current) =>
+          syncGroupDraggable([
+            ...current.map((node) =>
+              node.selected ? { ...node, selected: false } : node,
+            ),
+            ...pasted.nodes,
+          ]),
+        );
         setEdges((current) => [...current, ...pasted.edges]);
         rememberClipboard({
           nodes: payload.nodes.map((node, index) => ({

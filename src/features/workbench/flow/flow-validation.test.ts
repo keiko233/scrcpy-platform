@@ -160,21 +160,23 @@ describe("workbench flow validation", () => {
     const end = node("end", "end");
     const clickA = node("a", "click");
     const clickB = node("b", "click");
+    const join = node("join", "click");
 
     const issues = validateFlow(
-      [start, end, clickA, clickB],
+      [start, end, clickA, clickB, join],
       [
         edge("e1", "start", "a"),
         edge("e2", "start", "b"),
-        edge("e3", "a", "end"),
-        edge("e4", "b", "end"),
+        edge("e3", "a", "join"),
+        edge("e4", "b", "join"),
+        edge("e5", "join", "end"),
       ],
     );
 
     const outgoing = issues.filter((issue) => issue.kind === "illegal-outgoing");
     assert.ok(outgoing.some((issue) => issue.nodeId === "start"));
     const incoming = issues.filter((issue) => issue.kind === "illegal-incoming");
-    assert.ok(incoming.some((issue) => issue.nodeId === "end"));
+    assert.ok(incoming.some((issue) => issue.nodeId === "join"));
   });
 
   it("reports cycles", () => {
@@ -190,17 +192,35 @@ describe("workbench flow validation", () => {
     assert.ok(issueKinds(issues).includes("cycle"));
   });
 
-  it("reports unreachable nodes", () => {
+  it("allows disconnected draft nodes outside the executable flow", () => {
     const { nodes, edges } = linearGraph();
-    const issues = validateFlow(
+    const compiled = compileFlow(
       [...nodes, node("orphan", "click")],
       edges,
     );
-    const unreachable = issues.filter(
-      (issue) => issue.kind === "unreachable-node",
-    );
-    assert.equal(unreachable.length, 1);
-    assert.equal(unreachable[0]?.nodeId, "orphan");
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+    assert.deepEqual(compiled.order, ["start", "click-1", "delay-1", "end"]);
+  });
+
+  it("allows multiple executable branches to terminate at End", () => {
+    const nodes = [
+      node("start", "start"),
+      node("if", "if"),
+      node("true-action", "click"),
+      node("false-action", "delay"),
+      node("end", "end"),
+    ];
+    const compiled = compileFlow(nodes, [
+      edge("e1", "start", "if"),
+      edge("e2", "if", "true-action", "true"),
+      edge("e3", "if", "false-action", "false"),
+      edge("e4", "true-action", "end"),
+      edge("e5", "false-action", "end"),
+    ]);
+
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
   });
 
   it("compiles a deterministic linear plan starting at Start", () => {
@@ -267,6 +287,23 @@ describe("workbench flow validation", () => {
     ]);
     assert.ok(issueKinds(ordinaryCycle).includes("cycle"));
     assert.ok(issueKinds(ordinaryCycle).includes("illegal-port-count"));
+  });
+
+  it("accepts the post-test Repeat-until loop-back", () => {
+    const nodes = [
+      node("start", "start"),
+      node("repeat", "repeat-until"),
+      node("body", "ocr"),
+      node("end", "end"),
+    ];
+    const issues = validateFlow(nodes, [
+      edge("e1", "start", "repeat", "next", "in"),
+      edge("e2", "repeat", "body", "body", "in"),
+      edge("e3", "body", "repeat", "next", "loop"),
+      edge("e4", "repeat", "end", "done", "in"),
+    ]);
+
+    assert.deepEqual(issues, []);
   });
 
   it("requires one edge on every declared branch port", () => {

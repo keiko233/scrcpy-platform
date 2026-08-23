@@ -1,17 +1,28 @@
 import { useState } from "react";
-import { NodeResizer, type NodeProps } from "@xyflow/react";
+import {
+  NodeResizer,
+  useReactFlow,
+  type NodeProps,
+  type XYPosition,
+} from "@xyflow/react";
 import { BoxSelectIcon, Trash2Icon } from "lucide-react";
 
 import {
   ContextMenu,
+  ContextMenuGroup,
+  ContextMenuGroupLabel,
   ContextMenuItem,
   ContextMenuPopup,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubPopup,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { m } from "@/paraglide/messages.js";
 
-import { BLOCK_DEFINITIONS } from "./blocks";
+import { BLOCK_CATEGORIES, BLOCK_DEFINITIONS } from "./blocks";
 import { useFlowApi } from "./flow/flow-api-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
 import { BlockTitle, customNodeName } from "./node-title";
@@ -21,9 +32,15 @@ export function GroupNodeComponent({
   id,
   data,
   selected,
+  positionAbsoluteX,
+  positionAbsoluteY,
 }: NodeProps<WorkbenchNode>) {
-  const { deleteNode } = useFlowApi();
+  const { addBlock, deleteNode } = useFlowApi();
+  const { screenToFlowPosition } = useReactFlow();
   const [configOpen, setConfigOpen] = useState(false);
+  const [contextPosition, setContextPosition] = useState<XYPosition | null>(
+    null,
+  );
   const definition = BLOCK_DEFINITIONS.group;
   const customName = customNodeName(data.name);
   const fallbackTitle = definition?.label ?? m.node_config_block_fallback();
@@ -32,7 +49,17 @@ export function GroupNodeComponent({
     <ContextMenu>
       <ContextMenuTrigger
         className="block h-full"
-        onContextMenu={(event) => event.stopPropagation()}
+        onContextMenu={(event) => {
+          event.stopPropagation();
+          const flowPosition = screenToFlowPosition({
+            x: event.clientX,
+            y: event.clientY,
+          });
+          setContextPosition({
+            x: flowPosition.x - positionAbsoluteX,
+            y: flowPosition.y - positionAbsoluteY,
+          });
+        }}
       >
         <div
           className={cn(
@@ -70,6 +97,48 @@ export function GroupNodeComponent({
         </div>
       </ContextMenuTrigger>
       <ContextMenuPopup sideOffset={4}>
+        <ContextMenuGroup>
+          <ContextMenuGroupLabel>
+            {m.flow_group_add_block()}
+          </ContextMenuGroupLabel>
+          {BLOCK_CATEGORIES.map((category) => {
+            const CategoryIcon = category.icon;
+            const kinds = category.kinds.filter((kind) => kind !== "group");
+            if (kinds.length === 0) {
+              return null;
+            }
+            return (
+              <ContextMenuSub key={category.id}>
+                <ContextMenuSubTrigger>
+                  <CategoryIcon />
+                  {category.label}
+                </ContextMenuSubTrigger>
+                <ContextMenuSubPopup>
+                  {kinds.map((kind) => {
+                    const blockDefinition = BLOCK_DEFINITIONS[kind];
+                    const Icon = blockDefinition.icon;
+                    return (
+                      <ContextMenuItem
+                        key={kind}
+                        onClick={() =>
+                          addBlock(
+                            kind,
+                            contextPosition ?? { x: 16, y: 44 },
+                            id,
+                          )
+                        }
+                      >
+                        <Icon />
+                        {blockDefinition.label}
+                      </ContextMenuItem>
+                    );
+                  })}
+                </ContextMenuSubPopup>
+              </ContextMenuSub>
+            );
+          })}
+        </ContextMenuGroup>
+        <ContextMenuSeparator />
         <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
           <Trash2Icon />
           {m.block_node_delete_block()}

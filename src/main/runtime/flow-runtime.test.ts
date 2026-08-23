@@ -140,6 +140,7 @@ class FakeDriver implements FlowActionDriver {
 class FakeRecognition implements FlowRecognitionDriver {
   readonly calls: string[] = [];
   readonly nodeData: FlowNode["data"][] = [];
+  readonly outputQueue: FlowRecognitionResult["outputs"][] = [];
   outputs: FlowRecognitionResult["outputs"] = {
     text: "Ready",
     confidence: 96,
@@ -150,7 +151,7 @@ class FakeRecognition implements FlowRecognitionDriver {
   async recognize(node: FlowNode): Promise<FlowRecognitionResult> {
     this.calls.push(node.id);
     this.nodeData.push(structuredClone(node.data));
-    return { outputs: this.outputs };
+    return { outputs: this.outputQueue.shift() ?? this.outputs };
   }
 
   async dispose(): Promise<void> {
@@ -890,6 +891,47 @@ describe("FlowRuntimeService", () => {
     assert.equal(
       failed.steps.find((step) => step.nodeId === "body")?.executionCount,
       2,
+    );
+  });
+
+  test("runs OCR in a Repeat-until body and re-evaluates the comparison", async () => {
+    const recognition = new FakeRecognition();
+    recognition.outputQueue.push(
+      { text: "100", confidence: 96, matched: true },
+      { text: "96", confidence: 96, matched: true },
+    );
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("repeat", "repeat-until", { maxIterations: 5 }),
+        node("ocr", "ocr"),
+        node("convert", "convert", { toType: "number" }),
+        node("cmp", "compare", { operator: "==" }),
+        constantNode("target", 96),
+        node("end", "end"),
+      ],
+      [
+        ["e1", "start", "repeat", "next", "in"],
+        ["e2", "repeat", "ocr", "body", "in"],
+        ["e3", "ocr", "convert", "next", "in"],
+        ["e4", "convert", "repeat", "next", "loop"],
+        ["e5", "repeat", "end", "done", "in"],
+        ["data-1", "ocr", "convert", "text", "value"],
+        ["data-2", "convert", "cmp", "value", "left"],
+        ["data-3", "target", "cmp", "value", "right"],
+        ["data-4", "cmp", "repeat", "result", "condition"],
+      ],
+    );
+    const { service } = serviceFor(document, new FakeDriver(), recognition);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(recognition.calls, ["ocr", "ocr"]);
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "repeat")?.executionCount,
+      3,
     );
   });
 

@@ -128,6 +128,8 @@ function getPortDisplayLabel(
       return m.port_for_index();
     case "while:condition":
       return m.port_while_condition();
+    case "repeat-until:condition":
+      return m.port_repeat_until_condition();
     case "assert:condition":
       return m.port_assert_condition();
     case "screen-region:region":

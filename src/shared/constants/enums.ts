@@ -23,6 +23,7 @@ export enum FlowNodeKind {
   Merge = "merge",
   For = "for",
   While = "while",
+  RepeatUntil = "repeat-until",
   Assert = "assert",
   ScreenRegion = "screen-region",
   Constant = "constant",

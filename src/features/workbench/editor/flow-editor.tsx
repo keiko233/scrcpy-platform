@@ -223,6 +223,7 @@ function FlowCanvas() {
               isValidConnection={isValidConnection}
               viewport={viewport}
               onViewportChange={onViewportChange}
+              elevateNodesOnSelect={false}
               onPaneContextMenu={(event) => event.preventDefault()}
               deleteKeyCode={["Backspace", "Delete"]}
               selectionKeyCode={["Meta", "Control"]}

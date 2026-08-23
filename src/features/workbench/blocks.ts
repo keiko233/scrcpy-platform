@@ -15,6 +15,7 @@ import {
   PlayIcon,
   PuzzleIcon,
   RefreshCwIcon,
+  Repeat2Icon,
   ScanSquareIcon,
   ScanTextIcon,
   ScaleIcon,
@@ -768,6 +769,33 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.while.inputs,
     outputPorts: FLOW_NODE_PORTS.while.outputs,
   },
+  "repeat-until": {
+    kind: "repeat-until",
+    get label() {
+      return m.block_repeat_until_label();
+    },
+    get description() {
+      return m.block_repeat_until_description();
+    },
+    icon: Repeat2Icon,
+    defaults: { kind: "repeat-until", maxIterations: 1000 },
+    summarize: () => m.block_summarize_repeat_until(),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "maxIterations",
+          get label() {
+            return m.block_field_repeat_until_max_iterations_label();
+          },
+          kind: "number",
+          min: 1,
+          step: 1,
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS["repeat-until"].inputs,
+    outputPorts: FLOW_NODE_PORTS["repeat-until"].outputs,
+  },
   assert: {
     kind: "assert",
     get label() {
@@ -1076,6 +1104,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "merge",
   "for",
   "while",
+  "repeat-until",
   "assert",
   "input",
   "output",
@@ -1128,7 +1157,7 @@ export const BLOCK_CATEGORIES: readonly BlockCategoryDefinition[] = [
       return m.block_category_logic_label();
     },
     icon: SplitIcon,
-    kinds: ["if", "merge", "for", "while", "assert"],
+    kinds: ["if", "merge", "for", "while", "repeat-until", "assert"],
   },
   {
     id: "data",

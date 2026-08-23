@@ -883,6 +883,7 @@ export class FlowRuntimeService {
     const computingData = new Set<string>();
     const forLoops = new Map<string, ForLoopState>();
     const whileIterations = new Map<string, number>();
+    const repeatUntilIterations = new Map<string, number>();
 
     // Seed Input boundary values for this frame: caller arguments win over
     // declared defaults. Root frames tolerate missing arguments (they fail
@@ -988,13 +989,24 @@ const resolved = resolveNodeInputs(
 
     const computeDataOutput = (source: FlowNode, portId: string): JsonValue => {
       const key = dataValueKey(source.id, portId);
+      // Compare nodes depend on outputs from executable nodes such as OCR.
+      // Re-evaluate them on every read so a repeat-until loop observes the
+      // latest body result instead of the first comparison being cached.
+      if (source.type === "compare") {
+        computePureDataNode(source);
+        if (!dataValues.has(key)) {
+          throw new Error(
+            `Node "${source.id}" did not produce output "${portId}".`,
+          );
+        }
+        return dataValues.get(key) as JsonValue;
+      }
       if (dataValues.has(key)) {
         return dataValues.get(key) as JsonValue;
       }
       if (
         source.type === "constant" ||
-        source.type === "screen-region" ||
-        source.type === "compare"
+        source.type === "screen-region"
       ) {
         computePureDataNode(source);
         if (!dataValues.has(key)) {
@@ -1039,7 +1051,9 @@ const resolved = resolveNodeInputs(
 
       const resolved = resolveNodeInputs(
         node,
-        incomingData.get(node.id) ?? [],
+        node.type === "repeat-until" && arrivalPort === "in"
+          ? []
+          : (incomingData.get(node.id) ?? []),
         nodes,
         computeDataOutput,
         portContext,
@@ -1063,6 +1077,7 @@ const resolved = resolveNodeInputs(
           signal,
           forLoops,
           whileIterations,
+          repeatUntilIterations,
           depth,
         );
       }
@@ -1312,6 +1327,7 @@ const resolved = resolveNodeInputs(
     signal: AbortSignal,
     forLoops: Map<string, ForLoopState>,
     whileIterations: Map<string, number>,
+    repeatUntilIterations: Map<string, number>,
     depth: number,
   ): Promise<NodeExecutionResult> {
     switch (node.type) {
@@ -1500,6 +1516,47 @@ const resolved = resolveNodeInputs(
           );
         }
         whileIterations.set(node.id, iterations + 1);
+        return executionResult("body");
+      }
+      case "repeat-until": {
+        if (arrivalPort !== "in" && arrivalPort !== "loop") {
+          throw new Error(
+            `Repeat-until node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
+          );
+        }
+
+        if (arrivalPort === "in") {
+          // This is deliberately a post-test loop: the body must run once
+          // before its condition can be evaluated (for example, OCR -> compare).
+          repeatUntilIterations.set(node.id, 1);
+          return executionResult("body");
+        }
+
+        if (!connectedInputs.has("condition")) {
+          throw new Error(
+            `Repeat-until node "${node.id}" requires a connected "condition" input.`,
+          );
+        }
+        const done = node.data.condition === true;
+        this.#emitLog(
+          node.id,
+          "info",
+          `Repeat-until condition evaluated to ${done}`,
+          { done },
+        );
+        if (done) {
+          repeatUntilIterations.delete(node.id);
+          return executionResult("done");
+        }
+
+        const iterations = repeatUntilIterations.get(node.id) ?? 0;
+        const maximum = maximumIterations(node);
+        if (iterations >= maximum) {
+          throw new Error(
+            `Repeat-until node "${node.id}" exceeded ${maximum} iterations.`,
+          );
+        }
+        repeatUntilIterations.set(node.id, iterations + 1);
         return executionResult("body");
       }
       case "screen-region":

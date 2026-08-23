@@ -35,6 +35,7 @@ export const FLOW_NODE_KINDS = [
   "merge",
   "for",
   "while",
+  "repeat-until",
   "assert",
   "screen-region",
   "constant",
@@ -61,6 +62,7 @@ export const FLOW_NODE_PORTS = {
   merge: { inputs: [], outputs: ["next"] },
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
+  "repeat-until": { inputs: ["in", "loop"], outputs: ["body", "done"] },
   assert: { inputs: ["in"], outputs: ["next"] },
   "screen-region": { inputs: [], outputs: [] },
   constant: { inputs: [], outputs: [] },
@@ -189,6 +191,10 @@ export const FLOW_NODE_DATA_PORTS = {
     outputs: [outputPort("index", "Index", "number")],
   },
   while: {
+    inputs: [dataPort("condition", "Condition", "boolean")],
+    outputs: [],
+  },
+  "repeat-until": {
     inputs: [dataPort("condition", "Condition", "boolean")],
     outputs: [],
   },

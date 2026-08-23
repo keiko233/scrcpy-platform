@@ -69,9 +69,15 @@ function isLoopBackEdge(
 ): boolean {
   const targetKind = nodeKinds.get(edge.target);
   return (
-    (targetKind === "for" || targetKind === "while") &&
+    (targetKind === "for" ||
+      targetKind === "while" ||
+      targetKind === "repeat-until") &&
     edge.targetHandle === "loop"
   );
+}
+
+function allowsFlowFanIn(node: FlowNode): boolean {
+  return node.type === "end";
 }
 
 export function validateFlow(
@@ -348,11 +354,29 @@ export function validateFlow(
     }
   }
 
+  // A document is also an editing workspace: users may leave draft blocks on
+  // the canvas before wiring them into the executable flow. Only nodes reached
+  // from Start participate in control-flow completeness checks. The compiler
+  // already walks from Start, so these draft nodes are naturally omitted from
+  // the execution order.
+  const reachableFlowNodes = new Set<string>();
+  for (const start of starts) {
+    for (const nodeId of reachableFrom(start.id, outgoing)) {
+      reachableFlowNodes.add(nodeId);
+    }
+  }
+
   for (const node of nodes) {
+    if (!reachableFlowNodes.has(node.id)) {
+      continue;
+    }
     const incomingCount = incoming.get(node.id)?.length ?? 0;
     const inputs: readonly string[] = flowInputPortIds(node.type, node.data);
     const expectedIncoming = inputs.length;
-    if (incomingCount !== expectedIncoming) {
+    const incomingValid = allowsFlowFanIn(node)
+      ? incomingCount >= expectedIncoming
+      : incomingCount === expectedIncoming;
+    if (!incomingValid) {
       issues.push({
         kind: "illegal-incoming",
         nodeId: node.id,
@@ -373,7 +397,8 @@ export function validateFlow(
 
     for (const port of inputs) {
       const count = incomingByPort.get(portKey(node.id, port))?.length ?? 0;
-      if (count !== 1) {
+      const portValid = allowsFlowFanIn(node) ? count >= 1 : count === 1;
+      if (!portValid) {
         issues.push({
           kind: "illegal-port-count",
           nodeId: node.id,
@@ -436,6 +461,8 @@ export function validateFlow(
     if (
       nodeKinds.has(edge.source) &&
       nodeKinds.has(edge.target) &&
+      reachableFlowNodes.has(edge.source) &&
+      reachableFlowNodes.has(edge.target) &&
       !isLoopBackEdge(edge, nodeKinds)
     ) {
       push(acyclicOutgoing, edge.source, edge);
@@ -451,7 +478,11 @@ export function validateFlow(
   }
 
   for (const edge of controlEdges) {
-    if (!isLoopBackEdge(edge, nodeKinds)) {
+    if (
+      !isLoopBackEdge(edge, nodeKinds) ||
+      !reachableFlowNodes.has(edge.source) ||
+      !reachableFlowNodes.has(edge.target)
+    ) {
       continue;
     }
     const bodyEdge = outgoingByPort.get(portKey(edge.target, "body"))?.[0];
@@ -466,22 +497,6 @@ export function validateFlow(
         port: "loop",
         message: `Edge "${edge.id}" enters loop port "${edge.target}.loop" from outside that loop's body path.`,
       });
-    }
-  }
-
-  if (starts.length === 1) {
-    const reachable = reachableFrom(starts[0].id, outgoing);
-    for (const node of nodes) {
-      const hasFlowPorts =
-        FLOW_NODE_PORTS[node.type].inputs.length > 0 ||
-        FLOW_NODE_PORTS[node.type].outputs.length > 0;
-      if (node.type !== "start" && hasFlowPorts && !reachable.has(node.id)) {
-        issues.push({
-          kind: "unreachable-node",
-          nodeId: node.id,
-          message: `Node "${node.id}" is unreachable from Start.`,
-        });
-      }
     }
   }
 

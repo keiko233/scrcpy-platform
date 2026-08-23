@@ -111,6 +111,7 @@ describe("workbench block definitions", () => {
       "compare.right",
       "if.condition",
       "while.condition",
+      "repeat-until.condition",
       "assert.condition",
     ]);
     for (const [kind, ports] of Object.entries(FLOW_NODE_DATA_PORTS)) {

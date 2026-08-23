@@ -6,7 +6,11 @@ import type { JsonValue } from "@/shared/project-contracts";
 import type { FlowBlockKind } from "../types";
 
 export interface FlowApi {
-  addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
+  addBlock: (
+    kind: FlowBlockKind,
+    position?: XYPosition,
+    parentId?: string,
+  ) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
 }
