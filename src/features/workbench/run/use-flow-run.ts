@@ -1,4 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+
+import { toastManager } from "@/components/ui/toast";
+import { m } from "@/paraglide/messages.js";
 
 import {
   useFlowRunQuery,
@@ -62,6 +65,23 @@ export function useFlowRun(): FlowRunManager {
   const run = runQuery.data ?? null;
   const runError = run !== null && run.state === "failed" ? run.error : null;
   const error = localError ?? runError;
+  const notifiedRunErrorRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (run === null || run.state !== "failed" || run.error === null) {
+      return;
+    }
+    const errorKey = `${run.runId}:${run.error}`;
+    if (notifiedRunErrorRef.current === errorKey) {
+      return;
+    }
+    notifiedRunErrorRef.current = errorKey;
+    toastManager.add({
+      type: "error",
+      title: m.run_error_execution_title(),
+      description: run.error,
+    });
+  }, [run]);
 
   useEffect(() => {
     return window.androidPlatform.onFlowRunLog((entry) => {
@@ -79,13 +99,25 @@ export function useFlowRun(): FlowRunManager {
           breakpoints: [...breakpoints],
         });
         if (result.status === "error") {
-          setLocalError(describeStartFailure(result));
+          const message = describeStartFailure(result);
+          setLocalError(message);
+          toastManager.add({
+            type: "error",
+            title: m.run_error_start_title(),
+            description: message,
+          });
           return false;
         }
         setLogs([]);
         return true;
       } catch (cause) {
-        setLocalError(errorMessage(cause));
+        const message = errorMessage(cause);
+        setLocalError(message);
+        toastManager.add({
+          type: "error",
+          title: m.run_error_request_title(),
+          description: message,
+        });
         return false;
       } finally {
         setBusy(false);
