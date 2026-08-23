@@ -188,6 +188,44 @@ export class DeviceSessionService {
     return next;
   }
 
+  #runOperation<T>(
+    kind: string,
+    details: Record<string, string>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const operationId = `adb-${crypto.randomUUID()}`;
+    return this.#enqueue(async () => {
+      const startedAt = Date.now();
+      console.info("device session operation started", {
+        operationId,
+        kind,
+        ...details,
+      });
+      try {
+        const result = await operation();
+        console.info("device session operation completed", {
+          operationId,
+          kind,
+          ...details,
+          status: this.#operationStatus(result),
+          state: this.#state,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return result;
+      } catch (error) {
+        console.error("device session operation failed", {
+          operationId,
+          kind,
+          ...details,
+          state: this.#state,
+          elapsedMs: Date.now() - startedAt,
+          error: errorMessageOf(error),
+        });
+        throw error;
+      }
+    });
+  }
+
   async listDevices(): Promise<ListDevicesResult> {
     try {
       const devices = await this.#gateway.listDevices();
@@ -329,15 +367,23 @@ export class DeviceSessionService {
   }
 
   connectDevice(transportId: string): Promise<ConnectDeviceResult> {
-    return this.#enqueue(() => this.#connectLocked(transportId));
+    return this.#runOperation(
+      "connect",
+      { transportId },
+      () => this.#connectLocked(transportId),
+    );
   }
 
   disconnectDevice(): Promise<DisconnectDeviceResult> {
-    return this.#enqueue(() => this.#disconnectLocked());
+    return this.#runOperation(
+      "disconnect",
+      {},
+      () => this.#disconnectLocked(),
+    );
   }
 
   pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult> {
-    return this.#enqueue(async () => {
+    return this.#runOperation("wireless-pair", { address: input.address }, async () => {
       try {
         await this.#gateway.pairWirelessDevice(input);
         return { status: "ok" };
@@ -348,7 +394,10 @@ export class DeviceSessionService {
   }
 
   connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessConnectResult> {
-    return this.#enqueue(async () => {
+    return this.#runOperation(
+      "wireless-connect",
+      { address: input.address },
+      async () => {
       try {
         await this.#gateway.connectWirelessDevice(input);
         const devices = await this.#gateway.listDevices();
@@ -375,18 +424,23 @@ export class DeviceSessionService {
       } catch (error) {
         return this.#wirelessFailure(error);
       }
-    });
+      },
+    );
   }
 
   disconnectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult> {
-    return this.#enqueue(async () => {
+    return this.#runOperation(
+      "wireless-disconnect",
+      { address: input.address },
+      async () => {
       try {
         await this.#gateway.disconnectWirelessDevice(input);
         return { status: "ok" };
       } catch (error) {
         return this.#wirelessFailure(error);
       }
-    });
+      },
+    );
   }
 
   /**
@@ -501,9 +555,22 @@ export class DeviceSessionService {
     this.#state = state;
     this.#errorMessage = errorMessage;
     const snapshot = this.#snapshot();
+    console.info("device session state changed", snapshot);
     for (const listener of this.#listeners) {
-      listener(snapshot);
+      try {
+        listener(snapshot);
+      } catch (error) {
+        console.error("device session listener failed", errorMessageOf(error));
+      }
     }
+  }
+
+  #operationStatus(result: unknown): string | undefined {
+    if (result === null || typeof result !== "object" || !("status" in result)) {
+      return undefined;
+    }
+    const status = result.status;
+    return typeof status === "string" ? status : undefined;
   }
 
   #classifyConnectError(error: unknown): ConnectDeviceFailure {

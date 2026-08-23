@@ -150,7 +150,22 @@ export class TangoAdbGateway implements DeviceGateway {
         "offline",
         "device",
       ]);
-      return devices.map(mapAdbServerDevice);
+      const mapped = devices.map(mapAdbServerDevice);
+      const transportsBySerial = new Map<string, string[]>();
+      for (const device of mapped) {
+        const transports = transportsBySerial.get(device.serial) ?? [];
+        transports.push(device.transportId);
+        transportsBySerial.set(device.serial, transports);
+      }
+      for (const [serial, transportIds] of transportsBySerial) {
+        if (serial.length > 0 && transportIds.length > 1) {
+          console.debug("multiple ADB transports reported for one device", {
+            serial,
+            transportIds,
+          });
+        }
+      }
+      return mapped;
     } catch (error) {
       throw new DeviceServerUnavailableError(
         `ADB server unreachable: ${errorMessageOf(error)}`,
