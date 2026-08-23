@@ -668,12 +668,12 @@ export class ScreenSessionService {
         : options.value.scid.value.toString(16);
     const serverPath = `${SCRCPY_SERVER_PATH}.${scid}.jar`;
     const startedAt = Date.now();
-    console.info("scrcpy client starting", { scid, serverPath, publishVideo });
+    console.debug("scrcpy client starting", { scid, serverPath, publishVideo });
     await this.#pushServer(connection.adb, serverPath);
     let client: ScrcpyClient;
     try {
       client = await AdbScrcpyClient.start(connection.adb, serverPath, options);
-      console.info("scrcpy client connected", {
+      console.debug("scrcpy client connected", {
         scid,
         elapsedMs: Date.now() - startedAt,
       });
@@ -726,7 +726,7 @@ export class ScreenSessionService {
       managed.removeSizeListener = video.sizeChanged(({ width, height }) => {
         managed.width = width;
         managed.height = height;
-        console.info("scrcpy video size changed", {
+        console.trace("scrcpy video size changed", {
           scid,
           width,
           height,
@@ -737,7 +737,7 @@ export class ScreenSessionService {
           this.#videoHeight = height;
         }
       });
-      console.info("scrcpy video stream ready", {
+      console.debug("scrcpy video stream ready", {
         scid,
         streamId,
         codec: video.metadata.codec,
@@ -774,7 +774,7 @@ export class ScreenSessionService {
         return;
       }
       managed.audioCodec = audio.codec.optionValue;
-      console.info("scrcpy audio stream ready", {
+      console.debug("scrcpy audio stream ready", {
         scid: managed.scid,
         codec: managed.audioCodec,
       });
@@ -818,7 +818,7 @@ export class ScreenSessionService {
         }
         packetCount += 1;
         if (result.value.type === "configuration") {
-          console.info("scrcpy video configuration received", {
+          console.trace("scrcpy video configuration received", {
             scid: managed.scid,
             packetCount,
             bytes: result.value.data.byteLength,
@@ -925,7 +925,7 @@ export class ScreenSessionService {
   async #waitForVideoSize(managed: ManagedScrcpyClient): Promise<void> {
     for (let attempt = 0; attempt < Timing.VIDEO_SIZE_WAIT_ATTEMPTS; attempt += 1) {
       if (managed.width > 0 && managed.height > 0) {
-        console.info("scrcpy video size available", {
+        console.trace("scrcpy video size available", {
           scid: managed.scid,
           width: managed.width,
           height: managed.height,

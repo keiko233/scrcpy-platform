@@ -5,7 +5,7 @@ import { DebugScreen } from "./_modules/debug-screen";
 
 const debugSearchSchema = z.object({
   level: z
-    .enum(["all", "debug", "info", "warn", "error"])
+    .enum(["all", "trace", "debug", "info", "warn", "error"])
     .default("all")
     .catch("all"),
   q: z.string().catch("").optional(),

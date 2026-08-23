@@ -93,7 +93,13 @@ export type FlowRunStepState = z.infer<typeof FlowRunStepStateSchema>;
 export type FlowRunStepDto = z.infer<typeof FlowRunStepDtoSchema>;
 export type FlowRunDto = z.infer<typeof FlowRunDtoSchema>;
 
-export const FlowRunLogLevelSchema = z.enum(["debug", "info", "warn", "error"]);
+export const FlowRunLogLevelSchema = z.enum([
+  "trace",
+  "debug",
+  "info",
+  "warn",
+  "error",
+]);
 
 export const FlowRunLogEntryDtoSchema = z
   .object({

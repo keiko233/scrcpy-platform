@@ -11,6 +11,7 @@ import {
   ListRestartIcon,
   LogInIcon,
   LogOutIcon,
+  MessageSquareTextIcon,
   MousePointerClickIcon,
   PlayIcon,
   PuzzleIcon,
@@ -824,6 +825,39 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.assert.inputs,
     outputPorts: FLOW_NODE_PORTS.assert.outputs,
   },
+  log: {
+    kind: "log",
+    get label() {
+      return m.block_log_label();
+    },
+    get description() {
+      return m.block_log_description();
+    },
+    icon: MessageSquareTextIcon,
+    defaults: { kind: "log", template: "{{value}}", inputCount: 2 },
+    summarize: (data) => {
+      const template = text(data.template);
+      return template.length > 0
+        ? template
+        : calculateInputSummary(data);
+    },
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "template",
+          get label() {
+            return m.block_field_log_template_label();
+          },
+          kind: "textarea",
+          get placeholder() {
+            return m.block_field_log_template_placeholder();
+          },
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.log.inputs,
+    outputPorts: FLOW_NODE_PORTS.log.outputs,
+  },
   "screen-region": {
     kind: "screen-region",
     get label() {
@@ -1106,6 +1140,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "while",
   "repeat-until",
   "assert",
+  "log",
   "input",
   "output",
   "call",
@@ -1173,7 +1208,7 @@ export const BLOCK_CATEGORIES: readonly BlockCategoryDefinition[] = [
       return m.block_category_interface_label();
     },
     icon: PuzzleIcon,
-    kinds: ["input", "output", "call"],
+    kinds: ["input", "output", "call", "log"],
   },
   {
     id: "annotation",

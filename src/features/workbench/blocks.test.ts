@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  FLOW_NODE_DYNAMIC_INPUTS,
   FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
   flowDataOutputPorts,
@@ -35,6 +36,16 @@ describe("workbench block definitions", () => {
         field: "expectedText",
       },
     ]);
+  });
+
+  it("gives Log dynamic value inputs like Calculate", () => {
+    expect(FLOW_NODE_DYNAMIC_INPUTS.log).toEqual({
+      countField: "inputCount",
+      min: 1,
+      max: 26,
+      dataType: "any",
+    });
+    expect(BLOCK_DEFINITIONS.log.defaults).toMatchObject({ inputCount: 2 });
   });
 
   it("does not expose OCR configuration as connectable data inputs", () => {

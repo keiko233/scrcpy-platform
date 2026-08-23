@@ -196,14 +196,14 @@ export class DeviceSessionService {
     const operationId = `adb-${crypto.randomUUID()}`;
     return this.#enqueue(async () => {
       const startedAt = Date.now();
-      console.info("device session operation started", {
+      console.debug("device session operation started", {
         operationId,
         kind,
         ...details,
       });
       try {
         const result = await operation();
-        console.info("device session operation completed", {
+        console.debug("device session operation completed", {
           operationId,
           kind,
           ...details,
@@ -555,7 +555,7 @@ export class DeviceSessionService {
     this.#state = state;
     this.#errorMessage = errorMessage;
     const snapshot = this.#snapshot();
-    console.info("device session state changed", snapshot);
+    console.debug("device session state changed", snapshot);
     for (const listener of this.#listeners) {
       try {
         listener(snapshot);

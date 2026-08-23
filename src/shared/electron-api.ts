@@ -133,7 +133,7 @@ export interface SystemInfo {
   };
 }
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = "trace" | "debug" | "info" | "warn" | "error";
 
 export interface LogEntry {
   id: number;

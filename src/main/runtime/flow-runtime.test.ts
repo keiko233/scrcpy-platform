@@ -1152,10 +1152,21 @@ describe("FlowRuntimeService", () => {
       entries.some(
         (entry) =>
           entry.nodeId === "calc" &&
+          entry.level === "trace" &&
           entry.message === "Calculated = 42" &&
           entry.data !== null &&
           (entry.data as { value: number }).value === 42,
       ),
+    );
+    assert.equal(
+      entries.some(
+        (entry) =>
+          entry.nodeId !== null &&
+          entry.level === "info" &&
+          entry.message !== "Flow run started" &&
+          entry.message !== "Flow run completed",
+      ),
+      false,
     );
     assert.ok(
       entries.some(
@@ -1165,6 +1176,38 @@ describe("FlowRuntimeService", () => {
           entry.message === "Entering click node",
       ),
     );
+  });
+
+  test("emits user log blocks at info level", async () => {
+    const firstValue = constantNode("first-value", "668");
+    const secondValue = constantNode("second-value", "ready");
+    const userLog = node("log", "log", {
+      template: "第一个值：[a]，第二个值：[b]",
+      inputCount: 2,
+    });
+    const document = graphDocument(
+      [node("start", "start"), firstValue, secondValue, userLog, node("end", "end")],
+      [
+        ["start-log", "start", "log", "next", "in"],
+        ["log-end", "log", "end", "next", "in"],
+        ["first-a", "first-value", "log", "value", "a"],
+        ["second-b", "second-value", "log", "value", "b"],
+      ],
+    );
+    const { service } = serviceFor(document);
+    const entries: Parameters<Parameters<FlowRuntimeService["subscribeLogs"]>[0]>[0][] =
+      [];
+    service.subscribeLogs((entry) => entries.push(entry));
+
+    service.start(RUN_INPUT);
+    await waitForTerminal(service);
+
+    const userEntry = entries.find(
+      (entry) => entry.nodeId === "log" && entry.message === "第一个值：668，第二个值：ready",
+    );
+    assert.equal(userEntry?.level, "info");
+    assert.equal(userEntry?.message, "第一个值：668，第二个值：ready");
+    assert.equal(userEntry?.data, null);
   });
 });
 

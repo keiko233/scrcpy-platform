@@ -21,6 +21,7 @@ const ANSI_DIM = "\u001b[2m";
 const ANSI_SOURCE = "\u001b[90m";
 const ANSI_LOCATION = "\u001b[35m";
 const ANSI_LEVEL_COLORS: Record<LogLevel, string> = {
+  trace: "\u001b[90m",
   debug: "\u001b[37m",
   info: "\u001b[34m",
   warn: "\u001b[33m",
@@ -32,6 +33,7 @@ export class Logger {
   #nextId = 1;
   #sourceMap: TraceMap | null | undefined;
   readonly #originalConsole = {
+    trace: console.trace.bind(console),
     debug: console.debug.bind(console),
     info: console.info.bind(console),
     warn: console.warn.bind(console),
@@ -44,7 +46,7 @@ export class Logger {
   }
 
   install(): void {
-    for (const level of ["debug", "info", "warn", "error"] as const) {
+    for (const level of ["trace", "debug", "info", "warn", "error"] as const) {
       console[level] = (...args: unknown[]) => {
         this.write(level, args, "main");
       };
@@ -74,7 +76,7 @@ export class Logger {
   }
 
   dispose(): void {
-    for (const level of ["debug", "info", "warn", "error"] as const) {
+    for (const level of ["trace", "debug", "info", "warn", "error"] as const) {
       console[level] = this.#originalConsole[level];
     }
   }
@@ -110,7 +112,9 @@ export class Logger {
     const locationLabel = location
       ? ` ${ANSI_LOCATION}${location}${ANSI_RESET}`
       : "";
-    this.#originalConsole[level](
+    const output =
+      level === "trace" ? this.#originalConsole.debug : this.#originalConsole[level];
+    output(
       `${ANSI_DIM}${createdAt}${ANSI_RESET} ${levelLabel} ${sourceLabel}${locationLabel} ${message}`,
     );
     this.writeFile(entry);

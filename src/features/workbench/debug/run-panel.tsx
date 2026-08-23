@@ -17,6 +17,7 @@ import { LogMessage } from "./log-message";
 import { m } from "@/paraglide/messages.js";
 
 const LEVEL_CLASS_NAMES: Record<FlowRunLogLevel, string> = {
+  trace: "text-muted-foreground/70",
   debug: "text-muted-foreground",
   info: "text-info-foreground",
   warn: "text-warning-foreground",
@@ -235,6 +236,7 @@ export function RunPanel() {
             className="h-7 rounded-md border bg-background px-1.5 text-[11px]"
           >
             <option value="all">{m.debug_level_all()}</option>
+            <option value="trace">{m.debug_level_trace()}</option>
             <option value="debug">{m.debug_level_debug()}</option>
             <option value="info">{m.debug_level_info()}</option>
             <option value="warn">{m.debug_level_warn()}</option>
@@ -258,6 +260,8 @@ export function RunPanel() {
 
 function getLevelLabel(level: FlowRunLogLevel): string {
   switch (level) {
+    case "trace":
+      return m.debug_level_trace();
     case "debug":
       return m.debug_level_debug();
     case "info":

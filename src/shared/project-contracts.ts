@@ -37,6 +37,7 @@ export const FLOW_NODE_KINDS = [
   "while",
   "repeat-until",
   "assert",
+  "log",
   "screen-region",
   "constant",
   "note",
@@ -64,6 +65,7 @@ export const FLOW_NODE_PORTS = {
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   "repeat-until": { inputs: ["in", "loop"], outputs: ["body", "done"] },
   assert: { inputs: ["in"], outputs: ["next"] },
+  log: { inputs: ["in"], outputs: ["next"] },
   "screen-region": { inputs: [], outputs: [] },
   constant: { inputs: [], outputs: [] },
   note: { inputs: [], outputs: [] },
@@ -202,6 +204,10 @@ export const FLOW_NODE_DATA_PORTS = {
     inputs: [dataPort("condition", "Condition", "boolean")],
     outputs: [],
   },
+  log: {
+    inputs: [],
+    outputs: [],
+  },
   "screen-region": {
     inputs: [],
     outputs: [outputPort("region", "Region", "screen-region")],
@@ -233,6 +239,7 @@ export const FLOW_NODE_DYNAMIC_INPUTS: Partial<
   Record<FlowNodeKind, FlowDynamicInputConfig & { dataType: FlowDataType }>
 > = {
   calculate: { countField: "inputCount", min: 1, max: 26, dataType: "any" },
+  log: { countField: "inputCount", min: 1, max: 26, dataType: "any" },
 };
 
 /** Flow (control) input ports that a node can grow dynamically. */
@@ -547,6 +554,15 @@ export function flowDataInputPorts(
     }
   } else if (kind === "call") {
     inputs.push(...derivedCallNodePorts("input", data, context));
+  } else if (
+    kind === "log" &&
+    data?.inputCount === undefined &&
+    data !== undefined &&
+    Object.hasOwn(data, "message")
+  ) {
+    // Legacy Log nodes used one fixed `message` data input before dynamic
+    // value ports were introduced.
+    inputs.push(dataPort("message", "Value", "any"));
   }
   return inputs;
 }

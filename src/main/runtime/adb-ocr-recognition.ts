@@ -201,7 +201,7 @@ export class AdbScreenCaptureSource implements ScreenCaptureSource {
         );
       }
       this.#surfaceFlingerIds.set(context.displayId, surfaceFlingerId);
-      console.info("ocr display id resolved", {
+      console.trace("ocr display id resolved", {
         displayId: context.displayId,
         surfaceFlingerId,
         elapsedMs: Math.round(performance.now() - dumpsysStartedAt),
@@ -216,7 +216,7 @@ export class AdbScreenCaptureSource implements ScreenCaptureSource {
     abortIfNeeded(signal);
     const encodeStartedAt = performance.now();
     const png = encodeRgbaPng(rawScreenshotOf(raw));
-    console.info("ocr screenshot captured", {
+    console.trace("ocr screenshot captured", {
       rawBytes: raw.byteLength,
       bytes: png.byteLength,
       elapsedMs: Math.round(performance.now() - screencapStartedAt),
@@ -255,7 +255,7 @@ export class TesseractOcrEngine implements OcrEngine {
     const recognizeStartedAt = performance.now();
     const result = await worker.recognize(Buffer.from(png), { rectangle });
     abortIfNeeded(signal);
-    console.info("ocr recognized", {
+    console.trace("ocr recognized", {
       languages: [...languages].join("+"),
       rectangle,
       whitelist,
@@ -296,7 +296,7 @@ export class TesseractOcrEngine implements OcrEngine {
     this.#worker = creating;
     try {
       const created = await creating;
-      console.info("ocr tesseract worker initialized", {
+      console.debug("ocr tesseract worker initialized", {
         languages: key,
         elapsedMs: Math.round(performance.now() - initStartedAt),
       });
@@ -354,7 +354,7 @@ export class ConfigurableOcrScreenCaptureSource implements ScreenCaptureSource {
     const startedAt = performance.now();
     try {
       const png = await this.#screen.captureVideoPng(context.displayId, signal);
-      console.info("ocr scrcpy frame captured", {
+      console.trace("ocr scrcpy frame captured", {
         displayId: context.displayId,
         bytes: png.byteLength,
         elapsedMs: Math.round(performance.now() - startedAt),

@@ -967,7 +967,7 @@ const resolved = resolveNodeInputs(
             const result = compareWithOperator(operator, left, right, node.id);
             this.#emitLog(
               node.id,
-              "info",
+              "trace",
               `Compared ${formatLogValue(left)} ${operator} ${formatLogValue(right)} => ${result}`,
               { operator, left, right, result },
             );
@@ -1063,7 +1063,7 @@ const resolved = resolveNodeInputs(
       if (node.type === "output") {
         const results = collectOutputResults(resolved.node, resolved.connected);
         frameResult = results;
-        this.#emitLog(node.id, "info", "Captured results", {
+        this.#emitLog(node.id, "trace", "Captured results", {
           durationMs: Date.now() - enteredAt,
           results,
         });
@@ -1260,7 +1260,7 @@ const resolved = resolveNodeInputs(
           dataValueKey(entry.paramNodeIds.get(p.name) ?? "", p.name),
         ) ?? null;
     }
-    this.#emitLog(node.id, "info", `Calling script "${targetId}"`, {
+    this.#emitLog(node.id, "trace", `Calling script "${targetId}"`, {
       depth: depth + 1,
       arguments: argumentLog,
     });
@@ -1281,7 +1281,7 @@ const resolved = resolveNodeInputs(
         `Called script "${targetId}" finished without reaching an Output node.`,
       );
     }
-    this.#emitLog(node.id, "info", `Script "${targetId}" returned`, {
+    this.#emitLog(node.id, "trace", `Script "${targetId}" returned`, {
       result: childResult,
     });
     // The called script's Output node always returns a results record.
@@ -1295,7 +1295,7 @@ const resolved = resolveNodeInputs(
     const run = this.#run as FlowRunDto;
     run.state = "paused";
     run.currentNodeId = nodeId;
-    this.#emitLog(nodeId, "info", "Paused before executing node");
+    this.#emitLog(nodeId, "debug", "Paused before executing node");
     this.#publish();
     this.#pendingResume = new Promise<ResumeFlowRunInput["action"]>(
       (resolve, reject) => {
@@ -1361,7 +1361,7 @@ const resolved = resolveNodeInputs(
           context,
           signal,
         );
-        this.#emitLog(node.id, "info", "OCR recognized text", {
+        this.#emitLog(node.id, "trace", "OCR recognized text", {
           text: recognition.outputs.text,
           confidence: recognition.outputs.confidence,
           matched: recognition.outputs.matched,
@@ -1387,7 +1387,7 @@ const resolved = resolveNodeInputs(
               `Calculate node "${node.id}" expression must return a finite number.`,
             );
           }
-          this.#emitLog(node.id, "info", `Calculated = ${formatLogValue(result)}`, {
+          this.#emitLog(node.id, "trace", `Calculated = ${formatLogValue(result)}`, {
             operation,
             expression,
             value: result,
@@ -1400,7 +1400,7 @@ const resolved = resolveNodeInputs(
           );
         }
         const result = aggregateValues(operation, values);
-        this.#emitLog(node.id, "info", `Calculated = ${formatLogValue(result)}`, {
+        this.#emitLog(node.id, "trace", `Calculated = ${formatLogValue(result)}`, {
           operation,
           value: result,
           count: values.length,
@@ -1409,7 +1409,7 @@ const resolved = resolveNodeInputs(
       }
       case "convert": {
         const result = convertNodeValue(node);
-        this.#emitLog(node.id, "info", `Converted value to ${node.data.toType}`, {
+        this.#emitLog(node.id, "trace", `Converted value to ${node.data.toType}`, {
           toType: node.data.toType,
           value: result,
         });
@@ -1424,7 +1424,7 @@ const resolved = resolveNodeInputs(
         const passed = node.data.condition === true;
         this.#emitLog(
           node.id,
-          "info",
+          "trace",
           `Condition is ${passed ? "true" : "false"}`,
           { branch: passed ? "true" : "false" },
         );
@@ -1447,7 +1447,44 @@ const resolved = resolveNodeInputs(
               : `Assertion node "${node.id}" failed.`,
           );
         }
-        this.#emitLog(node.id, "info", "Assertion passed");
+        this.#emitLog(node.id, "trace", "Assertion passed");
+        return executionResult("next");
+      }
+      case "log": {
+        const template = node.data.template;
+        if (typeof template === "string") {
+          const values = calculateInputEntries(node, connectedInputs);
+          const firstValue = values[0]?.[1];
+          let message = template;
+          for (const [id, value] of values) {
+            const replacement =
+              typeof value === "string" ? value : formatLogValue(value);
+            message = message
+              .replaceAll(`[${id}]`, replacement)
+              .replaceAll(`{{${id}}}`, replacement);
+          }
+          if (firstValue !== undefined) {
+            const replacement =
+              typeof firstValue === "string"
+                ? firstValue
+                : formatLogValue(firstValue);
+            message = message
+              .replaceAll("[value]", replacement)
+              .replaceAll("[message]", replacement)
+              .replaceAll("{{value}}", replacement)
+              .replaceAll("{{message}}", replacement);
+          }
+          this.#emitLog(node.id, "info", message);
+        } else {
+          // Keep old Log nodes working: before templates existed, `message`
+          // itself was the complete user-facing log message.
+          const value = node.data.message;
+          const message =
+            typeof value === "string"
+              ? value
+              : formatLogValue(value ?? "");
+          this.#emitLog(node.id, "info", message);
+        }
         return executionResult("next");
       }
       case "for": {
@@ -1500,7 +1537,7 @@ const resolved = resolveNodeInputs(
         const continues = node.data.condition === true;
         this.#emitLog(
           node.id,
-          "info",
+          "trace",
           `While condition evaluated to ${continues}`,
           { continues },
         );
@@ -1540,7 +1577,7 @@ const resolved = resolveNodeInputs(
         const done = node.data.condition === true;
         this.#emitLog(
           node.id,
-          "info",
+          "trace",
           `Repeat-until condition evaluated to ${done}`,
           { done },
         );

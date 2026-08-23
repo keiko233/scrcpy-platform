@@ -192,6 +192,7 @@ export enum FlowRunStepState {
 }
 
 export enum LogLevel {
+  Trace = "trace",
   Debug = "debug",
   Info = "info",
   Warn = "warn",
