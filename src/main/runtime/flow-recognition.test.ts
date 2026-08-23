@@ -12,7 +12,10 @@ import {
   type ScreenCaptureSource,
 } from "./flow-recognition";
 import { OcrLanguage as OcrLanguageValue } from "../../shared/constants/enums";
-import { AdbScreenCaptureSource } from "./adb-ocr-recognition";
+import {
+  AdbScreenCaptureSource,
+  ConfigurableOcrScreenCaptureSource,
+} from "./adb-ocr-recognition";
 
 const CONTEXT: FlowActionContext = {
   runId: "run-1",
@@ -27,6 +30,22 @@ function png(width = 1080, height = 1920): Uint8Array {
   const view = new DataView(value.buffer);
   view.setUint32(16, width, false);
   view.setUint32(20, height, false);
+  return value;
+}
+
+function rawRgba(width = 2, height = 2): Uint8Array {
+  const value = new Uint8Array(16 + width * height * 4);
+  const view = new DataView(value.buffer);
+  view.setUint32(0, width, true);
+  view.setUint32(4, height, true);
+  view.setUint32(8, 1, true);
+  view.setUint32(12, 1, true);
+  for (let index = 16; index < value.byteLength; index += 4) {
+    value[index] = 0x13;
+    value[index + 1] = 0x19;
+    value[index + 2] = 0x1f;
+    value[index + 3] = 0xff;
+  }
   return value;
 }
 
@@ -235,7 +254,7 @@ describe("OcrRecognitionDriver", () => {
 });
 
 describe("AdbScreenCaptureSource", () => {
-  test("captures the exact physical run display as PNG bytes", async () => {
+  test("captures the exact physical run display and converts raw RGBA bytes to PNG", async () => {
     const commands: readonly string[][] = [];
     const mutableCommands = commands as string[][];
     const session = {
@@ -254,7 +273,7 @@ describe("AdbScreenCaptureSource", () => {
                     "mViewports=[DisplayViewport{type=VIRTUAL, displayId=3, uniqueId='local:4630946545580055170'}]",
                   );
                 }
-                return png();
+                return rawRgba();
               },
             },
           },
@@ -268,10 +287,22 @@ describe("AdbScreenCaptureSource", () => {
       new AbortController().signal,
     );
 
-    assert.equal(result.byteLength, 24);
+    assert.deepEqual([...result.subarray(0, 8)], [
+      137,
+      80,
+      78,
+      71,
+      13,
+      10,
+      26,
+      10,
+    ]);
+    const pngHeader = new DataView(result.buffer, result.byteOffset, result.byteLength);
+    assert.equal(pngHeader.getUint32(16, false), 2);
+    assert.equal(pngHeader.getUint32(20, false), 2);
     assert.deepEqual(commands, [
       ["dumpsys", "display"],
-      ["screencap", "-p", "-d", "4630946545580055170"],
+      ["screencap", "-d", "4630946545580055170"],
     ]);
   });
 
@@ -298,7 +329,7 @@ describe("AdbScreenCaptureSource", () => {
                     'Display 11529215046235404656 (virtual, "scrcpy")\n   Composition Display State:\n   layerFilter={layerStack=3 toInternalDisplay=false }',
                   );
                 }
-                return png();
+                return rawRgba();
               },
             },
           },
@@ -312,7 +343,7 @@ describe("AdbScreenCaptureSource", () => {
     assert.deepEqual(commands, [
       ["dumpsys", "display"],
       ["dumpsys", "SurfaceFlinger"],
-      ["screencap", "-p", "-d", "11529215046235404656"],
+      ["screencap", "-d", "11529215046235404656"],
     ]);
   });
 
@@ -327,7 +358,7 @@ describe("AdbScreenCaptureSource", () => {
             `mViewports=[DisplayViewport{type=INTERNAL, displayId=3, uniqueId='local:${physicalId}'}]`,
           );
         }
-        return png();
+        return rawRgba();
       },
     };
     let connection = {
@@ -350,9 +381,9 @@ describe("AdbScreenCaptureSource", () => {
 
     assert.deepEqual(commands, [
       ["dumpsys", "display"],
-      ["screencap", "-p", "-d", "111"],
+      ["screencap", "-d", "111"],
       ["dumpsys", "display"],
-      ["screencap", "-p", "-d", "222"],
+      ["screencap", "-d", "222"],
     ]);
   });
 
@@ -365,5 +396,49 @@ describe("AdbScreenCaptureSource", () => {
     await expect(
       capture.capturePng(CONTEXT, new AbortController().signal),
     ).rejects.toThrow(/session changed/);
+  });
+});
+
+describe("ConfigurableOcrScreenCaptureSource", () => {
+  test("uses the decoded scrcpy frame by default", async () => {
+    let scrcpyCalls = 0;
+    const screencap = {
+      capturePng: async () => {
+        throw new Error("screencap should not be selected");
+      },
+    } as unknown as AdbScreenCaptureSource;
+    const source = new ConfigurableOcrScreenCaptureSource(screencap, {
+      getSettings: () => ({ ocrCaptureSource: "scrcpy" }),
+      captureVideoPng: async () => {
+        scrcpyCalls += 1;
+        return png();
+      },
+    });
+
+    const result = await source.capturePng(
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.equal(result.byteLength, 24);
+    assert.equal(scrcpyCalls, 1);
+  });
+
+  test("keeps the ADB screencap source available", async () => {
+    const expected = png();
+    const screencap = {
+      capturePng: async () => expected,
+    } as unknown as AdbScreenCaptureSource;
+    const source = new ConfigurableOcrScreenCaptureSource(screencap, {
+      getSettings: () => ({ ocrCaptureSource: "screencap" }),
+      captureVideoPng: async () => {
+        throw new Error("scrcpy should not be selected");
+      },
+    });
+
+    assert.equal(
+      await source.capturePng(CONTEXT, new AbortController().signal),
+      expected,
+    );
   });
 });

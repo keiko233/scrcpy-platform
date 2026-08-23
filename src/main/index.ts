@@ -170,7 +170,11 @@ void app.whenReady().then(() => {
   screenSession = screens;
   registerScreenHandlers(screens);
   const runtime = new FlowRuntimeService(store, new AdbFlowActionDriver(session), {
-    recognition: createAdbOcrRecognitionDriver(session, app.getPath("userData")),
+    recognition: createAdbOcrRecognitionDriver(
+      session,
+      screens,
+      app.getPath("userData"),
+    ),
   });
   flowRuntime = runtime;
   registerRunHandlers(runtime);

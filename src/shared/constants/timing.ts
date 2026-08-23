@@ -27,6 +27,8 @@ export const Timing = {
   VIDEO_SIZE_POLL_STEP_MS: 10,
   /** Max attempts for video size (300 * 10ms = 3s) */
   VIDEO_SIZE_WAIT_ATTEMPTS: 300,
+  /** Fail over quickly when the current decoded scrcpy frame is unavailable. */
+  OCR_SCRCPY_CAPTURE_TIMEOUT_MS: 300,
   /** Poll interval for newly added virtual display */
   VIRTUAL_DISPLAY_POLL_MS: 100,
   /** Max attempts for virtual display stabilization (50 * 100ms = 5s) */

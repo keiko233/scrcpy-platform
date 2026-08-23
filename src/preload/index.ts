@@ -76,6 +76,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensInjectTouch, input),
   requestScreenVideo: (input) =>
     ipcRenderer.send(ELECTRON_CHANNELS.screensRequestVideo, input),
+  sendScreenVideoCaptureResponse: (input) =>
+    ipcRenderer.send(ELECTRON_CHANNELS.screensVideoCaptureResponse, input),
 
   getFlowRun: () => ipcRenderer.invoke(ELECTRON_CHANNELS.runsGet),
   startFlowRun: (input) =>

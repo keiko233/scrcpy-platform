@@ -64,6 +64,63 @@ export function useScreenVideo(
       if (disposed || message.streamId !== streamId) {
         return;
       }
+      if (message.type === "capture-request") {
+        const requestDecoder = decoder;
+        if (requestDecoder === null) {
+          window.androidPlatform.sendScreenVideoCaptureResponse({
+            type: "capture-response",
+            streamId,
+            requestId: message.requestId,
+            error: "The scrcpy decoder is not ready.",
+          });
+          return;
+        }
+        console.debug("requesting scrcpy OCR frame", {
+          streamId,
+          requestId: message.requestId,
+        });
+        void (async () => {
+          try {
+            const blob = await requestDecoder.snapshot();
+            if (blob === undefined) {
+              window.androidPlatform.sendScreenVideoCaptureResponse({
+                type: "capture-response",
+                streamId,
+                requestId: message.requestId,
+                error: "The scrcpy decoder has not produced a frame yet.",
+              });
+              return;
+            }
+            const buffer = await blob.arrayBuffer();
+            console.debug("sending scrcpy OCR frame", {
+              streamId,
+              requestId: message.requestId,
+              bytes: buffer.byteLength,
+            });
+            window.androidPlatform.sendScreenVideoCaptureResponse({
+              type: "capture-response",
+              streamId,
+              requestId: message.requestId,
+              png: new Uint8Array(buffer),
+            });
+          } catch (cause) {
+            try {
+              window.androidPlatform.sendScreenVideoCaptureResponse({
+                type: "capture-response",
+                streamId,
+                requestId: message.requestId,
+                error: cause instanceof Error ? cause.message : String(cause),
+              });
+            } catch {
+              // The main process may have stopped before this response arrived.
+            }
+          }
+        })();
+        return;
+      }
+      if (message.type === "capture-response") {
+        return;
+      }
       if (message.type === "audio-metadata") {
         screenAudioPlayer.configure(
           message.codec,

@@ -8,8 +8,19 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSystemInfo } from "@/hooks/query/use-system-info";
+import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
+import {
+  useScrcpySettings,
+  useSetScrcpySettings,
+} from "@/hooks/query/use-scrcpy-settings";
 import { useLanguage } from "@/i18n/language";
 import { m } from "@/paraglide/messages.js";
+import {
+  DEFAULT_SCRCPY_SETTINGS,
+  ScrcpySettingsSchema,
+  type ScrcpySettings,
+} from "@/shared/screen-contracts";
+import { StorageKey } from "@/shared/constants/enums";
 import { Switch } from "@/components/ui/switch";
 import { useWorkbench } from "@/features/workbench/use-workbench";
 
@@ -17,7 +28,15 @@ export function SettingsScreen() {
   const { language, setLanguage } = useLanguage();
   const { allowUnsavedRun, setAllowUnsavedRun } = useWorkbench();
   const infoQuery = useSystemInfo();
+  const scrcpySettingsQuery = useScrcpySettings();
+  const setScrcpySettings = useSetScrcpySettings();
+  const [, setSavedScrcpySettings] = useSafeLocalStorage(
+    StorageKey.ScrcpySettings,
+    ScrcpySettingsSchema.nullable().default(null),
+  );
   const info = infoQuery.data ?? null;
+  const scrcpySettings =
+    scrcpySettingsQuery.data ?? DEFAULT_SCRCPY_SETTINGS;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4 text-xs">
@@ -64,6 +83,50 @@ export function SettingsScreen() {
               onCheckedChange={setAllowUnsavedRun}
               aria-label={m.settings_allow_unsaved_run_title()}
             />
+          </div>
+        </section>
+
+        <section className="rounded-lg border p-3">
+          <h2 className="mb-2 font-medium">{m.settings_ocr_title()}</h2>
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <p className="font-medium">{m.settings_ocr_capture_source()}</p>
+              <p className="mt-1 text-muted-foreground">
+                {m.settings_ocr_capture_source_description()}
+              </p>
+            </div>
+            <Select
+              value={scrcpySettings.ocrCaptureSource}
+              disabled={
+                scrcpySettingsQuery.data === undefined ||
+                setScrcpySettings.isPending
+              }
+              onValueChange={(value) => {
+                if (value === null) {
+                  return;
+                }
+                void setScrcpySettings
+                  .mutateAsync({
+                    ...scrcpySettings,
+                    ocrCaptureSource:
+                      value as ScrcpySettings["ocrCaptureSource"],
+                  })
+                  .then(setSavedScrcpySettings)
+                  .catch(() => undefined);
+              }}
+            >
+              <SelectTrigger className="w-48" aria-label={m.settings_ocr_capture_source()}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="scrcpy">
+                  {m.settings_ocr_capture_source_scrcpy()}
+                </SelectItem>
+                <SelectItem value="screencap">
+                  {m.settings_ocr_capture_source_screencap()}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </section>
 

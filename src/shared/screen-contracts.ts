@@ -11,6 +11,7 @@ export const ScreenStateSchema = z.enum([
 export type ScreenState = z.infer<typeof ScreenStateSchema>;
 
 export const ScrcpySettingsSchema = z.object({
+  ocrCaptureSource: z.enum(["scrcpy", "screencap"]),
   maxSize: z.number().int().min(256).max(7680).nullable(),
   maxFps: z.number().int().min(1).max(240),
   videoBitRate: z.number().int().min(1_000_000).max(100_000_000),
@@ -27,6 +28,7 @@ export const ScrcpySettingsSchema = z.object({
 export type ScrcpySettings = z.infer<typeof ScrcpySettingsSchema>;
 
 export const DEFAULT_SCRCPY_SETTINGS: ScrcpySettings = {
+  ocrCaptureSource: "scrcpy",
   maxSize: null,
   maxFps: 60,
   videoBitRate: 20_000_000,
@@ -180,9 +182,25 @@ export interface ScreenVideoStoppedMessage {
   reason?: string;
 }
 
+export interface ScreenVideoCaptureRequestMessage {
+  type: "capture-request";
+  streamId: string;
+  requestId: string;
+}
+
+export interface ScreenVideoCaptureResponseMessage {
+  type: "capture-response";
+  streamId: string;
+  requestId: string;
+  png?: Uint8Array;
+  error?: string;
+}
+
 export type ScreenVideoMessage =
   | ScreenVideoMetadataMessage
   | ScreenVideoPacketMessage
   | ScreenAudioMetadataMessage
   | ScreenAudioPacketMessage
-  | ScreenVideoStoppedMessage;
+  | ScreenVideoStoppedMessage
+  | ScreenVideoCaptureRequestMessage
+  | ScreenVideoCaptureResponseMessage;

@@ -26,6 +26,7 @@ import type {
   InjectScreenTouchInput,
   ScreenFailureCode,
   ScreenOperationResult,
+  ScreenVideoCaptureResponseMessage,
   ScreenSessionDto,
   ScreenVideoMessage,
   ScrcpySettings,
@@ -81,6 +82,14 @@ interface ManagedScrcpyClient {
   touchY: number;
 }
 
+interface VideoCaptureWaiter {
+  streamId: string;
+  resolve: (png: Uint8Array) => void;
+  reject: (error: unknown) => void;
+  timer: NodeJS.Timeout;
+  removeAbortListener: () => void;
+}
+
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -112,6 +121,7 @@ export class ScreenSessionService {
   #stream: ManagedScrcpyClient | null = null;
   #displayOwner: ManagedScrcpyClient | null = null;
   #videoPort: ScreenVideoPort | null = null;
+  readonly #videoCaptureWaiters = new Map<string, VideoCaptureWaiter>();
   #videoConfiguration: ScrcpyMediaStreamPacket | null = null;
   #videoCodec: number | null = null;
   #audioConfiguration: ScrcpyMediaStreamPacket | null = null;
@@ -166,6 +176,116 @@ export class ScreenSessionService {
 
   setSettings(settings: ScrcpySettings): void {
     this.#settings = { ...settings };
+  }
+
+  async captureVideoPng(
+    displayId: number,
+    signal: AbortSignal,
+  ): Promise<Uint8Array> {
+    const stream = this.#stream;
+    const port = this.#videoPort;
+    if (
+      stream === null ||
+      port === null ||
+      this.#activeDisplayId !== displayId ||
+      this.#videoConfiguration === null
+    ) {
+      throw new Error(
+        "The scrcpy OCR source requires an active decoded screen stream.",
+      );
+    }
+    if (signal.aborted) {
+      throw new DOMException("OCR cancelled.", "AbortError");
+    }
+
+    const requestId = `ocr-capture-${crypto.randomUUID()}`;
+    return await new Promise<Uint8Array>((resolve, reject) => {
+      let settled = false;
+      const remove = () => {
+        const waiter = this.#videoCaptureWaiters.get(requestId);
+        if (waiter !== undefined) {
+          this.#videoCaptureWaiters.delete(requestId);
+          clearTimeout(waiter.timer);
+          waiter.removeAbortListener();
+        }
+      };
+      const settle = (callback: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        remove();
+        callback();
+      };
+      const onAbort = () => {
+        settle(() => reject(new DOMException("OCR cancelled.", "AbortError")));
+      };
+      const timer = setTimeout(() => {
+        settle(() => {
+          console.warn("ocr scrcpy frame request timed out", {
+            displayId,
+            streamId: stream.streamId,
+            requestId,
+          });
+          reject(new Error("Timed out waiting for a decoded scrcpy frame."));
+        });
+      }, Timing.OCR_SCRCPY_CAPTURE_TIMEOUT_MS);
+      timer.unref();
+      const waiter: VideoCaptureWaiter = {
+        streamId: stream.streamId,
+        resolve: (png) => settle(() => resolve(png)),
+        reject: (error) => settle(() => reject(error)),
+        timer,
+        removeAbortListener: () => signal.removeEventListener("abort", onAbort),
+      };
+      this.#videoCaptureWaiters.set(requestId, waiter);
+      signal.addEventListener("abort", onAbort, { once: true });
+      try {
+        console.debug("ocr scrcpy frame requested", {
+          displayId,
+          streamId: stream.streamId,
+          requestId,
+        });
+        port.postMessage({
+          type: "capture-request",
+          streamId: stream.streamId,
+          requestId,
+        });
+      } catch (error) {
+        waiter.reject(error);
+      }
+    });
+  }
+
+  handleVideoCaptureResponse(raw: unknown): void {
+    if (
+      raw === null ||
+      typeof raw !== "object" ||
+      !("type" in raw) ||
+      raw.type !== "capture-response" ||
+      !("requestId" in raw) ||
+      typeof raw.requestId !== "string" ||
+      !("streamId" in raw) ||
+      typeof raw.streamId !== "string"
+    ) {
+      return;
+    }
+    const streamId = raw.streamId;
+    const waiter = this.#videoCaptureWaiters.get(raw.requestId);
+    if (waiter === undefined || waiter.streamId !== streamId) {
+      return;
+    }
+    const message = raw as ScreenVideoCaptureResponseMessage;
+    if (message.png instanceof Uint8Array) {
+      console.debug("ocr scrcpy frame response received", {
+        streamId,
+        requestId: raw.requestId,
+        bytes: message.png.byteLength,
+      });
+      waiter.resolve(message.png);
+      return;
+    }
+    waiter.reject(new Error(message.error ?? "The renderer returned no video frame."));
   }
 
   refreshDisplays(): Promise<ScreenOperationResult> {
@@ -1072,6 +1192,7 @@ export class ScreenSessionService {
   }
 
   #closeVideoPort(reason: string): void {
+    this.#rejectVideoCaptureWaiters(new Error(reason));
     const port = this.#videoPort;
     this.#videoPort = null;
     if (port === null) {
@@ -1086,6 +1207,13 @@ export class ScreenSessionService {
       }
     }
     port.close();
+  }
+
+  #rejectVideoCaptureWaiters(error: Error): void {
+    const waiters = [...this.#videoCaptureWaiters.values()];
+    for (const waiter of waiters) {
+      waiter.reject(error);
+    }
   }
 
   #failure(code: ScreenFailureCode, message: string): ScreenOperationResult {

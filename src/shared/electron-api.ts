@@ -13,6 +13,7 @@ import type {
   InjectScreenTouchInput,
   PressDeviceButtonInput,
   RequestScreenVideoInput,
+  ScreenVideoCaptureResponseMessage,
   ScreenOperationResult,
   ScreenSessionDto,
   ScrcpySettings,
@@ -94,6 +95,7 @@ export const ELECTRON_CHANNELS = {
   screensInjectTouch: ElectronChannel.ScreensInjectTouch,
   screensRequestVideo: ElectronChannel.ScreensRequestVideo,
   screensVideoPort: ElectronChannel.ScreensVideoPort,
+  screensVideoCaptureResponse: ElectronChannel.ScreensVideoCaptureResponse,
   runsGet: ElectronChannel.RunsGet,
   runsStart: ElectronChannel.RunsStart,
   runsStop: ElectronChannel.RunsStop,
@@ -183,6 +185,9 @@ export interface ElectronAPI {
     input: InjectScreenTouchInput,
   ): Promise<ScreenOperationResult>;
   requestScreenVideo(input: RequestScreenVideoInput): void;
+  sendScreenVideoCaptureResponse(
+    input: ScreenVideoCaptureResponseMessage,
+  ): void;
 
   getFlowRun(): Promise<FlowRunDto | null>;
   startFlowRun(input: StartFlowRunInput): Promise<StartFlowRunResult>;

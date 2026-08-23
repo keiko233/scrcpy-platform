@@ -291,6 +291,7 @@ export enum ElectronChannel {
   ScreensInjectTouch = "screens:inject-touch",
   ScreensRequestVideo = "screens:request-video",
   ScreensVideoPort = "screens:video-port",
+  ScreensVideoCaptureResponse = "screens:video-capture-response",
   RunsGet = "runs:get",
   RunsStart = "runs:start",
   RunsStop = "runs:stop",

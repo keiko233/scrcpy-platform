@@ -9,6 +9,7 @@ import {
   RequestScreenVideoInputSchema,
   ScrcpySettingsSchema,
   type ScrcpySettings,
+  type ScreenVideoCaptureResponseMessage,
   type ScreenOperationResult,
 } from "../../shared/screen-contracts";
 import type { ScreenSessionService } from "../adb/screen-session";
@@ -23,7 +24,11 @@ export function registerScreenHandlers(service: ScreenSessionService): void {
   ipcMain.handle(
     ELECTRON_CHANNELS.screensSettingsSet,
     (_event, raw: unknown): ScrcpySettings => {
-      const settings = ScrcpySettingsSchema.parse(raw);
+      const settings = ScrcpySettingsSchema.parse(
+        raw !== null && typeof raw === "object"
+          ? { ocrCaptureSource: "scrcpy", ...raw }
+          : raw,
+      );
       service.setSettings(settings);
       return service.getSettings();
     },
@@ -86,4 +91,11 @@ export function registerScreenHandlers(service: ScreenSessionService): void {
       [port2],
     );
   });
+
+  ipcMain.on(
+    ELECTRON_CHANNELS.screensVideoCaptureResponse,
+    (_event, raw: unknown) => {
+      service.handleVideoCaptureResponse(raw as ScreenVideoCaptureResponseMessage);
+    },
+  );
 }
