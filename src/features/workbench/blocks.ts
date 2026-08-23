@@ -8,6 +8,7 @@ import {
   FlagIcon,
   GitBranchIcon,
   HandIcon,
+  InfinityIcon,
   ListRestartIcon,
   LogInIcon,
   LogOutIcon,
@@ -797,6 +798,23 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS["repeat-until"].inputs,
     outputPorts: FLOW_NODE_PORTS["repeat-until"].outputs,
   },
+  forever: {
+    kind: "forever",
+    get label() {
+      return m.block_forever_label();
+    },
+    get description() {
+      return m.block_forever_description();
+    },
+    icon: InfinityIcon,
+    defaults: { kind: "forever" },
+    summarize: () => m.block_summarize_forever(),
+    get fields(): FieldDefinition[] {
+      return [];
+    },
+    inputPorts: FLOW_NODE_PORTS.forever.inputs,
+    outputPorts: FLOW_NODE_PORTS.forever.outputs,
+  },
   assert: {
     kind: "assert",
     get label() {
@@ -995,6 +1013,23 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.constant.inputs,
     outputPorts: FLOW_NODE_PORTS.constant.outputs,
   },
+  "constant-ref": {
+    kind: "constant-ref",
+    get label() {
+      return m.block_constant_reference_label();
+    },
+    get description() {
+      return m.block_constant_reference_description();
+    },
+    icon: EqualIcon,
+    defaults: { kind: "constant-ref", sourceNodeId: "" },
+    summarize: (data) => text(data.sourceNodeId) || m.block_summarize_unset(),
+    get fields(): FieldDefinition[] {
+      return [];
+    },
+    inputPorts: FLOW_NODE_PORTS["constant-ref"].inputs,
+    outputPorts: FLOW_NODE_PORTS["constant-ref"].outputs,
+  },
   note: {
     kind: "note",
     get label() {
@@ -1139,6 +1174,7 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "for",
   "while",
   "repeat-until",
+  "forever",
   "assert",
   "log",
   "input",
@@ -1192,7 +1228,7 @@ export const BLOCK_CATEGORIES: readonly BlockCategoryDefinition[] = [
       return m.block_category_logic_label();
     },
     icon: SplitIcon,
-    kinds: ["if", "merge", "for", "while", "repeat-until", "assert"],
+    kinds: ["if", "merge", "for", "while", "repeat-until", "forever", "assert"],
   },
   {
     id: "data",

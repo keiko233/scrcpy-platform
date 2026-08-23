@@ -216,6 +216,7 @@ export function WorkbenchProvider({
 
   const flowApi = {
     addBlock: flow.addBlock,
+    addBlockReference: flow.addBlockReference,
     deleteNode: flow.deleteNode,
     updateNodeData: flow.updateNodeData,
   };

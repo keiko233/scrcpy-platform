@@ -11,6 +11,7 @@ export interface FlowApi {
     position?: XYPosition,
     parentId?: string,
   ) => string;
+  addBlockReference: (sourceNodeId: string, position?: XYPosition) => string | null;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
 }

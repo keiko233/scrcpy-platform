@@ -278,7 +278,7 @@ describe("workbench flow document", () => {
     assert.equal(merged[0]?.id, "e1");
   });
 
-  it("mergeEdge replaces an existing edge occupying the same target handle", () => {
+  it("allows flow edges to fan into the same target handle", () => {
     const existing: WorkbenchEdge[] = [
       {
         id: "e1",
@@ -300,10 +300,11 @@ describe("workbench flow document", () => {
       [workbenchNode("delay-1", "delay"), workbenchNode("click-1", "click")],
     );
 
-    assert.equal(merged.length, 1);
-    assert.equal(merged[0]?.source, "delay-1");
-    assert.equal(merged[0]?.target, "click-1");
-    assert.notEqual(merged[0]?.id, "e1");
+    assert.equal(merged.length, 2);
+    assert.deepEqual(
+      merged.map((edge) => edge.source).sort(),
+      ["delay-1", "start"],
+    );
   });
 
   it("allows multiple flow edges to fan into End.in", () => {
@@ -329,6 +330,39 @@ describe("workbench flow document", () => {
         workbenchNode("a", "click"),
         workbenchNode("b", "delay"),
         workbenchNode("end", "end"),
+      ],
+    );
+
+    assert.equal(merged.length, 2);
+    assert.deepEqual(
+      merged.map((edge) => edge.source).sort(),
+      ["a", "b"],
+    );
+  });
+
+  it("allows multiple flow edges to fan into Forever.loop", () => {
+    const existing: WorkbenchEdge[] = [
+      {
+        id: "e1",
+        source: "a",
+        target: "forever",
+        sourceHandle: "next",
+        targetHandle: "loop",
+      },
+    ];
+
+    const merged = mergeEdge(
+      existing,
+      {
+        source: "b",
+        target: "forever",
+        sourceHandle: "next",
+        targetHandle: "loop",
+      },
+      [
+        workbenchNode("a", "click"),
+        workbenchNode("b", "delay"),
+        workbenchNode("forever", "forever"),
       ],
     );
 
@@ -545,6 +579,62 @@ describe("workbench copy and paste", () => {
     assert.equal(edges[0]?.sourceHandle, "next");
     assert.equal(edges[0]?.targetHandle, "in");
     assert.match(edges[0]?.id ?? "", /^edge-/);
+  });
+
+  it("rewires constant references when their source is copied", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "source",
+          type: "constant",
+          position: { x: 10, y: 10 },
+          data: { kind: "constant", type: "number", numberValue: 42 },
+        },
+        {
+          id: "reference",
+          type: "constant-ref",
+          position: { x: 100, y: 10 },
+          data: { kind: "constant-ref", sourceNodeId: "source" },
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = pasteSelection(payload);
+    const source = nodes.find((node) => node.type === "constant");
+    const reference = nodes.find((node) => node.type === "constant-ref");
+
+    assert.ok(source !== undefined && reference !== undefined);
+    assert.equal(reference.data.sourceNodeId, source.id);
+  });
+
+  it("copies references for ordinary action blocks", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "source",
+          type: "click",
+          position: { x: 10, y: 10 },
+          data: { kind: "click", x: 12, y: 34 },
+        },
+        {
+          id: "reference",
+          type: "click",
+          position: { x: 100, y: 10 },
+          data: { kind: "click", sourceNodeId: "source" },
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = pasteSelection(payload);
+    const source = nodes.find((node) => node.id !== "source" && node.type === "click");
+    const reference = nodes.find(
+      (node) => node.type === "click" && node.data.sourceNodeId !== undefined,
+    );
+
+    assert.ok(source !== undefined && reference !== undefined);
+    assert.equal(reference.data.sourceNodeId, source.id);
   });
 
   it("anchors the copied group to an explicit origin position", () => {

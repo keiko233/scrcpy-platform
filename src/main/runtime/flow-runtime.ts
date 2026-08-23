@@ -17,6 +17,9 @@ import {
   flowInputNodeParams,
   flowOutputNodeResults,
   matchesFlowDataType as matchesDataType,
+  constantReferenceFromData,
+  resolveConstantReference,
+  resolveNodeReference,
   resolveFlowPort,
   type FlowDocument,
   type FlowEdge,
@@ -302,16 +305,55 @@ function screenRegionValue(node: FlowNode): ScreenRegion {
   };
 }
 
-function constantValue(node: FlowNode): JsonValue {
-  const type = node.data.type;
-  if (type === "boolean") {
-    return node.data.booleanValue === true;
+function constantValue(
+  node: FlowNode,
+  nodes?: ReadonlyMap<string, FlowNode>,
+): JsonValue {
+  if (node.type === "constant-ref" || typeof node.data.sourceNodeId === "string") {
+    const sourceNodeId = node.data.sourceNodeId;
+    if (typeof sourceNodeId !== "string" || nodes === undefined) {
+      throw new Error(
+        `Constant reference node "${node.id}" has no valid source constant.`,
+      );
+    }
+    const resolved =
+      node.type === "constant-ref"
+        ? resolveConstantReference(sourceNodeId, nodes)
+        : resolveNodeReference(sourceNodeId, nodes);
+    if (resolved === null || resolved.type !== "constant") {
+      throw new Error(
+        `Constant reference node "${node.id}" does not resolve to a constant value.`,
+      );
+    }
+    return constantReferenceFromData(resolved.data)?.value ?? 0;
   }
-  if (type === "string") {
-    return typeof node.data.stringValue === "string" ? node.data.stringValue : "";
+  const resolved = constantReferenceFromData(node.data);
+  if (resolved === null) {
+    throw new Error(`Node "${node.id}" has invalid constant data.`);
   }
-  const value = node.data.numberValue;
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  return resolved.value;
+}
+
+function materializeReferenceNode(
+  node: FlowNode,
+  nodes: ReadonlyMap<string, FlowNode>,
+): FlowNode {
+  const sourceNodeId = node.data.sourceNodeId;
+  if (typeof sourceNodeId !== "string") {
+    return node;
+  }
+  const source = resolveNodeReference(sourceNodeId, nodes);
+  const expectedType = node.type === "constant-ref" ? "constant" : node.type;
+  if (source === null || source.type !== expectedType) {
+    throw new Error(
+      `Reference node "${node.id}" does not resolve to a ${expectedType} node.`,
+    );
+  }
+  return {
+    ...node,
+    type: source.type,
+    data: { ...source.data, kind: source.type },
+  };
 }
 
 function withExpandedRegion(node: FlowNode): FlowNode {
@@ -840,9 +882,14 @@ export class FlowRuntimeService {
       allowTerminalWithoutEdge,
     } = frame;
     const run = this.#run as FlowRunDto;
-    const portContext = this.#portContext();
-
     const nodes = new Map(document.nodes.map((node) => [node.id, node]));
+    const portContext: FlowPortContext = {
+      ...this.#portContext(),
+      resolveConstantReference: (sourceNodeId) =>
+        resolveConstantReference(sourceNodeId, nodes),
+      resolveNodeReference: (sourceNodeId) =>
+        resolveNodeReference(sourceNodeId, nodes),
+    };
     const steps = new Map(run.steps.map((step) => [step.nodeId, step]));
     const outgoing = new Map<string, FlowEdge[]>();
     const incomingData = new Map<string, FlowEdge[]>();
@@ -926,24 +973,26 @@ export class FlowRuntimeService {
       }
       computingData.add(node.id);
       try {
-        switch (node.type) {
-          case "constant": {
+        const effectiveNode = materializeReferenceNode(node, nodes);
+        switch (effectiveNode.type) {
+          case "constant":
+          case "constant-ref": {
             dataValues.set(
               dataValueKey(node.id, "value"),
-              structuredClone(constantValue(node)),
+              structuredClone(constantValue(effectiveNode, nodes)),
             );
             break;
           }
           case "screen-region": {
             dataValues.set(
               dataValueKey(node.id, "region"),
-              structuredClone(screenRegionValue(node)),
+              structuredClone(screenRegionValue(effectiveNode)),
             );
             break;
           }
           case "compare": {
-const resolved = resolveNodeInputs(
-        node,
+            const resolved = resolveNodeInputs(
+        effectiveNode,
         incomingData.get(node.id) ?? [],
         nodes,
         computeDataOutput,
@@ -1006,6 +1055,7 @@ const resolved = resolveNodeInputs(
       }
       if (
         source.type === "constant" ||
+        source.type === "constant-ref" ||
         source.type === "screen-region"
       ) {
         computePureDataNode(source);
@@ -1034,6 +1084,7 @@ const resolved = resolveNodeInputs(
       if (node === undefined) {
         throw new Error(`Flow reached missing node "${currentNodeId}".`);
       }
+      const effectiveNode = materializeReferenceNode(node, nodes);
       await this.#pauseIfNeeded(node.id, signal);
       if (step !== null) {
         step.state = "running";
@@ -1050,8 +1101,8 @@ const resolved = resolveNodeInputs(
       });
 
       const resolved = resolveNodeInputs(
-        node,
-        node.type === "repeat-until" && arrivalPort === "in"
+        effectiveNode,
+        effectiveNode.type === "repeat-until" && arrivalPort === "in"
           ? []
           : (incomingData.get(node.id) ?? []),
         nodes,
@@ -1060,7 +1111,7 @@ const resolved = resolveNodeInputs(
       );
 
       let result: NodeExecutionResult;
-      if (node.type === "output") {
+      if (effectiveNode.type === "output") {
         const results = collectOutputResults(resolved.node, resolved.connected);
         frameResult = results;
         this.#emitLog(node.id, "trace", "Captured results", {
@@ -1081,7 +1132,7 @@ const resolved = resolveNodeInputs(
           depth,
         );
       }
-      storeNodeOutputs(node, result.outputs, dataValues, portContext);
+      storeNodeOutputs(effectiveNode, result.outputs, dataValues, portContext);
       abortIfNeeded(signal);
       if (step !== null) {
         step.state = "completed";
@@ -1596,11 +1647,20 @@ const resolved = resolveNodeInputs(
         repeatUntilIterations.set(node.id, iterations + 1);
         return executionResult("body");
       }
+      case "forever": {
+        if (arrivalPort !== "in" && arrivalPort !== "loop") {
+          throw new Error(
+            `Forever node "${node.id}" was entered through invalid port "${arrivalPort ?? "(none)"}".`,
+          );
+        }
+        return executionResult("body");
+      }
       case "screen-region":
         throw new Error(
           `Screen region node "${node.id}" has no control flow to execute.`,
         );
       case "constant":
+      case "constant-ref":
         throw new Error(
           `Constant node "${node.id}" has no control flow to execute.`,
         );

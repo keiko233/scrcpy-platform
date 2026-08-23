@@ -13,6 +13,8 @@ import {
   type FlowScriptSignature,
   type FlowValidationIssue,
   type ResolvedFlowPort,
+  resolveConstantReference,
+  resolveNodeReference,
 } from "./project-contracts";
 
 import {
@@ -71,13 +73,10 @@ function isLoopBackEdge(
   return (
     (targetKind === "for" ||
       targetKind === "while" ||
-      targetKind === "repeat-until") &&
+      targetKind === "repeat-until" ||
+      targetKind === "forever") &&
     edge.targetHandle === "loop"
   );
-}
-
-function allowsFlowFanIn(node: FlowNode): boolean {
-  return node.type === "end";
 }
 
 export function validateFlow(
@@ -88,6 +87,7 @@ export function validateFlow(
   const issues: FlowValidationIssue[] = [];
   const nodeKinds = new Map<string, FlowNodeKind>();
   const nodeData = new Map<string, FlowNode["data"]>();
+  const nodeMap = new Map<string, FlowNode>();
   const seenNodeIds = new Set<string>();
 
   for (const node of nodes) {
@@ -101,6 +101,7 @@ export function validateFlow(
     seenNodeIds.add(node.id);
     nodeKinds.set(node.id, node.type);
     nodeData.set(node.id, node.data);
+    nodeMap.set(node.id, node);
   }
 
   issues.push(
@@ -205,7 +206,60 @@ export function validateFlow(
 
   const portContext: FlowPortContext = {
     resolveCallSignature: bestEffortSignatureOfScript,
+    resolveConstantReference: (sourceNodeId) =>
+      resolveConstantReference(sourceNodeId, nodeMap),
+    resolveNodeReference: (sourceNodeId) =>
+      resolveNodeReference(sourceNodeId, nodeMap),
   };
+
+  for (const node of nodes) {
+    const isLegacyConstantReference = node.type === "constant-ref";
+    const sourceNodeId = node.data.sourceNodeId;
+    if (
+      !isLegacyConstantReference &&
+      typeof sourceNodeId !== "string"
+    ) {
+      continue;
+    }
+    if (typeof sourceNodeId !== "string" || sourceNodeId.length === 0) {
+      issues.push({
+        kind: isLegacyConstantReference
+          ? "missing-constant-source"
+          : "missing-reference-source",
+        nodeId: node.id,
+        message: isLegacyConstantReference
+          ? `Constant reference node "${node.id}" does not select a source constant.`
+          : `Reference node "${node.id}" does not select a source block.`,
+      });
+      continue;
+    }
+    if (!nodeMap.has(sourceNodeId)) {
+      issues.push({
+        kind: isLegacyConstantReference
+          ? "unknown-constant-source"
+          : "unknown-reference-source",
+        nodeId: node.id,
+        message: isLegacyConstantReference
+          ? `Constant reference node "${node.id}" references unknown source "${sourceNodeId}".`
+          : `Reference node "${node.id}" references unknown source "${sourceNodeId}".`,
+      });
+      continue;
+    }
+    const valid = isLegacyConstantReference
+      ? resolveConstantReference(sourceNodeId, nodeMap) !== null
+      : resolveNodeReference(sourceNodeId, nodeMap)?.type === node.type;
+    if (!valid) {
+      issues.push({
+        kind: isLegacyConstantReference
+          ? "invalid-constant-source"
+          : "invalid-reference-source",
+        nodeId: node.id,
+        message: isLegacyConstantReference
+          ? `Constant reference node "${node.id}" does not resolve to a constant value.`
+          : `Reference node "${node.id}" must refer to a block of the same type without a reference cycle.`,
+      });
+    }
+  }
 
   const seenEdgeIds = new Set<string>();
   for (const edge of edges) {
@@ -246,12 +300,6 @@ export function validateFlow(
       kind: "multiple-starts",
       nodeId: start.id,
       message: `Flow contains more than one Start node; extra Start "${start.id}".`,
-    });
-  }
-  if (ends.length === 0) {
-    issues.push({
-      kind: "missing-end",
-      message: "Flow must contain exactly one End node.",
     });
   }
   for (const end of ends.slice(1)) {
@@ -365,17 +413,28 @@ export function validateFlow(
       reachableFlowNodes.add(nodeId);
     }
   }
+  const hasReachableForever = [...reachableFlowNodes].some(
+    (nodeId) => nodeKinds.get(nodeId) === "forever",
+  );
+  if (ends.length === 0 && !hasReachableForever) {
+    issues.push({
+      kind: "missing-end",
+      message: "Flow must contain an End node unless it contains a reachable Forever loop.",
+    });
+  }
 
   for (const node of nodes) {
     if (!reachableFlowNodes.has(node.id)) {
       continue;
     }
     const incomingCount = incoming.get(node.id)?.length ?? 0;
-    const inputs: readonly string[] = flowInputPortIds(node.type, node.data);
+    const inputs: readonly string[] = flowInputPortIds(
+      node.type,
+      node.data,
+      portContext,
+    );
     const expectedIncoming = inputs.length;
-    const incomingValid = allowsFlowFanIn(node)
-      ? incomingCount >= expectedIncoming
-      : incomingCount === expectedIncoming;
+    const incomingValid = incomingCount >= expectedIncoming;
     if (!incomingValid) {
       issues.push({
         kind: "illegal-incoming",
@@ -397,13 +456,13 @@ export function validateFlow(
 
     for (const port of inputs) {
       const count = incomingByPort.get(portKey(node.id, port))?.length ?? 0;
-      const portValid = allowsFlowFanIn(node) ? count >= 1 : count === 1;
+      const portValid = count >= 1;
       if (!portValid) {
         issues.push({
           kind: "illegal-port-count",
           nodeId: node.id,
           port,
-          message: `Input port "${port}" on node "${node.id}" has ${count} edge(s); expected 1.`,
+          message: `Input port "${port}" on node "${node.id}" has ${count} edge(s); expected at least 1.`,
         });
       }
     }

@@ -24,6 +24,7 @@ export enum FlowNodeKind {
   For = "for",
   While = "while",
   RepeatUntil = "repeat-until",
+  Forever = "forever",
   Assert = "assert",
   ScreenRegion = "screen-region",
   Constant = "constant",

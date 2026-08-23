@@ -136,6 +136,43 @@ describe("workbench flow validation", () => {
     assert.ok(issueKinds(twoEnds).includes("multiple-ends"));
   });
 
+  it("allows a reachable Forever loop without an End node", () => {
+    const nodes = [
+      node("start", "start"),
+      node("forever", "forever"),
+      node("body", "delay"),
+    ];
+    const compiled = compileFlow(nodes, [
+      edge("e1", "start", "forever", "next", "in"),
+      edge("e2", "forever", "body", "body", "in"),
+      edge("e3", "body", "forever", "next", "loop"),
+    ]);
+
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+  });
+
+  it("allows multiple branch exits to return to Forever.loop", () => {
+    const nodes = [
+      node("start", "start"),
+      node("forever", "forever"),
+      node("if", "if"),
+      node("true-action", "click"),
+      node("false-action", "delay"),
+    ];
+    const compiled = compileFlow(nodes, [
+      edge("e1", "start", "forever", "next", "in"),
+      edge("e2", "forever", "if", "body", "in"),
+      edge("e3", "if", "true-action", "true"),
+      edge("e4", "if", "false-action", "false"),
+      edge("e5", "true-action", "forever", "next", "loop"),
+      edge("e6", "false-action", "forever", "next", "loop"),
+    ]);
+
+    assert.equal(compiled.valid, true);
+    assert.deepEqual(compiled.issues, []);
+  });
+
   it("reports edges that reference missing nodes", () => {
     const { nodes } = linearGraph();
     const issues = validateFlow(nodes, [edge("e-bad", "start", "missing")]);
@@ -176,7 +213,7 @@ describe("workbench flow validation", () => {
     const outgoing = issues.filter((issue) => issue.kind === "illegal-outgoing");
     assert.ok(outgoing.some((issue) => issue.nodeId === "start"));
     const incoming = issues.filter((issue) => issue.kind === "illegal-incoming");
-    assert.ok(incoming.some((issue) => issue.nodeId === "join"));
+    assert.deepEqual(incoming, []);
   });
 
   it("reports cycles", () => {

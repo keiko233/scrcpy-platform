@@ -198,9 +198,7 @@ export function mergeEdge(
   if (edges.some(isExactDuplicate)) {
     return edges;
   }
-  const targetNode = nodes.find((node) => node.id === connection.target);
-  const allowsFlowFanIn =
-    targetNode?.data.kind === "end" && ports.target.role === "flow";
+  const allowsFlowFanIn = ports.target.role === "flow";
   const next: WorkbenchEdge = {
     ...connection,
     id: `edge-${crypto.randomUUID()}`,
@@ -487,6 +485,10 @@ export function pasteSelection(
   }
   const nodes: WorkbenchNode[] = payload.nodes.map((node) => {
     const id = idMap.get(node.id) as string;
+    const sourceNodeId =
+      typeof node.data.sourceNodeId === "string"
+        ? idMap.get(node.data.sourceNodeId) ?? node.data.sourceNodeId
+        : undefined;
     const next: WorkbenchNode = {
       id,
       type: node.type,
@@ -494,7 +496,10 @@ export function pasteSelection(
         x: node.position.x + offset.x,
         y: node.position.y + offset.y,
       },
-      data: node.data,
+      data:
+        sourceNodeId === undefined
+          ? node.data
+          : ({ ...node.data, sourceNodeId } as WorkbenchNode["data"]),
       selected: true,
       ...(node.type === "group"
         ? { zIndex: GROUP_Z_INDEX, draggable: true }

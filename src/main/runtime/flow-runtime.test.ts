@@ -785,6 +785,61 @@ describe("FlowRuntimeService", () => {
     assert.equal(driver.calls[0]?.data.y, 17);
   });
 
+  test("resolves constant references from the current source value", async () => {
+    const document = linearDocument([
+      node("click", "click", { x: 1, y: 2 }),
+    ]);
+    const source = constantNode("source", 17);
+    const reference = node("reference", "constant-ref", {
+      sourceNodeId: "source",
+    });
+    document.nodes.push(source, reference);
+    document.edges.push(
+      {
+        id: "data-x",
+        source: "reference",
+        target: "click",
+        sourceHandle: "value",
+        targetHandle: "x",
+      },
+      {
+        id: "data-y",
+        source: "reference",
+        target: "click",
+        sourceHandle: "value",
+        targetHandle: "y",
+      },
+    );
+    const { service, driver } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(driver.calls[0]?.data.x, 17);
+    assert.equal(driver.calls[0]?.data.y, 17);
+  });
+
+  test("executes a read-only click reference with the source settings", async () => {
+    const click = node("click-source", "click", { x: 123, y: 456 });
+    const reference = node("click-reference", "click", {
+      sourceNodeId: "click-source",
+    });
+    const document = linearDocument([reference]);
+    document.nodes.push(click);
+    const { service, driver } = serviceFor(document);
+
+    service.start(RUN_INPUT);
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), [
+      "click-reference",
+    ]);
+    assert.equal(driver.calls[0]?.data.x, 123);
+    assert.equal(driver.calls[0]?.data.y, 456);
+  });
+
   test("compares constants, takes one If branch, and merges", async () => {
     const document = graphDocument(
       [
@@ -932,6 +987,28 @@ describe("FlowRuntimeService", () => {
     assert.equal(
       completed.steps.find((step) => step.nodeId === "repeat")?.executionCount,
       3,
+    );
+  });
+
+  test("executes Forever as a single-node debug entry without an End node", async () => {
+    const document: FlowDocument = {
+      schemaVersion: 1,
+      nodes: [node("forever", "forever")],
+      edges: [],
+    };
+    const { service } = serviceFor(document);
+
+    service.start({
+      ...RUN_INPUT,
+      mode: "single-node",
+      entryNodeId: "forever",
+    });
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.equal(
+      completed.steps.find((step) => step.nodeId === "forever")?.executionCount,
+      1,
     );
   });
 

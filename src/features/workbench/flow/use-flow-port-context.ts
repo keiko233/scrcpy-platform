@@ -2,6 +2,8 @@ import { useMemo } from "react";
 
 import { bestEffortFlowSignature } from "@/shared/flow-signature";
 import {
+  resolveConstantReference,
+  resolveNodeReference,
   type FlowPortContext,
   type FlowScriptSignature,
   type ScriptDto,
@@ -32,12 +34,23 @@ export function callSignatureResolverFrom(
  * drafts when the run starts.
  */
 export function useFlowPortContext(): FlowPortContext {
-  const { library } = useWorkbench();
+  const { library, flow } = useWorkbench();
   const scripts = library.scripts;
+  const nodes = flow.nodes;
   return useMemo(
     () => ({
       resolveCallSignature: callSignatureResolverFrom(scripts),
+      resolveConstantReference: (sourceNodeId: string) =>
+        resolveConstantReference(
+          sourceNodeId,
+          new Map(nodes.map((node) => [node.id, node])),
+        ),
+      resolveNodeReference: (sourceNodeId: string) =>
+        resolveNodeReference(
+          sourceNodeId,
+          new Map(nodes.map((node) => [node.id, node])),
+        ),
     }),
-    [scripts],
+    [nodes, scripts],
   );
 }

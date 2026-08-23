@@ -233,7 +233,7 @@ describe("validateFlow boundary rules", () => {
     assert.deepEqual(issues, []);
   });
 
-  test("still requires a terminal when neither End nor Output exists", () => {
+  test("still requires an End when neither End nor a reachable Forever exists", () => {
     const issues = validateFlow([node("start", "start")], []);
     assert.ok(issueKinds(issues).includes("missing-end"));
   });

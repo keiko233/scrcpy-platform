@@ -25,6 +25,8 @@ import {
   type FlowDocument,
   type FlowScriptSignature,
   type JsonValue,
+  resolveConstantReference,
+  resolveNodeReference,
 } from "@/shared/project-contracts";
 
 import { BLOCK_DEFINITIONS } from "../blocks";
@@ -82,6 +84,7 @@ export interface FlowEditor {
     position?: XYPosition,
     parentId?: string,
   ) => string;
+  addBlockReference: (sourceNodeId: string, position?: XYPosition) => string | null;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
   groupSelection: (geometry: ReadonlyMap<string, NodeGeometry>) => void;
@@ -185,8 +188,20 @@ export function useFlowEditor(
 
   const resolveCallSignature = options.resolveCallSignature;
   const portContext = useMemo(
-    () => ({ resolveCallSignature }),
-    [resolveCallSignature],
+    () => ({
+      resolveCallSignature,
+      resolveConstantReference: (sourceNodeId: string) =>
+        resolveConstantReference(
+          sourceNodeId,
+          new Map(nodes.map((node) => [node.id, node])),
+        ),
+      resolveNodeReference: (sourceNodeId: string) =>
+        resolveNodeReference(
+          sourceNodeId,
+          new Map(nodes.map((node) => [node.id, node])),
+        ),
+    }),
+    [nodes, resolveCallSignature],
   );
 
   const getHistorySnapshot = useCallback<() => FlowHistorySnapshot>(
@@ -383,9 +398,71 @@ export function useFlowEditor(
     [nodesRef, recordHistory, setNodes],
   );
 
+  const addBlockReference = useCallback(
+    (sourceNodeId: string, position?: XYPosition): string | null => {
+      const source = nodesRef.current.find(
+        (node) =>
+          node.id === sourceNodeId &&
+          node.type !== "start" &&
+          node.type !== "end" &&
+          node.type !== "group" &&
+          node.type !== "constant-ref" &&
+          typeof node.data.sourceNodeId !== "string",
+      );
+      if (source === undefined) {
+        return null;
+      }
+      const referenceCount = nodesRef.current.filter(
+        (node) =>
+          node.type === source.type &&
+          node.data.sourceNodeId === sourceNodeId,
+      ).length;
+      const node: WorkbenchNode = {
+        id: `node-${crypto.randomUUID()}`,
+        type: source.type,
+        position:
+          position ?? {
+            x: source.position.x + 280 + (referenceCount % 3) * 24,
+            y: source.position.y + 80 + Math.floor(referenceCount / 3) * 72,
+          },
+        data: { kind: source.type, sourceNodeId } as WorkbenchNode["data"],
+        selected: true,
+        ...(source.parentId !== undefined ? { parentId: source.parentId } : {}),
+      };
+      recordHistory();
+      setNodes((current) =>
+        syncGroupDraggable([
+          ...current.map((item) =>
+            item.selected ? { ...item, selected: false } : item,
+          ),
+          node,
+        ]),
+      );
+      setDirty(true);
+      return node.id;
+    },
+    [nodesRef, recordHistory, setNodes],
+  );
+
   const deleteNode = useCallback(
     (id: string) => {
       const removedIds = collectRemovedNodeIds(nodesRef.current, [id]);
+      const pending = [...removedIds];
+      while (pending.length > 0) {
+        const removedId = pending.pop();
+        if (removedId === undefined) {
+          continue;
+        }
+        for (const node of nodesRef.current) {
+          if (
+            node.data.sourceNodeId === removedId &&
+            !removedIds.has(node.id)
+          ) {
+            removedIds.add(node.id);
+            pending.push(node.id);
+          }
+        }
+      }
       if (removedIds.size === 0) {
         return;
       }
@@ -736,6 +813,7 @@ export function useFlowEditor(
     onViewportChange,
     getDocument,
     addBlock,
+    addBlockReference,
     deleteNode,
     updateNodeData,
     groupSelection,

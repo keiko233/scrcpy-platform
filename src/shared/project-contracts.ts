@@ -36,10 +36,12 @@ export const FLOW_NODE_KINDS = [
   "for",
   "while",
   "repeat-until",
+  "forever",
   "assert",
   "log",
   "screen-region",
   "constant",
+  "constant-ref",
   "note",
   "group",
   "input",
@@ -64,10 +66,12 @@ export const FLOW_NODE_PORTS = {
   for: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   while: { inputs: ["in", "loop"], outputs: ["body", "done"] },
   "repeat-until": { inputs: ["in", "loop"], outputs: ["body", "done"] },
+  forever: { inputs: ["in", "loop"], outputs: ["body"] },
   assert: { inputs: ["in"], outputs: ["next"] },
   log: { inputs: ["in"], outputs: ["next"] },
   "screen-region": { inputs: [], outputs: [] },
   constant: { inputs: [], outputs: [] },
+  "constant-ref": { inputs: [], outputs: [] },
   note: { inputs: [], outputs: [] },
   group: { inputs: [], outputs: [] },
   input: { inputs: [], outputs: [] },
@@ -200,6 +204,7 @@ export const FLOW_NODE_DATA_PORTS = {
     inputs: [dataPort("condition", "Condition", "boolean")],
     outputs: [],
   },
+  forever: { inputs: [], outputs: [] },
   assert: {
     inputs: [dataPort("condition", "Condition", "boolean")],
     outputs: [],
@@ -213,6 +218,10 @@ export const FLOW_NODE_DATA_PORTS = {
     outputs: [outputPort("region", "Region", "screen-region")],
   },
   constant: {
+    inputs: [],
+    outputs: [outputPort("value", "Value", "any")],
+  },
+  "constant-ref": {
     inputs: [],
     outputs: [outputPort("value", "Value", "any")],
   },
@@ -276,7 +285,9 @@ function dynamicPortCount(
 export function flowDynamicPortCount(
   kind: FlowNodeKind,
   data: DynamicPortData,
+  context?: FlowPortContext,
 ): number | null {
+  data = flowNodeDataForReference(kind, data, context);
   const config =
     FLOW_NODE_DYNAMIC_INPUTS[kind] ?? FLOW_NODE_DYNAMIC_FLOW_INPUTS[kind];
   return config === undefined ? null : dynamicPortCount(data, config);
@@ -468,6 +479,47 @@ export interface FlowPortContext {
    * target as unknown/unusable and suppresses the call node's data ports.
    */
   resolveCallSignature?: (scriptId: string) => FlowScriptSignature | null;
+  /** Resolves the effective value and type of a constant reference node. */
+  resolveConstantReference?: (
+    sourceNodeId: string,
+  ) => FlowConstantReference | null;
+  /** Resolves the effective source node behind a generic read-only reference. */
+  resolveNodeReference?: (sourceNodeId: string) => FlowNodeReference | null;
+}
+
+export interface FlowNodeReference {
+  type: FlowNodeKind;
+  data: Readonly<Record<string, JsonValue>>;
+}
+
+export type FlowConstantType = "number" | "string" | "boolean";
+
+export interface FlowConstantReference {
+  type: FlowConstantType;
+  value: JsonValue;
+}
+
+/** Resolves the effective value of a persisted constant or constant reference. */
+export function constantReferenceFromData(
+  data: Readonly<Record<string, JsonValue>> | undefined,
+): FlowConstantReference | null {
+  const type = data?.type;
+  if (type === "boolean") {
+    return { type, value: data?.booleanValue === true };
+  }
+  if (type === "string") {
+    return {
+      type,
+      value: typeof data?.stringValue === "string" ? data.stringValue : "",
+    };
+  }
+  // Keep the runtime's legacy behavior: missing or invalid constant types are
+  // treated as numeric constants until the user corrects the setting.
+  const value = data?.numberValue;
+  return {
+    type: "number",
+    value: typeof value === "number" && Number.isFinite(value) ? value : 0,
+  };
 }
 
 function derivedCallNodePorts(
@@ -491,13 +543,22 @@ function derivedCallNodePorts(
 function configuredOutputDataType(
   kind: FlowNodeKind,
   data: DynamicPortData,
+  context?: FlowPortContext,
 ): FlowDataType | null {
+  data = flowNodeDataForReference(kind, data, context);
   if (kind === "constant") {
     if (data?.type === "string" || data?.type === "boolean") {
       return data.type;
     }
     // The runtime treats missing/invalid constant types as numbers.
     return "number";
+  }
+  if (kind === "constant-ref") {
+    const sourceNodeId = data?.sourceNodeId;
+    if (typeof sourceNodeId === "string") {
+      return context?.resolveConstantReference?.(sourceNodeId)?.type ?? "any";
+    }
+    return "any";
   }
   if (kind === "convert") {
     if (data?.toType === "string" || data?.toType === "boolean") {
@@ -517,7 +578,9 @@ function configuredOutputDataType(
 export function flowInputPortIds(
   kind: FlowNodeKind,
   data: DynamicPortData,
+  context?: FlowPortContext,
 ): string[] {
+  data = flowNodeDataForReference(kind, data, context);
   const ids: string[] = [...FLOW_NODE_PORTS[kind].inputs];
   const config = FLOW_NODE_DYNAMIC_FLOW_INPUTS[kind];
   if (config !== undefined) {
@@ -535,6 +598,7 @@ export function flowDataInputPorts(
   data: DynamicPortData,
   context?: FlowPortContext,
 ): FlowDataPortDefinition[] {
+  data = flowNodeDataForReference(kind, data, context);
   const inputs = [...FLOW_NODE_DATA_PORTS[kind].inputs];
   const config = FLOW_NODE_DYNAMIC_INPUTS[kind];
   if (config !== undefined) {
@@ -573,7 +637,8 @@ export function flowDataOutputPorts(
   data: DynamicPortData,
   context?: FlowPortContext,
 ): FlowDataPortDefinition[] {
-  const configuredType = configuredOutputDataType(kind, data);
+  data = flowNodeDataForReference(kind, data, context);
+  const configuredType = configuredOutputDataType(kind, data, context);
   const outputs = FLOW_NODE_DATA_PORTS[kind].outputs.map((port) =>
     configuredType !== null && port.id === "value"
       ? { ...port, dataType: configuredType }
@@ -612,7 +677,7 @@ export function resolveFlowPort(
   context?: FlowPortContext,
 ): ResolvedFlowPort | null {
   if (direction === "input") {
-    const flowPorts = flowInputPortIds(kind, data);
+    const flowPorts = flowInputPortIds(kind, data, context);
     const resolvedId =
       persistedPort ?? (flowPorts.length === 1 ? flowPorts[0] : undefined);
     if (
@@ -677,7 +742,13 @@ export type FlowValidationIssueKind =
   | "unknown-call-target"
   | "invalid-call-target"
   | "missing-call-argument"
-  | "call-cycle";
+  | "call-cycle"
+  | "missing-constant-source"
+  | "unknown-constant-source"
+  | "invalid-constant-source"
+  | "missing-reference-source"
+  | "unknown-reference-source"
+  | "invalid-reference-source";
 
 export interface FlowValidationIssue {
   kind: FlowValidationIssueKind;
@@ -752,6 +823,84 @@ export type FlowNode = z.infer<typeof FlowNodeSchema>;
 export type FlowEdge = z.infer<typeof FlowEdgeSchema>;
 export type FlowViewport = z.infer<typeof FlowViewportSchema>;
 export type FlowDocument = z.infer<typeof FlowDocumentSchema>;
+
+/** Resolves a generic reference to the original node's effective payload. */
+export function resolveNodeReference(
+  sourceNodeId: string,
+  nodes: ReadonlyMap<string, Pick<FlowNode, "type" | "data">>,
+  visiting: ReadonlySet<string> = new Set(),
+): FlowNodeReference | null {
+  if (visiting.has(sourceNodeId)) {
+    return null;
+  }
+  const source = nodes.get(sourceNodeId);
+  if (source === undefined) {
+    return null;
+  }
+  const nextVisiting = new Set(visiting);
+  nextVisiting.add(sourceNodeId);
+  const nestedSourceId = source.data.sourceNodeId;
+  if (source.type === "constant-ref") {
+    return typeof nestedSourceId === "string"
+      ? resolveNodeReference(nestedSourceId, nodes, nextVisiting)
+      : null;
+  }
+  if (typeof nestedSourceId !== "string") {
+    return { type: source.type, data: source.data };
+  }
+  const nested = resolveNodeReference(nestedSourceId, nodes, nextVisiting);
+  return nested?.type === source.type ? nested : null;
+}
+
+function flowNodeDataForReference(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+  context?: FlowPortContext,
+): DynamicPortData {
+  // constant-ref is the legacy output-only node kept for drafts created by
+  // the first version of this feature. New references retain their source
+  // block's kind and use the generic resolver below.
+  if (kind === "constant-ref") {
+    return data;
+  }
+  const sourceNodeId = data?.sourceNodeId;
+  if (typeof sourceNodeId !== "string") {
+    return data;
+  }
+  const resolved = context?.resolveNodeReference?.(sourceNodeId);
+  return resolved?.type === kind ? resolved.data : data;
+}
+
+/**
+ * Resolves a constant reference through the current document snapshot. The
+ * recursion guard keeps malformed legacy documents from hanging the editor
+ * or runtime when references form a cycle.
+ */
+export function resolveConstantReference(
+  sourceNodeId: string,
+  nodes: ReadonlyMap<string, Pick<FlowNode, "type" | "data">>,
+  visiting: ReadonlySet<string> = new Set(),
+): FlowConstantReference | null {
+  if (visiting.has(sourceNodeId)) {
+    return null;
+  }
+  const source = nodes.get(sourceNodeId);
+  if (source === undefined) {
+    return null;
+  }
+  const nextVisiting = new Set(visiting);
+  nextVisiting.add(sourceNodeId);
+  if (source.type === "constant") {
+    return constantReferenceFromData(source.data);
+  }
+  if (source.type !== "constant-ref") {
+    return null;
+  }
+  const nextSourceId = source.data.sourceNodeId;
+  return typeof nextSourceId === "string"
+    ? resolveConstantReference(nextSourceId, nodes, nextVisiting)
+    : null;
+}
 
 export const EMPTY_FLOW_DOCUMENT: FlowDocument = {
   schemaVersion: 1,

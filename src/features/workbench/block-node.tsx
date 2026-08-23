@@ -2,6 +2,8 @@ import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import {
   BugIcon,
+  LinkIcon,
+  LockKeyholeIcon,
   MinusIcon,
   PlayIcon,
   PlusIcon,
@@ -27,6 +29,7 @@ import {
   flowDynamicPortId,
   flowInputNodeParams,
   flowOutputNodeResults,
+  resolveNodeReference,
   type FlowDataType,
 } from "@/shared/project-contracts";
 
@@ -238,20 +241,36 @@ function DebugNodeButtons({
 }
 
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
-  const { deleteNode, updateNodeData } = useFlowApi();
+  const { addBlockReference, deleteNode, updateNodeData } = useFlowApi();
   const portContext = useFlowPortContext();
   const { library, devices, screens, runs, flow, allowUnsavedRun } = useWorkbench();
   const [configOpen, setConfigOpen] = useState(false);
-  const definition = BLOCK_DEFINITIONS[data.kind];
-  const Icon = definition?.icon;
   const customName = customNodeName(data.name);
-  const fallbackTitle = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
-  const rawSummary = definition ? definition.summarize(data) : m.block_summarize_unknown();
+  const sourceNodeId =
+    typeof data.sourceNodeId === "string" ? data.sourceNodeId : undefined;
+  const referenceSource =
+    sourceNodeId === undefined
+      ? undefined
+      : resolveNodeReference(
+          sourceNodeId,
+          new Map(flow.nodes.map((node) => [node.id, node])),
+        );
+  const isReference = sourceNodeId !== undefined || data.kind === "constant-ref";
+  const renderedKind = referenceSource?.type ?? data.kind;
+  const renderedData = (referenceSource?.data ?? data) as WorkbenchNode["data"];
+  const referenceName =
+    referenceSource == null ? "" : customNodeName(referenceSource.data.name);
+  const definition = BLOCK_DEFINITIONS[renderedKind];
+  const Icon = definition?.icon;
+  const fallbackTitle = definition?.label ?? String(renderedKind ?? m.node_config_block_fallback());
+  const rawSummary = definition ? definition.summarize(renderedData) : m.block_summarize_unknown();
   const summary =
-    data.kind === "call" && typeof data.targetScriptId === "string"
-      ? (library.scripts.find((script) => script.id === data.targetScriptId)
+    renderedKind === "call" && typeof renderedData.targetScriptId === "string"
+      ? (library.scripts.find((script) => script.id === renderedData.targetScriptId)
           ?.name ?? m.block_field_call_target_placeholder())
-      : rawSummary;
+      : isReference && referenceSource == null
+        ? m.block_reference_invalid()
+        : rawSummary;
   const hasFlowPorts =
     (definition?.inputPorts.length ?? 0) > 0 ||
     (definition?.outputPorts.length ?? 0) > 0;
@@ -261,14 +280,16 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
   const session = devices.session;
   const displayId = screens.screen?.activeDisplayId ?? null;
   const canDebug =
-    data.kind !== "start" &&
-    data.kind !== "end" &&
-    data.kind !== "note" &&
-    data.kind !== "group" &&
-    data.kind !== "input" &&
-    data.kind !== "screen-region" &&
-    data.kind !== "constant" &&
-    data.kind !== "compare" &&
+    renderedKind !== "start" &&
+    renderedKind !== "end" &&
+    renderedKind !== "note" &&
+    renderedKind !== "group" &&
+    renderedKind !== "input" &&
+    renderedKind !== "screen-region" &&
+    renderedKind !== "constant" &&
+    renderedKind !== "constant-ref" &&
+    !isReference &&
+    renderedKind !== "compare" &&
     library.selectedScript !== null &&
     (!flow.dirty || allowUnsavedRun) &&
     !runs.busy &&
@@ -299,9 +320,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
   };
   const dataInputs = flowDataInputPorts(data.kind, data, portContext);
   const dataOutputs = flowDataOutputPorts(data.kind, data, portContext);
-  const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[data.kind];
-  const dynamicDataConfig = FLOW_NODE_DYNAMIC_INPUTS[data.kind];
-  const dynamicCount = flowDynamicPortCount(data.kind, data) ?? 0;
+  const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[renderedKind];
+  const dynamicDataConfig = FLOW_NODE_DYNAMIC_INPUTS[renderedKind];
+  const dynamicCount = flowDynamicPortCount(renderedKind, data, portContext) ?? 0;
   const dynamicIds = Array.from({ length: dynamicCount }, (_, index) =>
     flowDynamicPortId(index),
   );
@@ -681,9 +702,11 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             )}
             <div className="min-w-0 flex-1">
               <BlockTitle
-                name={customName}
+                name={isReference ? referenceName : customName}
                 fallback={fallbackTitle}
-                onDoubleClick={() => setConfigOpen(true)}
+                onDoubleClick={
+                  isReference ? undefined : () => setConfigOpen(true)
+                }
               />
               <div
                 className="truncate text-[10px] leading-3.5 text-muted-foreground"
@@ -697,12 +720,19 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               onRunSingle={() => startDebugRun("single-node")}
               onRunFromHere={() => startDebugRun("from-node")}
             />
-            <NodeConfigPopover
-              nodeId={id}
-              data={data}
-              open={configOpen}
-              onOpenChange={setConfigOpen}
-            />
+            {isReference ? (
+              <LockKeyholeIcon
+                className="size-3.5 shrink-0 text-muted-foreground"
+                aria-label={m.block_reference_read_only()}
+              />
+            ) : (
+              <NodeConfigPopover
+                nodeId={id}
+                data={data}
+                open={configOpen}
+                onOpenChange={setConfigOpen}
+              />
+            )}
           </div>
           {portRows.length > 0 && (
             <div className="py-1">
@@ -788,6 +818,18 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
         </div>
       </ContextMenuTrigger>
       <ContextMenuPopup sideOffset={4}>
+        {!isReference &&
+          renderedKind !== "start" &&
+          renderedKind !== "end" &&
+          renderedKind !== "group" &&
+          renderedKind !== "note" &&
+          renderedKind !== "input" &&
+          renderedKind !== "output" && (
+          <ContextMenuItem onClick={() => addBlockReference(id)}>
+            <LinkIcon />
+            {m.block_node_create_reference()}
+          </ContextMenuItem>
+          )}
         <DebugContextItems
           canRun={canDebug}
           isBreakpoint={isBreakpoint}
