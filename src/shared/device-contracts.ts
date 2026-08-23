@@ -76,6 +76,14 @@ export type WirelessOperationResult =
       message: string;
     };
 
+export type WirelessConnectResult =
+  | { status: "ok"; session: DeviceSessionDto }
+  | {
+      status: "error";
+      error: WirelessOperationFailure;
+      message: string;
+    };
+
 export const DeviceSessionStateSchema = z.enum([
   "disconnected",
   "connecting",

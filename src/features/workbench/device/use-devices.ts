@@ -176,12 +176,19 @@ export function useDevices(): DeviceManager {
     mutationFn: (address: string) =>
       window.androidPlatform.connectWirelessDevice({ address }),
     onSuccess: (result) => {
-      if (result.status === "error") {
+      if (result.status === "ok") {
+        queryClient.setQueryData<DeviceSessionDto>(
+          deviceSessionQueryKey,
+          result.session,
+        );
+      } else {
         setSessionError(describeWirelessFailure(result.error, result.message));
       }
     },
-    onSettled: () =>
-      void queryClient.invalidateQueries({ queryKey: deviceListQueryKey }),
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: deviceListQueryKey });
+      void queryClient.invalidateQueries({ queryKey: deviceSessionQueryKey });
+    },
   });
 
   const disconnectWirelessMutation = useMutation({

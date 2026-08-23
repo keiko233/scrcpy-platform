@@ -9,6 +9,7 @@ import type {
   InstalledAppDto,
   InstalledAppsSnapshot,
   ListDevicesResult,
+  WirelessConnectResult,
   WirelessConnectInput,
   WirelessOperationResult,
   WirelessPairInput,
@@ -338,7 +339,7 @@ export class DeviceSessionService {
     });
   }
 
-  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult> {
+  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessConnectResult> {
     return this.#enqueue(async () => {
       try {
         await this.#gateway.connectWirelessDevice(input);
@@ -356,7 +357,7 @@ export class DeviceSessionService {
 
         const session = await this.#connectLocked(device.transportId);
         if (session.status === "ok") {
-          return { status: "ok" };
+          return { status: "ok", session: session.session };
         }
         return {
           status: "error",
@@ -500,7 +501,9 @@ export class DeviceSessionService {
     return "connection-failed";
   }
 
-  #wirelessFailure(error: unknown): WirelessOperationResult {
+  #wirelessFailure(
+    error: unknown,
+  ): Extract<WirelessOperationResult, { status: "error" }> {
     if (error instanceof WirelessGatewayError) {
       return {
         status: "error",

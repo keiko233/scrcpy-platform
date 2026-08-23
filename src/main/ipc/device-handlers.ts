@@ -9,6 +9,7 @@ import {
   type InstalledAppsSnapshot,
   type ListDevicesResult,
   WirelessConnectInputSchema,
+  type WirelessConnectResult,
   type WirelessOperationResult,
   WirelessPairInputSchema,
 } from "../../shared/device-contracts";
@@ -58,7 +59,7 @@ export function registerDeviceHandlers(service: DeviceSessionService): void {
 
   ipcMain.handle(
     ELECTRON_CHANNELS.devicesWirelessConnect,
-    (_event, raw: unknown): Promise<WirelessOperationResult> => {
+    (_event, raw: unknown): Promise<WirelessConnectResult> => {
       const input = WirelessConnectInputSchema.parse(raw);
       return service.connectWirelessDevice(input);
     },

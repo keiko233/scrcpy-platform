@@ -7,6 +7,7 @@ import type {
   InstalledAppsSnapshot,
   ListDevicesResult,
   WirelessConnectInput,
+  WirelessConnectResult,
   WirelessOperationResult,
   WirelessPairInput,
 } from "./device-contracts";
@@ -173,7 +174,7 @@ export interface ElectronAPI {
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
   disconnectDevice(): Promise<DisconnectDeviceResult>;
   pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult>;
-  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult>;
+  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessConnectResult>;
   disconnectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult>;
   listInstalledApps(): Promise<InstalledAppsSnapshot>;
   enrichInstalledApps(packages: string[]): Promise<InstalledAppDto[]>;

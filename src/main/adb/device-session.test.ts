@@ -150,10 +150,13 @@ describe("DeviceSessionService", () => {
       }),
       { status: "ok" },
     );
-    assert.deepEqual(
-      await service.connectWirelessDevice({ address: "192.168.1.10:5555" }),
-      { status: "ok" },
-    );
+    const wirelessConnect = await service.connectWirelessDevice({
+      address: "192.168.1.10:5555",
+    });
+    assert.deepEqual(wirelessConnect, {
+      status: "ok",
+      session: service.getSession(),
+    });
     assert.equal(service.getSession().state, "connected");
     assert.deepEqual(
       await service.disconnectWirelessDevice({ address: "192.168.1.10:5555" }),
