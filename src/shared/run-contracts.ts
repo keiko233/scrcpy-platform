@@ -70,6 +70,8 @@ export const FlowRunDtoSchema = z
     finishedAt: z.string().datetime().nullable(),
     error: z.string().nullable(),
     steps: z.array(FlowRunStepDtoSchema),
+    /** Values returned through an Output node; null when the run ended on End. */
+    result: JsonValueSchema.nullable().optional(),
   })
   .strict();
 

@@ -6,16 +6,22 @@ import {
   type AggregateOperation,
   type CastTarget,
 } from "../../shared/expression";
+import { deriveFlowSignature, bestEffortFlowSignature } from "../../shared/flow-signature";
 import {
-  FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
   ScreenRegionSchema,
+  callTargetIdFromData,
   flowDataInputPorts,
+  flowDataOutputPorts,
+  flowInputNodeParams,
+  flowOutputNodeResults,
+  matchesFlowDataType as matchesDataType,
   resolveFlowPort,
   type FlowDocument,
-  type FlowDataType,
   type FlowEdge,
   type FlowNode,
+  type FlowPortContext,
+  type FlowScriptSignature,
   type JsonValue,
   type ScreenRegion,
   type ScriptDto,
@@ -354,26 +360,12 @@ function dataValueKey(nodeId: string, portId: string): string {
   return `${nodeId}\u0000${portId}`;
 }
 
-function matchesDataType(value: JsonValue, type: FlowDataType): boolean {
-  switch (type) {
-    case "any":
-      return true;
-    case "string":
-      return typeof value === "string";
-    case "number":
-      return typeof value === "number" && Number.isFinite(value);
-    case "boolean":
-      return typeof value === "boolean";
-    case "screen-region":
-      return ScreenRegionSchema.safeParse(value).success;
-  }
-}
-
 function resolveNodeInputs(
   node: FlowNode,
   incomingEdges: readonly FlowEdge[],
   nodes: ReadonlyMap<string, FlowNode>,
   computeOutput: (source: FlowNode, portId: string) => JsonValue,
+  portContext: FlowPortContext,
 ): ResolvedNodeInputs {
   const data = { ...node.data };
   const connected = new Set<string>();
@@ -387,12 +379,14 @@ function resolveNodeInputs(
       "output",
       edge.sourceHandle,
       source.data,
+      portContext,
     );
     const targetPort = resolveFlowPort(
       node.type,
       "input",
       edge.targetHandle,
       node.data,
+      portContext,
     );
     if (sourcePort?.role !== "data" || targetPort?.role !== "data") {
       throw new Error(`Data edge "${edge.id}" has invalid typed ports.`);
@@ -416,8 +410,9 @@ function storeNodeOutputs(
   node: FlowNode,
   outputs: Readonly<Record<string, JsonValue>>,
   values: Map<string, JsonValue>,
+  portContext: FlowPortContext,
 ): void {
-  const declared = FLOW_NODE_DATA_PORTS[node.type].outputs;
+  const declared = flowDataOutputPorts(node.type, node.data, portContext);
   for (const port of declared) {
     if (!Object.hasOwn(outputs, port.id)) {
       throw new Error(
@@ -440,6 +435,55 @@ interface ForLoopState {
   step: number;
   iterations: number;
   maximum: number;
+}
+
+/**
+ * Collects the declared results of an Output node from its wired data
+ * inputs. Every declared result must have exactly one connected value.
+ */
+function collectOutputResults(
+  node: FlowNode,
+  connected: ReadonlySet<string>,
+): Record<string, JsonValue> {
+  const results: Record<string, JsonValue> = {};
+  for (const entry of flowOutputNodeResults(node.data)) {
+    if (!connected.has(entry.name)) {
+      throw new Error(
+        `Output node "${node.id}" has no connected value for result "${entry.name}".`,
+      );
+    }
+    const value = node.data[entry.name] as JsonValue;
+    if (!matchesDataType(value, entry.dataType)) {
+      throw new Error(
+        `Output node "${node.id}" result "${entry.name}" must be ${entry.dataType}.`,
+      );
+    }
+    results[entry.name] = structuredClone(value);
+  }
+  return results;
+}
+
+/** Hard cap for nested script calls; cycles are already rejected statically. */
+const MAX_CALL_DEPTH = 8;
+
+/** Maximum node transitions across the whole run, shared by all frames. */
+const MAX_TRANSITIONS = 100_000;
+
+interface CallableScript {
+  document: FlowDocument;
+  orderedNodes: FlowNode[];
+  signature: FlowScriptSignature;
+  /** Maps a declared parameter name to the id of its input node. */
+  paramNodeIds: Map<string, string>;
+}
+
+interface FrameInvocation {
+  document: FlowDocument;
+  startNodeId: string;
+  argValues: ReadonlyMap<string, JsonValue>;
+  depth: number;
+  signal: AbortSignal;
+  context: FlowActionContext;
 }
 
 function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
@@ -477,6 +521,9 @@ export class FlowRuntimeService {
   #stepOnce = false;
   #resumeResolver: ((action: ResumeFlowRunInput["action"]) => void) | null = null;
   #pendingResume: Promise<ResumeFlowRunInput["action"]> | null = null;
+  #transitions = 0;
+  readonly #callCache = new Map<string, CallableScript>();
+  readonly #signatureCache = new Map<string, FlowScriptSignature | null>();
 
   constructor(
     repository: FlowScriptRepository,
@@ -532,6 +579,7 @@ export class FlowRuntimeService {
     const compiled = compileFlow(
       script.draftDocument.nodes,
       script.draftDocument.edges,
+      { resolveDocument: (scriptId) => this.#loadDocument(scriptId) },
     );
     if (!compiled.valid) {
       return {
@@ -574,6 +622,7 @@ export class FlowRuntimeService {
       finishedAt: null,
       error: null,
       steps,
+      result: null,
     };
     const controller = new AbortController();
     this.#abortController = controller;
@@ -581,6 +630,9 @@ export class FlowRuntimeService {
     this.#stepOnce = false;
     this.#resumeResolver = null;
     this.#pendingResume = null;
+    this.#transitions = 0;
+    this.#callCache.clear();
+    this.#signatureCache.clear();
     this.#publish();
     this.#emitLog(null, "info", "Flow run started", {
       scriptId: input.scriptId,
@@ -654,6 +706,72 @@ export class FlowRuntimeService {
       sessionId: run.sessionId,
       displayId: run.displayId,
     };
+    try {
+      const result = await this.#walkFrame({
+        document,
+        startNodeId,
+        argValues: new Map(),
+        depth: 0,
+        signal,
+        context,
+      });
+      const finishedAt = this.#now();
+      for (const step of run.steps) {
+        if (step.state === "pending") {
+          step.state = "skipped";
+          step.finishedAt = finishedAt;
+        }
+      }
+      run.state = "completed";
+      run.finishedAt = finishedAt;
+      if (result !== null) {
+        run.result = result;
+        this.#emitLog(null, "info", "Flow run completed", { result });
+      } else {
+        this.#emitLog(null, "info", "Flow run completed");
+      }
+      this.#publish();
+    } catch (error) {
+      const cancelled = signal.aborted || error instanceof RunCancelledError;
+      const finishedAt = this.#now();
+      const currentStep = run.steps.find((step) => step.state === "running");
+      if (currentStep !== undefined) {
+        currentStep.state = cancelled ? "cancelled" : "failed";
+        currentStep.finishedAt = finishedAt;
+        currentStep.error = cancelled ? null : errorMessageOf(error);
+      }
+      if (cancelled) {
+        for (const step of run.steps) {
+          if (step.state === "pending") {
+            step.state = "cancelled";
+            step.finishedAt = finishedAt;
+          }
+        }
+      }
+      run.state = cancelled ? "cancelled" : "failed";
+      run.currentNodeId = null;
+      run.finishedAt = finishedAt;
+      run.error = cancelled ? null : errorMessageOf(error);
+      this.#emitLog(
+        currentStep?.nodeId ?? null,
+        cancelled ? "warn" : "error",
+        cancelled ? "Flow run cancelled" : errorMessageOf(error),
+      );
+      this.#publish();
+    }
+  }
+
+  /**
+   * Walks one document frame: the root document or one nested script call.
+   * Data values, loop states and lazy evaluation are scoped to the frame;
+   * the transition budget, abort signal, device context and breakpoints are
+   * shared across frames. Resolves to the values collected by the Output
+   * node that terminated the frame, or null when an End node ended it.
+   */
+  async #walkFrame(frame: FrameInvocation): Promise<JsonValue | null> {
+    const { document, startNodeId, argValues, depth, signal, context } = frame;
+    const run = this.#run as FlowRunDto;
+    const portContext = this.#portContext();
 
     const nodes = new Map(document.nodes.map((node) => [node.id, node]));
     const steps = new Map(run.steps.map((step) => [step.nodeId, step]));
@@ -670,12 +788,14 @@ export class FlowRuntimeService {
         "output",
         edge.sourceHandle,
         source.data,
+        portContext,
       );
       const targetPort = resolveFlowPort(
         target.type,
         "input",
         edge.targetHandle,
         target.data,
+        portContext,
       );
       if (sourcePort?.role === "flow" && targetPort?.role === "flow") {
         const list = outgoing.get(edge.source);
@@ -694,9 +814,39 @@ export class FlowRuntimeService {
     const computingData = new Set<string>();
     const forLoops = new Map<string, ForLoopState>();
     const whileIterations = new Map<string, number>();
+
+    // Seed Input boundary values for this frame: caller arguments win over
+    // declared defaults. Root frames tolerate missing arguments (they fail
+    // lazily on read) so scripts remain runnable standalone.
+    for (const boundaryNode of document.nodes) {
+      if (boundaryNode.type !== "input") {
+        continue;
+      }
+      for (const param of flowInputNodeParams(boundaryNode.data)) {
+        const key = dataValueKey(boundaryNode.id, param.name);
+        const provided = argValues.get(key);
+        if (provided !== undefined) {
+          dataValues.set(key, structuredClone(provided));
+          continue;
+        }
+        if (param.defaultValue !== undefined) {
+          dataValues.set(key, structuredClone(param.defaultValue));
+          continue;
+        }
+        if (depth > 0) {
+          throw new Error(
+            `Called script did not receive an argument for input "${param.name}".`,
+          );
+        }
+      }
+    }
+
+    // Collects the values captured by Output nodes; the terminating End node
+    // returns whatever was captured last (or null for plain flows).
+    let frameResult: JsonValue | null = null;
+
     let currentNodeId: string | null = startNodeId;
     let arrivalPort: string | null = null;
-    let transitions = 0;
 
     const computePureDataNode = (node: FlowNode): void => {
       if (computingData.has(node.id)) {
@@ -722,12 +872,13 @@ export class FlowRuntimeService {
             break;
           }
           case "compare": {
-            const resolved = resolveNodeInputs(
-              node,
-              incomingData.get(node.id) ?? [],
-              nodes,
-              computeDataOutput,
-            );
+const resolved = resolveNodeInputs(
+        node,
+        incomingData.get(node.id) ?? [],
+        nodes,
+        computeDataOutput,
+        portContext,
+      );
             if (!resolved.connected.has("left")) {
               throw new Error(
                 `Compare node "${node.id}" requires a connected "left" input.`,
@@ -789,38 +940,53 @@ export class FlowRuntimeService {
       );
     };
 
-    try {
-      while (currentNodeId !== null) {
-        transitions += 1;
-        if (transitions > 100_000) {
-          throw new Error("Flow exceeded the maximum of 100000 node transitions.");
-        }
-        abortIfNeeded(signal);
-        const node = nodes.get(currentNodeId);
-        const step = steps.get(currentNodeId);
-        if (node === undefined || step === undefined) {
-          throw new Error(`Flow reached missing node "${currentNodeId}".`);
-        }
-        await this.#pauseIfNeeded(node.id, signal);
+    while (currentNodeId !== null) {
+      this.#transitions += 1;
+      if (this.#transitions > MAX_TRANSITIONS) {
+        throw new Error(
+          `Flow exceeded the maximum of ${MAX_TRANSITIONS} node transitions.`,
+        );
+      }
+      abortIfNeeded(signal);
+      const node = nodes.get(currentNodeId);
+      const step = steps.get(currentNodeId) ?? null;
+      if (node === undefined) {
+        throw new Error(`Flow reached missing node "${currentNodeId}".`);
+      }
+      await this.#pauseIfNeeded(node.id, signal);
+      if (step !== null) {
         step.state = "running";
         step.startedAt = this.#now();
         step.finishedAt = null;
         step.error = null;
         step.executionCount += 1;
-        run.currentNodeId = node.id;
-        this.#publish();
-        const enteredAt = Date.now();
-        this.#emitLog(node.id, "debug", `Entering ${node.type} node`, {
-          executionCount: step.executionCount,
-        });
+      }
+      run.currentNodeId = node.id;
+      this.#publish();
+      const enteredAt = Date.now();
+      this.#emitLog(node.id, "debug", `Entering ${node.type} node`, {
+        executionCount: step?.executionCount ?? 0,
+      });
 
-        const resolved = resolveNodeInputs(
-          node,
-          incomingData.get(node.id) ?? [],
-          nodes,
-          computeDataOutput,
-        );
-        const result = await this.#executeNode(
+      const resolved = resolveNodeInputs(
+        node,
+        incomingData.get(node.id) ?? [],
+        nodes,
+        computeDataOutput,
+        portContext,
+      );
+
+      let result: NodeExecutionResult;
+      if (node.type === "output") {
+        const results = collectOutputResults(resolved.node, resolved.connected);
+        frameResult = results;
+        this.#emitLog(node.id, "info", "Captured results", {
+          durationMs: Date.now() - enteredAt,
+          results,
+        });
+        result = executionResult("next");
+      } else {
+        result = await this.#executeNode(
           resolved.node,
           resolved.connected,
           arrivalPort,
@@ -828,84 +994,205 @@ export class FlowRuntimeService {
           signal,
           forLoops,
           whileIterations,
+          depth,
         );
-        storeNodeOutputs(node, result.outputs, dataValues);
-        abortIfNeeded(signal);
+      }
+      storeNodeOutputs(node, result.outputs, dataValues, portContext);
+      abortIfNeeded(signal);
+      if (step !== null) {
         step.state = "completed";
         step.finishedAt = this.#now();
-        run.currentNodeId = null;
-        this.#emitLog(node.id, "debug", `Completed ${node.type} node`, {
-          durationMs: Date.now() - enteredAt,
-          flowPort: result.flowPort,
-          outputs: result.outputs,
-        });
-        this.#publish();
-
-        if (result.flowPort === null) {
-          currentNodeId = null;
-          continue;
-        }
-        const declaredOutputs: readonly string[] =
-          FLOW_NODE_PORTS[node.type].outputs;
-        const edge = (outgoing.get(node.id) ?? []).find(
-          (candidate) =>
-            resolvedPort(declaredOutputs, candidate.sourceHandle) ===
-            result.flowPort,
-        );
-        if (edge === undefined) {
-          throw new Error(
-            `Node "${node.id}" has no edge for output port "${result.flowPort}".`,
-          );
-        }
-        const target = nodes.get(edge.target);
-        if (target === undefined) {
-          throw new Error(`Edge "${edge.id}" targets missing node "${edge.target}".`);
-        }
-        currentNodeId = target.id;
-        arrivalPort = resolvedPort(
-          FLOW_NODE_PORTS[target.type].inputs,
-          edge.targetHandle,
-        );
       }
-      const finishedAt = this.#now();
-      for (const step of run.steps) {
-        if (step.state === "pending") {
-          step.state = "skipped";
-          step.finishedAt = finishedAt;
-        }
-      }
-      run.state = "completed";
-      run.finishedAt = finishedAt;
-      this.#emitLog(null, "info", "Flow run completed");
-      this.#publish();
-    } catch (error) {
-      const cancelled = signal.aborted || error instanceof RunCancelledError;
-      const finishedAt = this.#now();
-      const currentStep = run.steps.find((step) => step.state === "running");
-      if (currentStep !== undefined) {
-        currentStep.state = cancelled ? "cancelled" : "failed";
-        currentStep.finishedAt = finishedAt;
-        currentStep.error = cancelled ? null : errorMessageOf(error);
-      }
-      if (cancelled) {
-        for (const step of run.steps) {
-          if (step.state === "pending") {
-            step.state = "cancelled";
-            step.finishedAt = finishedAt;
-          }
-        }
-      }
-      run.state = cancelled ? "cancelled" : "failed";
       run.currentNodeId = null;
-      run.finishedAt = finishedAt;
-      run.error = cancelled ? null : errorMessageOf(error);
-      this.#emitLog(
-        currentStep?.nodeId ?? null,
-        cancelled ? "warn" : "error",
-        cancelled ? "Flow run cancelled" : errorMessageOf(error),
-      );
+      this.#emitLog(node.id, "debug", `Completed ${node.type} node`, {
+        durationMs: Date.now() - enteredAt,
+        flowPort: result.flowPort,
+        outputs: result.outputs,
+      });
       this.#publish();
+
+      if (result.flowPort === null) {
+        currentNodeId = null;
+        continue;
+      }
+      const declaredOutputs: readonly string[] =
+        FLOW_NODE_PORTS[node.type].outputs;
+      const edge = (outgoing.get(node.id) ?? []).find(
+        (candidate) =>
+          resolvedPort(declaredOutputs, candidate.sourceHandle) ===
+          result.flowPort,
+      );
+      if (edge === undefined) {
+        throw new Error(
+          `Node "${node.id}" has no edge for output port "${result.flowPort}".`,
+        );
+      }
+      const target = nodes.get(edge.target);
+      if (target === undefined) {
+        throw new Error(`Edge "${edge.id}" targets missing node "${edge.target}".`);
+      }
+      currentNodeId = target.id;
+      arrivalPort = resolvedPort(
+        FLOW_NODE_PORTS[target.type].inputs,
+        edge.targetHandle,
+      );
     }
+    return frameResult;
+  }
+
+  #loadDocument(scriptId: string): FlowDocument | null {
+    return this.#repository.getScript({ scriptId })?.draftDocument ?? null;
+  }
+
+  /** Cached per run so one execution observes a single persisted snapshot. */
+  #signatureOf(scriptId: string): FlowScriptSignature | null {
+    if (!this.#signatureCache.has(scriptId)) {
+      const document = this.#loadDocument(scriptId);
+      this.#signatureCache.set(
+        scriptId,
+        document === null ? null : bestEffortFlowSignature(document),
+      );
+    }
+    return this.#signatureCache.get(scriptId) ?? null;
+  }
+
+  #portContext(): FlowPortContext {
+    return { resolveCallSignature: (scriptId) => this.#signatureOf(scriptId) };
+  }
+
+  /** Loads, validates and caches a callable target on first use per run. */
+  #callable(scriptId: string): CallableScript {
+    const cached = this.#callCache.get(scriptId);
+    if (cached !== undefined) {
+      return cached;
+    }
+    const document = this.#loadDocument(scriptId);
+    if (document === null) {
+      throw new Error(`Call target script "${scriptId}" was not found.`);
+    }
+    const derived = deriveFlowSignature(document);
+    if (!derived.ok) {
+      throw new Error(
+        `Call target script "${scriptId}" has no usable signature.`,
+      );
+    }
+    const compiled = compileFlow(document.nodes, document.edges, {
+      resolveDocument: (id) => this.#loadDocument(id),
+    });
+    if (!compiled.valid) {
+      const kinds = [...new Set(compiled.issues.map((i) => i.kind))].join(", ");
+      throw new Error(
+        `Call target script "${scriptId}" is invalid (${kinds}).`,
+      );
+    }
+    const nodeById = new Map(document.nodes.map((node) => [node.id, node]));
+    const orderedNodes = compiled.order.map((nodeId) => {
+      const node = nodeById.get(nodeId);
+      if (node === undefined) {
+        throw new Error(`Compiled flow references missing node "${nodeId}".`);
+      }
+      return node;
+    });
+    const paramNodeIds = new Map<string, string>();
+    for (const node of document.nodes) {
+      if (node.type !== "input") {
+        continue;
+      }
+      for (const param of flowInputNodeParams(node.data)) {
+        if (param.name.length > 0 && !paramNodeIds.has(param.name)) {
+          paramNodeIds.set(param.name, node.id);
+        }
+      }
+    }
+    const entry: CallableScript = {
+      document,
+      orderedNodes,
+      signature: derived.signature,
+      paramNodeIds,
+    };
+    this.#callCache.set(scriptId, entry);
+    return entry;
+  }
+
+  async #executeCallNode(
+    node: FlowNode,
+    connectedInputs: ReadonlySet<string>,
+    depth: number,
+    signal: AbortSignal,
+    context: FlowActionContext,
+  ): Promise<NodeExecutionResult> {
+    if (depth >= MAX_CALL_DEPTH) {
+      throw new Error(
+        `Exceeded the maximum script call depth of ${MAX_CALL_DEPTH}.`,
+      );
+    }
+    const targetId = callTargetIdFromData(node.data);
+    if (targetId.length === 0) {
+      throw new Error(`Call node "${node.id}" does not select a target script.`);
+    }
+    const entry = this.#callable(targetId);
+    const argValues = new Map<string, JsonValue>();
+    for (const param of entry.signature.params) {
+      const paramNodeId = entry.paramNodeIds.get(param.name);
+      if (paramNodeId === undefined) {
+        throw new Error(
+          `Call target "${targetId}" parameter "${param.name}" has no matching Input node.`,
+        );
+      }
+      let value = connectedInputs.has(param.name)
+        ? (node.data[param.name] as JsonValue | undefined)
+        : undefined;
+      if (value === undefined || value === null) {
+        value = param.defaultValue;
+      }
+      if (value === undefined) {
+        throw new Error(
+          `Call node "${node.id}" is missing argument "${param.name}".`,
+        );
+      }
+      if (!matchesDataType(value, param.dataType)) {
+        throw new Error(
+          `Argument "${param.name}" on call node "${node.id}" must be ${param.dataType}.`,
+        );
+      }
+      argValues.set(
+        dataValueKey(paramNodeId, param.name),
+        structuredClone(value),
+      );
+    }
+    const argumentLog: Record<string, JsonValue> = {};
+    for (const p of entry.signature.params) {
+      argumentLog[p.name] =
+        argValues.get(
+          dataValueKey(entry.paramNodeIds.get(p.name) ?? "", p.name),
+        ) ?? null;
+    }
+    this.#emitLog(node.id, "info", `Calling script "${targetId}"`, {
+      depth: depth + 1,
+      arguments: argumentLog,
+    });
+    const childStartId = entry.orderedNodes[0]?.id ?? "";
+    if (childStartId.length === 0) {
+      throw new Error(`Call target script "${targetId}" is empty.`);
+    }
+    const childResult = await this.#walkFrame({
+      document: entry.document,
+      startNodeId: childStartId,
+      argValues,
+      depth: depth + 1,
+      signal,
+      context,
+    });
+    if (childResult === null) {
+      throw new Error(
+        `Called script "${targetId}" finished without reaching an Output node.`,
+      );
+    }
+    this.#emitLog(node.id, "info", `Script "${targetId}" returned`, {
+      result: childResult,
+    });
+    // The called script's Output node always returns a results record.
+    return executionResult("next", childResult as Record<string, JsonValue>);
   }
 
   async #pauseIfNeeded(nodeId: string, signal: AbortSignal): Promise<void> {
@@ -947,12 +1234,21 @@ export class FlowRuntimeService {
     signal: AbortSignal,
     forLoops: Map<string, ForLoopState>,
     whileIterations: Map<string, number>,
+    depth: number,
   ): Promise<NodeExecutionResult> {
     switch (node.type) {
       case "start":
         return executionResult("next");
       case "end":
         return executionResult(null);
+      case "call":
+        return await this.#executeCallNode(
+          node,
+          connectedInputs,
+          depth,
+          signal,
+          context,
+        );
       case "delay":
         await abortableDelay(
           nonnegativeDuration(node.data.ms, node.id),
@@ -1139,6 +1435,15 @@ export class FlowRuntimeService {
       case "compare":
         throw new Error(
           `Compare node "${node.id}" has no control flow to execute.`,
+        );
+      case "input":
+        throw new Error(
+          `Input node "${node.id}" has no control flow to execute.`,
+        );
+      case "output":
+        // Handled inline by #walkFrame so results can flow on to End.
+        throw new Error(
+          `Output node "${node.id}" has no control flow to execute.`,
         );
       case "note":
         throw new Error(`Note node "${node.id}" is not executable.`);

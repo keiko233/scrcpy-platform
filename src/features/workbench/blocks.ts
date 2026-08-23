@@ -9,8 +9,11 @@ import {
   GitBranchIcon,
   HandIcon,
   ListRestartIcon,
+  LogInIcon,
+  LogOutIcon,
   MousePointerClickIcon,
   PlayIcon,
+  PuzzleIcon,
   RefreshCwIcon,
   ScanSquareIcon,
   ScanTextIcon,
@@ -42,6 +45,27 @@ import type {
 
 function text(value: JsonValue | undefined): string {
   return value === undefined || value === null ? "" : String(value);
+}
+
+function resultNames(value: unknown): string {
+  if (!Array.isArray(value)) {
+    return "";
+  }
+  const names: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+    const name = text((entry as Record<string, JsonValue>).name);
+    if (name.length > 0) {
+      names.push(name);
+    }
+  }
+  return names.join(", ");
+}
+
+function paramNames(value: unknown): string {
+  return resultNames(value);
 }
 
 function calculateInputSummary(data: WorkbenchNodeData): string {
@@ -955,6 +979,87 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
     inputPorts: FLOW_NODE_PORTS.group.inputs,
     outputPorts: FLOW_NODE_PORTS.group.outputs,
   },
+  input: {
+    kind: "input",
+    get label() {
+      return m.block_input_label();
+    },
+    get description() {
+      return m.block_input_description();
+    },
+    icon: LogInIcon,
+    defaults: {
+      kind: "input",
+      params: [{ name: "param", dataType: "any" }],
+    },
+    summarize: (data) => paramNames(data.params) || m.block_summarize_unset(),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "params",
+          get label() {
+            return m.block_field_params_label();
+          },
+          kind: "param-list",
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.input.inputs,
+    outputPorts: FLOW_NODE_PORTS.input.outputs,
+  },
+  output: {
+    kind: "output",
+    get label() {
+      return m.block_output_label();
+    },
+    get description() {
+      return m.block_output_description();
+    },
+    icon: LogOutIcon,
+    defaults: {
+      kind: "output",
+      results: [{ name: "result", dataType: "any" }],
+    },
+    summarize: (data) => resultNames(data.results),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "results",
+          get label() {
+            return m.block_field_results_label();
+          },
+          kind: "result-list",
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.output.inputs,
+    outputPorts: FLOW_NODE_PORTS.output.outputs,
+  },
+  call: {
+    kind: "call",
+    get label() {
+      return m.block_call_label();
+    },
+    get description() {
+      return m.block_call_description();
+    },
+    icon: PuzzleIcon,
+    defaults: { kind: "call", targetScriptId: "" },
+    summarize: (data) => text(data.targetScriptId),
+    get fields(): FieldDefinition[] {
+      return [
+        {
+          name: "targetScriptId",
+          get label() {
+            return m.block_field_call_target_label();
+          },
+          kind: "call-target",
+        },
+      ];
+    },
+    inputPorts: FLOW_NODE_PORTS.call.inputs,
+    outputPorts: FLOW_NODE_PORTS.call.outputs,
+  },
 };
 
 export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
@@ -972,6 +1077,9 @@ export const BLOCK_KIND_ORDER: AutomationBlockKind[] = [
   "for",
   "while",
   "assert",
+  "input",
+  "output",
+  "call",
   "note",
   "group",
 ];
@@ -987,6 +1095,7 @@ export type BlockCategoryId =
   | "device"
   | "logic"
   | "data"
+  | "interface"
   | "annotation";
 
 export interface BlockCategoryDefinition {
@@ -1028,6 +1137,14 @@ export const BLOCK_CATEGORIES: readonly BlockCategoryDefinition[] = [
     },
     icon: DatabaseIcon,
     kinds: ["constant", "calculate", "convert", "compare"],
+  },
+  {
+    id: "interface",
+    get label() {
+      return m.block_category_interface_label();
+    },
+    icon: PuzzleIcon,
+    kinds: ["input", "output", "call"],
   },
   {
     id: "annotation",

@@ -352,6 +352,23 @@ export function migrateFlowDocument(
         changed = true;
         break;
       }
+      case "input": {
+        if ("paramName" in data) {
+          const param: NodeData = {
+            name: typeof data.paramName === "string" ? data.paramName : "param",
+            dataType: data.dataType ?? "any",
+          };
+          if (data.defaultValue !== undefined && data.defaultValue !== null) {
+            param.defaultValue = data.defaultValue;
+          }
+          delete data.paramName;
+          delete data.dataType;
+          delete data.defaultValue;
+          data.params = [param];
+          changed = true;
+        }
+        break;
+      }
       case "set-variable": {
         const name = data.name;
         const expression = data.expression;

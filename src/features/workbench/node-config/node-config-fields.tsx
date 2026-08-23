@@ -218,6 +218,13 @@ export function FieldEditor({
           disabled={connected}
           onChange={onChange}
         />
+      ) : field.kind === "text" ? (
+        <LiveTextInput
+          placeholder={field.placeholder}
+          value={String(value ?? "")}
+          disabled={connected}
+          onChange={onChange}
+        />
       ) : field.kind === "number" ? (
         <NumberInput
           value={value}
@@ -253,14 +260,7 @@ export function FieldEditor({
           onCheckedChange={onChange}
           aria-label={field.label}
         />
-      ) : (
-        <LiveTextInput
-          placeholder={field.placeholder}
-          value={String(value ?? "")}
-          disabled={connected}
-          onChange={onChange}
-        />
-      )}
+      ) : null}
     </div>
   );
 }

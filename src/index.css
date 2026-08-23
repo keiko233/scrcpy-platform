@@ -279,6 +279,20 @@ body,
   @apply min-w-64 rounded-md border border-border bg-card px-2 py-1.5 text-foreground shadow-xs transition-shadow;
 }
 
+/* React Flow applies a built-in white padded box to node wrappers whose type
+   name matches "input"/"output"/"default"/"group". We register custom nodes
+   under those same kind strings, so neutralize the built-in wrapper styling to
+   let the custom node content be the full visual node. */
+.react-flow__node-input,
+.react-flow__node-default,
+.react-flow__node-output,
+.react-flow__node-group {
+  padding: 0;
+  width: auto;
+  border: none;
+  background-color: transparent;
+}
+
 .wb-flow-node:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 1px;
@@ -290,6 +304,13 @@ body,
 
 .wb-flow-node .react-flow__handle {
   @apply size-2 border border-background;
+}
+
+/* Boundary (Input/Output) blocks use clean solid dots instead of ringed
+   handles so the connection points read as part of the node surface. */
+.wb-block-input .react-flow__handle,
+.wb-block-output .react-flow__handle {
+  @apply border-0;
 }
 
 .wb-block-note {

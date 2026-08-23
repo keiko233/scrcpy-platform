@@ -18,6 +18,12 @@ import { BLOCK_DEFINITIONS } from "../blocks";
 import type { FieldDefinition, WorkbenchNodeData } from "../types";
 import { useWorkbench } from "../use-workbench";
 import {
+  CallTargetEditor,
+  DefaultValueEditor,
+  ParamListEditor,
+  ResultListEditor,
+} from "./callable-editors";
+import {
   FieldEditor,
   Section,
 } from "./node-config-fields";
@@ -54,6 +60,12 @@ export function NodeConfigPopover({
   const inputPortByField = new Map(dataPorts.inputs.map((port) => [port.field ?? port.id, port]));
   const inputFields = fields.filter((field) => inputPortByField.has(field.name));
   const settingFields = fields.filter((field) => !inputPortByField.has(field.name));
+  const boundaryFields = settingFields.filter(
+    (field) => field.kind === "param-list" || field.kind === "result-list",
+  );
+  const plainSettingFields = settingFields.filter(
+    (field) => field.kind !== "param-list" && field.kind !== "result-list",
+  );
   const connectedInputIds = new Set(
     flow.edges
       .filter((edge) => edge.target === nodeId)
@@ -186,19 +198,77 @@ export function NodeConfigPopover({
             </Section>
           )}
 
-          {settingFields.length > 0 && (
+          {boundaryFields.map((field) => {
+            if (field.kind === "param-list") {
+              return (
+                <Section
+                  key={field.name}
+                  title={m.node_config_params_title()}
+                  description={m.node_config_params_description()}
+                >
+                  <ParamListEditor
+                    value={data[field.name]}
+                    onChange={(value) => commit(field.name, value)}
+                  />
+                </Section>
+              );
+            }
+            return (
+              <Section
+                key={field.name}
+                title={m.node_config_results_title()}
+                description={m.node_config_results_description()}
+              >
+                <ResultListEditor
+                  value={data[field.name]}
+                  onChange={(value) => commit(field.name, value)}
+                />
+              </Section>
+            );
+          })}
+
+          {plainSettingFields.length > 0 && (
             <Section
               title={m.node_config_settings_title()}
               description={m.node_config_settings_description()}
             >
-              {settingFields.map((field) => (
-                <FieldEditor
-                  key={field.name}
-                  field={field}
-                  value={data[field.name]}
-                  onChange={(value) => commit(field.name, value)}
-                />
-              ))}
+              {plainSettingFields.map((field) => {
+                if (field.kind === "call-target") {
+                  return (
+                    <CallTargetEditor
+                      key={field.name}
+                      value={data[field.name]}
+                      onChange={(value) => commit(field.name, value)}
+                    />
+                  );
+                }
+                if (field.kind === "default-value") {
+                  const dataType = data.dataType;
+                  return (
+                    <DefaultValueEditor
+                      key={field.name}
+                      dataType={
+                        dataType === "string" ||
+                        dataType === "number" ||
+                        dataType === "boolean" ||
+                        dataType === "screen-region"
+                          ? dataType
+                          : "any"
+                      }
+                      value={data[field.name]}
+                      onChange={(value) => commit(field.name, value)}
+                    />
+                  );
+                }
+                return (
+                  <FieldEditor
+                    key={field.name}
+                    field={field}
+                    value={data[field.name]}
+                    onChange={(value) => commit(field.name, value)}
+                  />
+                );
+              })}
             </Section>
           )}
         </div>

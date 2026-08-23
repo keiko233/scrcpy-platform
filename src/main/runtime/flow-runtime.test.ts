@@ -991,3 +991,333 @@ describe("FlowRuntimeService", () => {
     );
   });
 });
+
+function repoFor(documents: Record<string, FlowDocument>) {
+  return {
+    getScript: ({ scriptId }: { scriptId: string }) =>
+      documents[scriptId] ? script(documents[scriptId]) : null,
+  };
+}
+
+function serviceForDocs(
+  documents: Record<string, FlowDocument>,
+  driver: FakeDriver = new FakeDriver(),
+) {
+  const service = new FlowRuntimeService(repoFor(documents), driver, {
+    createRunId: () => "run-1",
+  });
+  return { service, driver };
+}
+
+describe("callable scripts (input / output / call)", () => {
+  test("records Output results when a standalone flow ends on an Output node", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        constantNode("v", 42),
+        node("out", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "out", "next", "in"],
+        ["ce2", "out", "end", "next", "in"],
+        ["de1", "v", "out", "value", "value"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": document });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed");
+    assert.deepEqual(run.result, { value: 42 });
+    assert.equal(FlowRunDtoSchema.safeParse(run).success, true);
+  });
+
+  test("calls another script like a function with wired arguments", async () => {
+    const child = graphDocument(
+      [
+        node("start", "start"),
+        node("threshold", "input", {
+          params: [{ name: "threshold", dataType: "number" }],
+        }),
+        node("conv", "convert", { toType: "number" }),
+        node("out", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "conv", "next", "in"],
+        ["ce2", "conv", "out", "next", "in"],
+        ["ce3", "out", "end", "next", "in"],
+        ["de1", "threshold", "conv", "threshold", "value"],
+        ["de2", "conv", "out", "value", "value"],
+      ],
+    );
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        constantNode("arg", 7),
+        node("c", "call", { targetScriptId: "child" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+        ["de1", "arg", "c", "value", "threshold"],
+      ],
+    );
+    const { service, driver } = serviceForDocs({
+      "script-1": parent,
+      child,
+    });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed", run.error ?? "");
+    assert.equal(run.result, null);
+    assert.equal(driver.calls.length, 0);
+  });
+
+  test("falls back to the declared default value when an argument is unwired", async () => {
+    const child = graphDocument(
+      [
+        node("start", "start"),
+        node("threshold", "input", {
+          params: [
+            { name: "threshold", dataType: "number", defaultValue: 9 },
+          ],
+        }),
+        node("conv", "convert", { toType: "number" }),
+        node("out", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "conv", "next", "in"],
+        ["ce2", "conv", "out", "next", "in"],
+        ["ce3", "out", "end", "next", "in"],
+        ["de1", "threshold", "conv", "threshold", "value"],
+        ["de2", "conv", "out", "value", "value"],
+      ],
+    );
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "child" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": parent, child });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed", run.error ?? "");
+  });
+
+  test("start rejects calls whose required parameters are not wired", () => {
+    const child = graphDocument(
+      [
+        node("start", "start"),
+        node("threshold", "input", {
+          paramName: "threshold",
+          dataType: "number",
+        }),
+        node("out", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+      ],
+      [["ce1", "start", "out", "next", "in"]],
+    );
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "child" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": parent, child });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "error");
+    if (startResult.status === "error") {
+      assert.equal(startResult.error, "invalid-flow");
+      assert.ok(
+        startResult.issues?.some((i) => i.kind === "missing-call-argument"),
+      );
+    }
+  });
+
+  test("returns early through one of several Output nodes", async () => {
+    const document = graphDocument(
+      [
+        node("start", "start"),
+        node("l", "constant", { type: "number", numberValue: 5 }),
+        node("r", "constant", { type: "number", numberValue: 3 }),
+        node("cmp", "compare", { operator: ">" }),
+        node("cond", "if"),
+        node("outa", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("outb", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("va", "constant", { type: "number", numberValue: 1 }),
+        node("vb", "constant", { type: "number", numberValue: 2 }),
+        node("merge", "merge", { inputCount: 2 }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "cond", "next", "in"],
+        ["fe1", "cond", "outa", "true", "in"],
+        ["fe2", "cond", "outb", "false", "in"],
+        ["oe1", "outa", "merge", "next", "a"],
+        ["oe2", "outb", "merge", "next", "b"],
+        ["me1", "merge", "end", "next", "in"],
+        ["dl", "l", "cmp", "value", "left"],
+        ["dr", "r", "cmp", "value", "right"],
+        ["dc", "cmp", "cond", "result", "condition"],
+        ["da", "va", "outa", "value", "value"],
+        ["db", "vb", "outb", "value", "value"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": document });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed", run.error ?? "");
+    assert.deepEqual(run.result, { value: 1 });
+  });
+
+  test("exposes call results as dynamic output ports of the Call node", async () => {
+    const child = graphDocument(
+      [
+        node("start", "start"),
+        constantNode("v", 7),
+        node("out", "output", {
+          results: [{ name: "value", dataType: "number" }],
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "out", "next", "in"],
+        ["ce2", "out", "end", "next", "in"],
+        ["de1", "v", "out", "value", "value"],
+      ],
+    );
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "child" }),
+        node("outp", "output", {
+          results: [{ name: "wrapped", dataType: "any" }],
+        }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "outp", "next", "in"],
+        ["pe3", "outp", "end", "next", "in"],
+        ["de1", "c", "outp", "value", "wrapped"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": parent, child });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed", run.error ?? "");
+    assert.deepEqual(run.result, { wrapped: 7 });
+  });
+
+  test("threads the device context through actions inside called scripts", async () => {
+    const child = graphDocument(
+      [
+        node("start", "start"),
+        node("click", "click", { x: 1, y: 2 }),
+        node("out", "output", { results: [] }),
+        node("end", "end"),
+      ],
+      [
+        ["ce1", "start", "click", "next", "in"],
+        ["ce2", "click", "out", "next", "in"],
+        ["ce3", "out", "end", "next", "in"],
+      ],
+    );
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "child" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+      ],
+    );
+    const { service, driver } = serviceForDocs({
+      "script-1": parent,
+      child,
+    });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "ok");
+    const run = await waitForTerminal(service);
+    assert.equal(run.state, "completed", run.error ?? "");
+    assert.equal(driver.calls.length, 1);
+    assert.equal(driver.calls[0].nodeId, "click");
+    assert.equal(driver.calls[0].context.sessionId, RUN_INPUT.sessionId);
+  });
+
+  test("rejects cyclic call graphs when starting the run", () => {
+    const parent = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "script-1" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": parent });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "error");
+    if (startResult.status === "error") {
+      assert.equal(startResult.error, "invalid-flow");
+      assert.ok(startResult.issues?.some((i) => i.kind === "call-cycle"));
+    }
+  });
+
+  test("start rejects calls to missing or non-callable targets", () => {
+    const parentUnknown = graphDocument(
+      [
+        node("start", "start"),
+        node("c", "call", { targetScriptId: "ghost" }),
+        node("end", "end"),
+      ],
+      [
+        ["pe1", "start", "c", "next", "in"],
+        ["pe2", "c", "end", "next", "in"],
+      ],
+    );
+    const { service } = serviceForDocs({ "script-1": parentUnknown });
+    const startResult = service.start(RUN_INPUT);
+    assert.equal(startResult.status, "error");
+    if (startResult.status === "error") {
+      assert.equal(startResult.error, "invalid-flow");
+      assert.ok(
+        startResult.issues?.some((i) => i.kind === "unknown-call-target"),
+      );
+    }
+  });
+});

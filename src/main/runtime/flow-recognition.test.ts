@@ -11,6 +11,7 @@ import {
   type OcrRectangle,
   type ScreenCaptureSource,
 } from "./flow-recognition";
+import { OcrLanguage as OcrLanguageValue } from "../../shared/constants/enums";
 import { AdbScreenCaptureSource } from "./adb-ocr-recognition";
 
 const CONTEXT: FlowActionContext = {
@@ -98,7 +99,7 @@ describe("OcrRecognitionDriver", () => {
     });
     assert.deepEqual(engine.calls, [
       {
-        languages: ["eng", "chi_sim"],
+        languages: [OcrLanguageValue.Eng, OcrLanguageValue.ChiSim],
         rectangle: { left: 10, top: 20, width: 300, height: 80 },
         whitelist: "",
       },

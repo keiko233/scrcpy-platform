@@ -55,7 +55,7 @@ export class Logger {
     this.write(level, args, "renderer", location);
   }
 
-  list(limit = LogLimits.DEFAULT_LIST_LIMIT): LogEntry[] {
+  list(limit: number = LogLimits.DEFAULT_LIST_LIMIT): LogEntry[] {
     const entries = this.readEntries();
     return entries
       .slice(-Math.max(LogLimits.MIN_LIST_LIMIT, Math.min(limit, LogLimits.MAX_LIST_LIMIT)))

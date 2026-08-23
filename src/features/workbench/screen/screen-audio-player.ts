@@ -27,7 +27,7 @@ export class ScreenAudioPlayer {
   #context: AudioContext | null = null;
   #decoder: AudioDecoder | null = null;
   #codec: string | null = null;
-  #sampleRate = DEFAULT_SAMPLE_RATE;
+  #sampleRate: number = DEFAULT_SAMPLE_RATE;
   #channels = 2;
   #description: Uint8Array | null = null;
   #timestamp = 0;

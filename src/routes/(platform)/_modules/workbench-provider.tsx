@@ -1,9 +1,12 @@
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import type { RevisionDto, ScreenRegion } from "@/shared/project-contracts";
 import { useDevices } from "@/features/workbench/device/use-devices";
 import { FlowApiContext } from "@/features/workbench/flow/flow-api-context";
 import { useFlowEditor } from "@/features/workbench/flow/use-flow-editor";
+import {
+  callSignatureResolverFrom,
+} from "@/features/workbench/flow/use-flow-port-context";
 import { useScriptLibrary } from "@/features/workbench/library/use-script-library";
 import { useScreens } from "@/features/workbench/screen/use-screens";
 import { useFlowRun } from "@/features/workbench/run/use-flow-run";
@@ -22,7 +25,13 @@ export function WorkbenchProvider({
   const library = useScriptLibrary();
   const devices = useDevices();
   const screens = useScreens(devices);
-  const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate);
+  const resolveCallSignature = useMemo(
+    () => callSignatureResolverFrom(library.scripts),
+    [library.scripts],
+  );
+  const flow = useFlowEditor(library.selectedScript, library.applyScriptUpdate, {
+    resolveCallSignature,
+  });
   const runs = useFlowRun();
   const [screenRegionNodeId, setScreenRegionNodeId] = useState<string | null>(
     null,

@@ -13,6 +13,7 @@ import {
   type FlowDocument,
   type FlowEdge,
   type FlowNode,
+  type FlowPortContext,
   type FlowViewport,
   type JsonValue,
 } from "../../../shared/project-contracts";
@@ -115,7 +116,7 @@ export function nodesFromDocument(document: FlowDocument): WorkbenchNode[] {
         ...BLOCK_DEFINITIONS[kind].defaults,
         ...rawData,
         kind,
-      },
+      } as WorkbenchNode["data"],
       type: kind,
       ...(parentId !== undefined
         ? { parentId, extent: "parent" as const }
@@ -178,8 +179,9 @@ export function mergeEdge(
   edges: WorkbenchEdge[],
   connection: Parameters<OnConnect>[0],
   nodes: WorkbenchNode[],
+  portContext?: FlowPortContext,
 ): WorkbenchEdge[] {
-  const ports = connectionPorts(nodes, connection);
+  const ports = connectionPorts(nodes, connection, portContext);
   if (ports === null) {
     return edges;
   }
@@ -215,6 +217,7 @@ export function mergeEdge(
 function connectionPorts(
   nodes: WorkbenchNode[],
   connection: Parameters<IsValidConnection<WorkbenchEdge>>[0],
+  portContext?: FlowPortContext,
 ) {
   if (connection.source === null || connection.target === null) {
     return null;
@@ -229,12 +232,14 @@ function connectionPorts(
     "output",
     connection.sourceHandle ?? undefined,
     source.data,
+    portContext,
   );
   const targetPort = resolveFlowPort(
     target.data.kind,
     "input",
     connection.targetHandle ?? undefined,
     target.data,
+    portContext,
   );
   if (
     sourcePort === null ||
@@ -256,8 +261,9 @@ function connectionPorts(
 export function canConnectPorts(
   nodes: WorkbenchNode[],
   connection: Parameters<IsValidConnection<WorkbenchEdge>>[0],
+  portContext?: FlowPortContext,
 ): boolean {
-  return connectionPorts(nodes, connection) !== null;
+  return connectionPorts(nodes, connection, portContext) !== null;
 }
 
 export interface ClipboardNode {

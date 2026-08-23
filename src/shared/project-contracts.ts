@@ -40,6 +40,9 @@ export const FLOW_NODE_KINDS = [
   "constant",
   "note",
   "group",
+  "input",
+  "output",
+  "call",
 ] as const;
 
 export type FlowNodeKind = (typeof FLOW_NODE_KINDS)[number];
@@ -63,6 +66,9 @@ export const FLOW_NODE_PORTS = {
   constant: { inputs: [], outputs: [] },
   note: { inputs: [], outputs: [] },
   group: { inputs: [], outputs: [] },
+  input: { inputs: [], outputs: [] },
+  output: { inputs: ["in"], outputs: ["next"] },
+  call: { inputs: ["in"], outputs: ["next"] },
 } as const satisfies Record<
   FlowNodeKind,
   { inputs: readonly string[]; outputs: readonly string[] }
@@ -200,6 +206,9 @@ export const FLOW_NODE_DATA_PORTS = {
   },
   note: { inputs: [], outputs: [] },
   group: { inputs: [], outputs: [] },
+  input: { inputs: [], outputs: [] },
+  output: { inputs: [], outputs: [] },
+  call: { inputs: [], outputs: [] },
 } as const satisfies Record<FlowNodeKind, FlowNodeDataPorts>;
 
 export type FlowPortDirection = "input" | "output";
@@ -260,6 +269,212 @@ export function flowDynamicPortCount(
   return config === undefined ? null : dynamicPortCount(data, config);
 }
 
+// ---------------------------------------------------------------------------
+// Callable scripts (input / output boundary nodes and call nodes)
+// ---------------------------------------------------------------------------
+
+/**
+ * A single parameter declared by an `input` node. Callers must supply a
+ * value unless a default is declared.
+ */
+export interface FlowScriptParam {
+  name: string;
+  dataType: FlowDataType;
+  defaultValue?: JsonValue;
+}
+
+/** A single named value returned through an `output` node. */
+export interface FlowScriptResult {
+  name: string;
+  dataType: FlowDataType;
+}
+
+/** The callable surface of a script, derived from its input/output nodes. */
+export interface FlowScriptSignature {
+  params: FlowScriptParam[];
+  results: FlowScriptResult[];
+}
+
+export const FLOW_PORT_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Handle names already taken by built-in control-flow ports. Parameter and
+ * result names must not shadow them because they become port ids on `call`
+ * nodes.
+ */
+export const RESERVED_FLOW_PORT_NAMES: ReadonlySet<string> = new Set([
+  "in",
+  "next",
+]);
+
+export function isValidFlowPortName(name: string): boolean {
+  return (
+    FLOW_PORT_NAME_PATTERN.test(name) && !RESERVED_FLOW_PORT_NAMES.has(name)
+  );
+}
+
+export function isFlowDataType(value: unknown): value is FlowDataType {
+  return (
+    typeof value === "string" &&
+    (FLOW_DATA_TYPES as readonly string[]).includes(value)
+  );
+}
+
+/** Runtime shape check for a JSON value against a declared flow data type. */
+export function matchesFlowDataType(
+  value: JsonValue,
+  dataType: FlowDataType,
+): boolean {
+  switch (dataType) {
+    case "any":
+      return true;
+    case "string":
+      return typeof value === "string";
+    case "number":
+      return typeof value === "number" && Number.isFinite(value);
+    case "boolean":
+      return typeof value === "boolean";
+    case "screen-region":
+      return ScreenRegionSchema.safeParse(value).success;
+  }
+}
+
+const FALLBACK_PARAM_NAME = "param";
+const FALLBACK_RESULT_NAME = "result";
+
+function trimName(value: unknown, fallback: string): string {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : fallback;
+}
+
+/**
+ * Normalized parameters declared by an `input` node's data. Supports the
+ * modern `params` array (one entry per parameter) and the legacy single
+ * `paramName`/`dataType`/`defaultValue` shape so older drafts keep working.
+ * Malformed values fall back to safe defaults so that port resolution keeps
+ * working; strict validation lives in flow-signature / flow-graph.
+ */
+export function flowInputNodeParams(data: DynamicPortData): FlowScriptParam[] {
+  const raw = data?.params;
+  if (Array.isArray(raw)) {
+    const params: FlowScriptParam[] = [];
+    for (const entry of raw) {
+      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+        continue;
+      }
+      const record = entry as Record<string, JsonValue>;
+      const param: FlowScriptParam = {
+        name: trimName(record.name, FALLBACK_PARAM_NAME),
+        dataType: isFlowDataType(record.dataType) ? record.dataType : "any",
+      };
+      // null is treated as "no default" so editors can clear the field.
+      if (record.defaultValue !== undefined && record.defaultValue !== null) {
+        param.defaultValue = record.defaultValue;
+      }
+      params.push(param);
+    }
+    return params;
+  }
+  if (data !== undefined && typeof data.paramName === "string") {
+    const param: FlowScriptParam = {
+      name: trimName(data.paramName, FALLBACK_PARAM_NAME),
+      dataType: isFlowDataType(data?.dataType) ? data.dataType : "any",
+    };
+    if (data.defaultValue !== undefined && data.defaultValue !== null) {
+      param.defaultValue = data.defaultValue;
+    }
+    return [param];
+  }
+  return [];
+}
+
+/**
+ * Normalized result declarations of an `output` node's data. An output node
+ * without declared entries resolves to no data input ports.
+ */
+export function flowOutputNodeResults(
+  data: DynamicPortData,
+): FlowScriptResult[] {
+  const raw = data?.results;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  const results: FlowScriptResult[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      continue;
+    }
+    const record = entry as Record<string, JsonValue>;
+    results.push({
+      name: trimName(record.name, FALLBACK_RESULT_NAME),
+      dataType: isFlowDataType(record.dataType) ? record.dataType : "any",
+    });
+  }
+  return results;
+}
+
+/** The trimmed target script id stored on a `call` node ("" when absent). */
+export function callTargetIdFromData(data: DynamicPortData): string {
+  const raw = data?.targetScriptId;
+  return typeof raw === "string" ? raw.trim() : "";
+}
+
+/**
+ * Data ports contributed by a `call` node for the given target signature.
+ * Returns empty lists when the target is unknown so that wiring problems are
+ * reported once (unknown-call-target) instead of once per edge.
+ */
+export function flowCallNodeDataPorts(signature: FlowScriptSignature | null): {
+  inputs: FlowDataPortDefinition[];
+  outputs: FlowDataPortDefinition[];
+} {
+  if (signature === null) {
+    return { inputs: [], outputs: [] };
+  }
+  const port = (entry: { name: string; dataType: FlowDataType }) => ({
+    id: entry.name,
+    label: entry.name,
+    dataType: entry.dataType,
+  });
+  return {
+    inputs: signature.params.map(port),
+    outputs: signature.results.map(port),
+  };
+}
+
+/**
+ * Extra resolution context for node kinds whose ports depend on documents
+ * other than their own (`call` nodes).
+ */
+export interface FlowPortContext {
+  /**
+   * Resolves the signature of a called script. Returning null marks the
+   * target as unknown/unusable and suppresses the call node's data ports.
+   */
+  resolveCallSignature?: (scriptId: string) => FlowScriptSignature | null;
+}
+
+function derivedCallNodePorts(
+  direction: FlowPortDirection,
+  data: DynamicPortData,
+  context: FlowPortContext | undefined,
+): FlowDataPortDefinition[] {
+  if (context?.resolveCallSignature === undefined) {
+    return [];
+  }
+  const targetId = callTargetIdFromData(data);
+  if (targetId.length === 0) {
+    return [];
+  }
+  const ports = flowCallNodeDataPorts(
+    context.resolveCallSignature(targetId) ?? null,
+  );
+  return direction === "input" ? ports.inputs : ports.outputs;
+}
+
 /** All flow input port ids for a node, including any dynamic flow inputs. */
 export function flowInputPortIds(
   kind: FlowNodeKind,
@@ -276,10 +491,11 @@ export function flowInputPortIds(
   return ids;
 }
 
-/** All data input ports for a node, including any dynamic data inputs. */
+/** All data input ports for a node, including dynamic and derived ones. */
 export function flowDataInputPorts(
   kind: FlowNodeKind,
   data: DynamicPortData,
+  context?: FlowPortContext,
 ): FlowDataPortDefinition[] {
   const inputs = [...FLOW_NODE_DATA_PORTS[kind].inputs];
   const config = FLOW_NODE_DYNAMIC_INPUTS[kind];
@@ -290,7 +506,46 @@ export function flowDataInputPorts(
       inputs.push({ id, label: id, dataType: config.dataType });
     }
   }
+  if (kind === "output") {
+    for (const result of flowOutputNodeResults(data)) {
+      inputs.push({
+        id: result.name,
+        label: result.name,
+        dataType: result.dataType,
+      });
+    }
+  } else if (kind === "call") {
+    inputs.push(...derivedCallNodePorts("input", data, context));
+  }
   return inputs;
+}
+
+/** All data output ports for a node, including per-node derived ones. */
+export function flowDataOutputPorts(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+  context?: FlowPortContext,
+): FlowDataPortDefinition[] {
+  const outputs = [...FLOW_NODE_DATA_PORTS[kind].outputs];
+  if (kind === "input") {
+    const seen = new Set<string>();
+    for (const param of flowInputNodeParams(data)) {
+      // Param names are validated unique per script; dedupe defensively so
+      // duplicate declarations cannot produce colliding handle ids.
+      if (seen.has(param.name)) {
+        continue;
+      }
+      seen.add(param.name);
+      outputs.push({
+        id: param.name,
+        label: param.name,
+        dataType: param.dataType,
+      });
+    }
+  } else if (kind === "call") {
+    outputs.push(...derivedCallNodePorts("output", data, context));
+  }
+  return outputs;
 }
 
 export type ResolvedFlowPort =
@@ -302,6 +557,7 @@ export function resolveFlowPort(
   direction: FlowPortDirection,
   persistedPort: string | undefined,
   data?: DynamicPortData,
+  context?: FlowPortContext,
 ): ResolvedFlowPort | null {
   if (direction === "input") {
     const flowPorts = flowInputPortIds(kind, data);
@@ -313,7 +569,7 @@ export function resolveFlowPort(
     ) {
       return { id: resolvedId, role: "flow", dataType: "flow" };
     }
-    const dataPort = flowDataInputPorts(kind, data).find(
+    const dataPort = flowDataInputPorts(kind, data, context).find(
       (port) => port.id === resolvedId,
     );
     return dataPort === undefined ? null : { ...dataPort, role: "data" };
@@ -327,7 +583,7 @@ export function resolveFlowPort(
   ) {
     return { id: resolvedId, role: "flow", dataType: "flow" };
   }
-  const dataPort = FLOW_NODE_DATA_PORTS[kind].outputs.find(
+  const dataPort = flowDataOutputPorts(kind, data, context).find(
     (port) => port.id === resolvedId,
   );
   return dataPort === undefined ? null : { ...dataPort, role: "data" };
@@ -338,6 +594,45 @@ export function areFlowDataTypesCompatible(
   input: FlowDataType,
 ): boolean {
   return output === "any" || input === "any" || output === input;
+}
+
+export type FlowValidationIssueKind =
+  | "duplicate-node-id"
+  | "duplicate-edge-id"
+  | "missing-start"
+  | "multiple-starts"
+  | "missing-end"
+  | "multiple-ends"
+  | "missing-output"
+  | "missing-endpoint"
+  | "invalid-port"
+  | "incompatible-port-role"
+  | "incompatible-port-type"
+  | "illegal-port-count"
+  | "invalid-loop-back"
+  | "illegal-incoming"
+  | "illegal-outgoing"
+  | "cycle"
+  | "unreachable-node"
+  | "missing-param-name"
+  | "invalid-param-name"
+  | "duplicate-param-name"
+  | "invalid-data-type"
+  | "invalid-default-value"
+  | "duplicate-result-name"
+  | "inconsistent-output-ports"
+  | "missing-call-target"
+  | "unknown-call-target"
+  | "invalid-call-target"
+  | "missing-call-argument"
+  | "call-cycle";
+
+export interface FlowValidationIssue {
+  kind: FlowValidationIssueKind;
+  message: string;
+  nodeId?: string;
+  edgeId?: string;
+  port?: string;
 }
 
 const FlowPositionSchema = z

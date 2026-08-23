@@ -192,7 +192,10 @@ function matchesText(
 }
 
 function languagesOf(value: "eng" | "chi_sim" | "eng+chi_sim"): OcrLanguage[] {
-  return value === "eng+chi_sim" ? ["eng", "chi_sim"] : [value];
+  if (value === "eng+chi_sim") {
+    return [OcrLanguage.Eng, OcrLanguage.ChiSim];
+  }
+  return value === "eng" ? [OcrLanguage.Eng] : [OcrLanguage.ChiSim];
 }
 
 function charWhitelistOf(

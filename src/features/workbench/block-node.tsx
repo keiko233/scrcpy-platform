@@ -10,16 +10,20 @@ import {
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import {
-  FLOW_NODE_DATA_PORTS,
   FLOW_NODE_DYNAMIC_FLOW_INPUTS,
   FLOW_NODE_DYNAMIC_INPUTS,
+  flowDataInputPorts,
+  flowDataOutputPorts,
   flowDynamicPortCount,
   flowDynamicPortId,
+  flowInputNodeParams,
+  flowOutputNodeResults,
   type FlowDataType,
 } from "@/shared/project-contracts";
 
 import { BLOCK_DEFINITIONS } from "./blocks";
 import { useFlowApi } from "./flow/flow-api-context";
+import { useFlowPortContext } from "./flow/use-flow-port-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
 import { BlockTitle, customNodeName } from "./node-title";
 import { useWorkbench } from "./use-workbench";
@@ -146,20 +150,27 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
 
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
   const { deleteNode, updateNodeData } = useFlowApi();
-  const { runs, flow } = useWorkbench();
+  const portContext = useFlowPortContext();
+  const { library, runs, flow } = useWorkbench();
   const [configOpen, setConfigOpen] = useState(false);
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
   const customName = customNodeName(data.name);
   const fallbackTitle = definition?.label ?? String(data.kind ?? m.node_config_block_fallback());
-  const summary = definition ? definition.summarize(data) : m.block_summarize_unknown();
+  const rawSummary = definition ? definition.summarize(data) : m.block_summarize_unknown();
+  const summary =
+    data.kind === "call" && typeof data.targetScriptId === "string"
+      ? (library.scripts.find((script) => script.id === data.targetScriptId)
+          ?.name ?? m.block_field_call_target_placeholder())
+      : rawSummary;
   const isBreakpoint = runs.breakpoints.has(id);
   const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
   const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
   const hasFlowPorts =
     (definition?.inputPorts.length ?? 0) > 0 ||
     (definition?.outputPorts.length ?? 0) > 0;
-  const dataPorts = FLOW_NODE_DATA_PORTS[data.kind];
+  const dataInputs = flowDataInputPorts(data.kind, data, portContext);
+  const dataOutputs = flowDataOutputPorts(data.kind, data, portContext);
   const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[data.kind];
   const dynamicDataConfig = FLOW_NODE_DYNAMIC_INPUTS[data.kind];
   const dynamicCount = flowDynamicPortCount(data.kind, data) ?? 0;
@@ -179,7 +190,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
           dataType: "flow" as const,
         }))
       : []),
-    ...dataPorts.inputs,
+    ...dataInputs,
     ...(dynamicDataConfig !== undefined
       ? dynamicIds.map((portId) => ({
           id: portId,
@@ -194,7 +205,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
       label: portId,
       dataType: "flow" as const,
     })),
-    ...dataPorts.outputs,
+    ...dataOutputs,
   ];
   const portRows = Array.from(
     { length: Math.max(inputPorts.length, outputPorts.length) },
@@ -269,6 +280,218 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               )}
             >
               {noteText.length > 0 ? noteText : m.block_field_note_placeholder()}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuPopup sideOffset={4}>
+          <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
+            <Trash2Icon />
+            {m.block_node_delete_block()}
+          </ContextMenuItem>
+        </ContextMenuPopup>
+      </ContextMenu>
+    );
+  }
+
+  if (data.kind === "input") {
+    const params = flowInputNodeParams(data);
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          className="block"
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <div
+            className={cn(
+              "wb-flow-node wb-block-input min-w-40 !p-0",
+              selected && "selected",
+            )}
+          >
+            <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-primary/25 bg-primary/5 px-2 py-1.5">
+              {Icon && (
+                <Icon
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-primary"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <BlockTitle
+                  name={customName}
+                  fallback={fallbackTitle}
+                  onDoubleClick={() => setConfigOpen(true)}
+                />
+                <div
+                  className="truncate text-[10px] leading-3.5 text-muted-foreground"
+                  title={summary}
+                >
+                  {summary}
+                </div>
+              </div>
+              <NodeConfigPopover
+                nodeId={id}
+                data={data}
+                open={configOpen}
+                onOpenChange={setConfigOpen}
+              />
+            </div>
+            <div className="py-1">
+              {params.length === 0 && (
+                <div className="px-2 py-1 text-[10px] text-muted-foreground">
+                  {m.block_field_params_empty()}
+                </div>
+              )}
+              {params.map((param) => (
+                <div
+                  key={param.name}
+                  className="relative flex min-h-5 items-center justify-end gap-1.5 pl-2 pr-1 text-[10px]"
+                >
+                  <span className="truncate" title={param.name}>
+                    {param.name}
+                  </span>
+                  <PortType type={param.dataType} />
+                  <Handle
+                    id={param.name}
+                    type="source"
+                    position={Position.Right}
+                    className={cn(
+                      "!right-0 !top-1/2 !size-3",
+                      PORT_TYPE_CLASS_NAMES[param.dataType],
+                    )}
+                    title={`${param.name}: ${getDataTypeLabel(param.dataType)}`}
+                    aria-label={`Output ${param.name}, type ${getDataTypeLabel(param.dataType)}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuPopup sideOffset={4}>
+          <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
+            <Trash2Icon />
+            {m.block_node_delete_block()}
+          </ContextMenuItem>
+        </ContextMenuPopup>
+      </ContextMenu>
+    );
+  }
+
+  if (data.kind === "output") {
+    const results = flowOutputNodeResults(data);
+    return (
+      <ContextMenu>
+        <ContextMenuTrigger
+          className="block"
+          onContextMenu={(event) => event.stopPropagation()}
+        >
+          <div
+            className={cn(
+              "wb-flow-node wb-block-output min-w-40 !p-0",
+              selected && "selected",
+              isPaused && "ring-2 ring-warning",
+              isCurrent && "ring-2 ring-primary",
+            )}
+          >
+            <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-warning/30 bg-warning/5 px-2 py-1.5">
+              {hasFlowPorts && (
+                <button
+                  type="button"
+                  className="group/breakpoint flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent"
+                  title={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
+                  aria-label={isBreakpoint ? m.block_node_remove_breakpoint() : m.block_node_add_breakpoint()}
+                  aria-pressed={isBreakpoint}
+                  onClick={() => runs.toggleBreakpoint(id)}
+                >
+                  <span
+                    className={cn(
+                      "size-2.5 rounded-full border",
+                      isBreakpoint
+                        ? "border-destructive bg-destructive"
+                        : "border-muted-foreground/50 bg-transparent group-hover/breakpoint:border-muted-foreground",
+                    )}
+                  />
+                </button>
+              )}
+              {Icon && (
+                <Icon
+                  aria-hidden="true"
+                  className="size-3.5 shrink-0 text-warning"
+                />
+              )}
+              <div className="min-w-0 flex-1">
+                <BlockTitle
+                  name={customName}
+                  fallback={fallbackTitle}
+                  onDoubleClick={() => setConfigOpen(true)}
+                />
+                <div
+                  className="truncate text-[10px] leading-3.5 text-muted-foreground"
+                  title={summary}
+                >
+                  {summary}
+                </div>
+              </div>
+              <NodeConfigPopover
+                nodeId={id}
+                data={data}
+                open={configOpen}
+                onOpenChange={setConfigOpen}
+              />
+            </div>
+            <div className="py-1">
+              <div className="relative flex min-h-5 items-center px-2 text-[10px]">
+                <Handle
+                  id="in"
+                  type="target"
+                  position={Position.Left}
+                  className={cn(
+                    "!left-0 !top-1/2 !size-3",
+                    PORT_TYPE_CLASS_NAMES.flow,
+                  )}
+                  title="in: flow"
+                  aria-label="Input in, type flow"
+                />
+                <span className="truncate text-muted-foreground">in</span>
+                <div className="mx-2 h-px flex-1 bg-border" />
+                <span className="truncate text-muted-foreground">next</span>
+                <Handle
+                  id="next"
+                  type="source"
+                  position={Position.Right}
+                  className={cn(
+                    "!right-0 !top-1/2 !size-3",
+                    PORT_TYPE_CLASS_NAMES.flow,
+                  )}
+                  title="next: flow"
+                  aria-label="Output next, type flow"
+                />
+              </div>
+              {results.length === 0 && (
+                <div className="px-2 py-1 text-[10px] text-muted-foreground">
+                  {m.block_field_results_empty()}
+                </div>
+              )}
+              {results.map((result) => (
+                <div
+                  key={result.name}
+                  className="relative flex min-h-5 items-center gap-1.5 pl-2 pr-1 text-[10px]"
+                >
+                  <Handle
+                    id={result.name}
+                    type="target"
+                    position={Position.Left}
+                    className={cn(
+                      "!left-0 !top-1/2 !size-3",
+                      PORT_TYPE_CLASS_NAMES[result.dataType],
+                    )}
+                    title={`${result.name}: ${getDataTypeLabel(result.dataType)}`}
+                    aria-label={`Input ${result.name}, type ${getDataTypeLabel(result.dataType)}`}
+                  />
+                  <span className="truncate" title={result.name}>
+                    {result.name}
+                  </span>
+                  <PortType type={result.dataType} />
+                </div>
+              ))}
             </div>
           </div>
         </ContextMenuTrigger>

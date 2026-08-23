@@ -22,7 +22,6 @@ import {
   FlowDataType,
   ControlHandle,
   OcrLanguage,
-  OcrMatchMode,
   OcrCharSet,
 } from "./constants/enums";
 import { ExpressionLimits } from "./constants/limits";

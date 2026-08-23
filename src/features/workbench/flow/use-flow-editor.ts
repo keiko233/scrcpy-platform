@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EdgeChange,
   IsValidConnection,
@@ -15,10 +15,16 @@ import useLatest from "react-use/lib/useLatest";
 
 import { scriptQueryFn, scriptQueryKey } from "@/hooks/query/use-script";
 import { useSaveScriptDraft } from "@/hooks/query/use-scripts";
-import type {
-  ScriptDto,
-  FlowDocument,
-  JsonValue,
+import {
+  FLOW_NODE_PORTS,
+  flowDataInputPorts,
+  flowDataOutputPorts,
+  flowInputPortIds,
+  type FlowNodeKind,
+  type ScriptDto,
+  type FlowDocument,
+  type FlowScriptSignature,
+  type JsonValue,
 } from "@/shared/project-contracts";
 
 import { BLOCK_DEFINITIONS } from "../blocks";
@@ -87,9 +93,18 @@ function isStructuralChange(
   return change.type !== "select";
 }
 
+export interface FlowEditorOptions {
+  /**
+   * Resolves signatures of callable scripts so Call-node ports participate
+   * in connection validation while wiring.
+   */
+  resolveCallSignature?: (scriptId: string) => FlowScriptSignature | null;
+}
+
 export function useFlowEditor(
   script: ScriptDto | null,
   applyScriptUpdate: (script: ScriptDto) => void,
+  options: FlowEditorOptions = {},
 ): FlowEditor {
   const [nodes, setNodes, rawOnNodesChange] =
     useNodesState<WorkbenchNode>([]);
@@ -108,6 +123,12 @@ export function useFlowEditor(
   const edgesRef = useLatest(edges);
   const viewportRef = useLatest(viewport);
   const suppressViewportDirtyRef = useRef(false);
+
+  const resolveCallSignature = options.resolveCallSignature;
+  const portContext = useMemo(
+    () => ({ resolveCallSignature }),
+    [resolveCallSignature],
+  );
 
   const loadDocument = useCallback((document: FlowDocument) => {
     suppressViewportDirtyRef.current = true;
@@ -157,19 +178,19 @@ export function useFlowEditor(
   const onConnect = useCallback<OnConnect>(
     (connection) => {
       setEdges((current) => {
-        const next = mergeEdge(current, connection, nodesRef.current);
+        const next = mergeEdge(current, connection, nodesRef.current, portContext);
         if (next !== current) {
           setDirty(true);
         }
         return next;
       });
     },
-    [setEdges, nodesRef],
+    [setEdges, nodesRef, portContext],
   );
 
   const isValidConnection = useCallback<IsValidConnection<WorkbenchEdge>>(
-    (connection) => canConnectPorts(nodesRef.current, connection),
-    [nodesRef],
+    (connection) => canConnectPorts(nodesRef.current, connection, portContext),
+    [nodesRef, portContext],
   );
 
   const onViewportChange = useCallback((nextViewport: Viewport) => {
@@ -235,14 +256,59 @@ export function useFlowEditor(
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, JsonValue>) => {
-      setNodes((current) =>
-        current.map((node) =>
+      setNodes((current) => {
+        const next = current.map((node) =>
           node.id === id ? patchNodeData(node, patch) : node,
-        ),
-      );
+        );
+        const patched = next.find((node) => node.id === id);
+        if (patched !== undefined) {
+          const kind = patched.type as FlowNodeKind;
+          const flowInputs = flowInputPortIds(kind, patched.data);
+          const dataInputs = flowDataInputPorts(
+            kind,
+            patched.data,
+            portContext,
+          );
+          const dataOutputs = flowDataOutputPorts(
+            kind,
+            patched.data,
+            portContext,
+          );
+          const flowOutputs = FLOW_NODE_PORTS[kind].outputs;
+          const validInputs = new Set([
+            ...flowInputs,
+            ...dataInputs.map((port) => port.id),
+          ]);
+          const validOutputs = new Set([
+            ...flowOutputs,
+            ...dataOutputs.map((port) => port.id),
+          ]);
+          const defaultInput = flowInputs.length === 1 ? flowInputs[0] : "in";
+          const defaultOutput =
+            flowOutputs.length === 1 ? flowOutputs[0] : "next";
+          setEdges((edges) =>
+            edges.filter((edge) => {
+              if (edge.source === id) {
+                const handle = edge.sourceHandle ?? defaultOutput;
+                if (!validOutputs.has(handle)) {
+                  return false;
+                }
+              }
+              if (edge.target === id) {
+                const handle = edge.targetHandle ?? defaultInput;
+                if (!validInputs.has(handle)) {
+                  return false;
+                }
+              }
+              return true;
+            }),
+          );
+        }
+        return next;
+      });
       setDirty(true);
     },
-    [setNodes],
+    [setNodes, setEdges, portContext],
   );
 
   const groupSelection = useCallback(

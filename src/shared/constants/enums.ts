@@ -28,6 +28,9 @@ export enum FlowNodeKind {
   Constant = "constant",
   Note = "note",
   Group = "group",
+  Input = "input",
+  Output = "output",
+  Call = "call",
 }
 
 export enum FlowDataType {
@@ -45,6 +48,7 @@ export enum FlowValidationIssueKind {
   MultipleStarts = "multiple-starts",
   MissingEnd = "missing-end",
   MultipleEnds = "multiple-ends",
+  MissingOutput = "missing-output",
   MissingEndpoint = "missing-endpoint",
   InvalidPort = "invalid-port",
   IncompatiblePortRole = "incompatible-port-role",
@@ -55,6 +59,18 @@ export enum FlowValidationIssueKind {
   IllegalOutgoing = "illegal-outgoing",
   Cycle = "cycle",
   UnreachableNode = "unreachable-node",
+  MissingParamName = "missing-param-name",
+  InvalidParamName = "invalid-param-name",
+  DuplicateParamName = "duplicate-param-name",
+  InvalidDataType = "invalid-data-type",
+  InvalidDefaultValue = "invalid-default-value",
+  DuplicateResultName = "duplicate-result-name",
+  InconsistentOutputPorts = "inconsistent-output-ports",
+  MissingCallTarget = "missing-call-target",
+  UnknownCallTarget = "unknown-call-target",
+  InvalidCallTarget = "invalid-call-target",
+  MissingCallArgument = "missing-call-argument",
+  CallCycle = "call-cycle",
 }
 
 export enum FlowPortDirection {

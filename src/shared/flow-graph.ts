@@ -1,45 +1,53 @@
 import {
   areFlowDataTypesCompatible,
+  callTargetIdFromData,
   FLOW_NODE_PORTS,
   flowDataInputPorts,
   flowInputPortIds,
   resolveFlowPort,
+  type FlowDocument,
   type FlowEdge,
   type FlowNode,
   type FlowNodeKind,
+  type FlowPortContext,
+  type FlowScriptSignature,
+  type FlowValidationIssue,
   type ResolvedFlowPort,
 } from "./project-contracts";
 
-export type FlowValidationIssueKind =
-  | "duplicate-node-id"
-  | "duplicate-edge-id"
-  | "missing-start"
-  | "multiple-starts"
-  | "missing-end"
-  | "multiple-ends"
-  | "missing-endpoint"
-  | "invalid-port"
-  | "incompatible-port-role"
-  | "incompatible-port-type"
-  | "illegal-port-count"
-  | "invalid-loop-back"
-  | "illegal-incoming"
-  | "illegal-outgoing"
-  | "cycle"
-  | "unreachable-node";
+import {
+  bestEffortFlowSignature,
+  detectCallCycle,
+  deriveFlowSignature,
+  validateBoundaryNodes,
+} from "./flow-signature";
 
-export interface FlowValidationIssue {
-  kind: FlowValidationIssueKind;
-  message: string;
-  nodeId?: string;
-  edgeId?: string;
-  port?: string;
+export type {
+  FlowValidationIssue,
+  FlowValidationIssueKind,
+} from "./project-contracts";
+
+export interface ValidateFlowOptions {
+  /**
+   * Provides the persisted documents referenced by "call" nodes so they can
+   * be checked for existence, signature compatibility and call cycles. When
+   * omitted, call targets are not resolved and their data edges are skipped.
+   */
+  resolveDocument?: (scriptId: string) => FlowDocument | null | undefined;
 }
 
 export interface CompiledFlow {
   valid: boolean;
   issues: FlowValidationIssue[];
   order: string[];
+}
+
+function compareNodesByPosition(left: FlowNode, right: FlowNode): number {
+  return (
+    left.position.y - right.position.y ||
+    left.position.x - right.position.x ||
+    left.id.localeCompare(right.id)
+  );
 }
 
 function push(map: Map<string, FlowEdge[]>, key: string, edge: FlowEdge): void {
@@ -69,6 +77,7 @@ function isLoopBackEdge(
 export function validateFlow(
   nodes: readonly FlowNode[],
   edges: readonly FlowEdge[],
+  options: ValidateFlowOptions = {},
 ): FlowValidationIssue[] {
   const issues: FlowValidationIssue[] = [];
   const nodeKinds = new Map<string, FlowNodeKind>();
@@ -87,6 +96,110 @@ export function validateFlow(
     nodeKinds.set(node.id, node.type);
     nodeData.set(node.id, node.data);
   }
+
+  issues.push(
+    ...validateBoundaryNodes([...nodes].sort(compareNodesByPosition)),
+  );
+
+  // Resolve "call" targets up front so edges touching unresolvable call
+  // nodes can be skipped instead of flooding the report with port errors.
+  const resolveDocument = options.resolveDocument;
+  const documentCache = new Map<string, FlowDocument | null | undefined>();
+  const signatureCache = new Map<string, FlowScriptSignature | null>();
+  const bestEffortCache = new Map<string, FlowScriptSignature | null>();
+  const callSignatures = new Map<string, FlowScriptSignature>();
+  const unresolvedCalls = new Set<string>();
+  const loadDocument = (scriptId: string): FlowDocument | null | undefined => {
+    if (!documentCache.has(scriptId)) {
+      documentCache.set(scriptId, resolveDocument?.(scriptId));
+    }
+    return documentCache.get(scriptId);
+  };
+  const signatureOfScript = (scriptId: string): FlowScriptSignature | null => {
+    if (!signatureCache.has(scriptId)) {
+      const cached = loadDocument(scriptId);
+      if (cached === null || cached === undefined) {
+        signatureCache.set(scriptId, null);
+        bestEffortCache.set(scriptId, null);
+      } else {
+        const derived = deriveFlowSignature(cached);
+        signatureCache.set(
+          scriptId,
+          derived.ok ? derived.signature : null,
+        );
+        bestEffortCache.set(scriptId, bestEffortFlowSignature(cached));
+      }
+    }
+    return signatureCache.get(scriptId) ?? null;
+  };
+  /**
+   * Lenient signature resolver used for port resolution so Call nodes can
+   * expose wiring ports even while the target script is still being edited.
+   */
+  const bestEffortSignatureOfScript = (
+    scriptId: string,
+  ): FlowScriptSignature | null => {
+    signatureOfScript(scriptId);
+    return bestEffortCache.get(scriptId) ?? null;
+  };
+  for (const node of nodes) {
+    if (node.type !== "call") {
+      continue;
+    }
+    const targetId = callTargetIdFromData(node.data);
+    if (targetId.length === 0) {
+      issues.push({
+        kind: "missing-call-target",
+        nodeId: node.id,
+        message: `Call node "${node.id}" does not select a target script.`,
+      });
+      unresolvedCalls.add(node.id);
+      continue;
+    }
+    if (resolveDocument === undefined) {
+      unresolvedCalls.add(node.id);
+      continue;
+    }
+    if (
+      resolveDocument !== undefined &&
+      detectCallCycle(targetId, loadDocument) !== null
+    ) {
+      issues.push({
+        kind: "call-cycle",
+        nodeId: node.id,
+        message: `Call node "${node.id}" participates in a script call cycle rooted at "${targetId}".`,
+      });
+    }
+    const targetDocument = loadDocument(targetId);
+    if (targetDocument === null || targetDocument === undefined) {
+      issues.push({
+        kind: "unknown-call-target",
+        nodeId: node.id,
+        message: `Call node "${node.id}" references unknown script "${targetId}".`,
+      });
+      unresolvedCalls.add(node.id);
+      continue;
+    }
+    const derived = deriveFlowSignature(targetDocument);
+    if (!derived.ok) {
+      const kinds = [...new Set(derived.issues.map((issue) => issue.kind))].join(
+        ", ",
+      );
+      issues.push({
+        kind: "invalid-call-target",
+        nodeId: node.id,
+        message: `Call node "${node.id}" targets script "${targetId}" which has no usable signature (${kinds}).`,
+      });
+      // Keep best-effort ports so wiring feedback stays available while the
+      // target is being repaired.
+      continue;
+    }
+    callSignatures.set(node.id, derived.signature);
+  }
+
+  const portContext: FlowPortContext = {
+    resolveCallSignature: bestEffortSignatureOfScript,
+  };
 
   const seenEdgeIds = new Set<string>();
   for (const edge of edges) {
@@ -161,8 +274,12 @@ export function validateFlow(
         "output",
         edge.sourceHandle,
         nodeData.get(edge.source),
+        portContext,
       );
       if (sourcePort === null) {
+        if (unresolvedCalls.has(edge.source)) {
+          continue;
+        }
         issues.push({
           kind: "invalid-port",
           edgeId: edge.id,
@@ -177,8 +294,12 @@ export function validateFlow(
         "input",
         edge.targetHandle,
         nodeData.get(edge.target),
+        portContext,
       );
       if (targetPort === null) {
+        if (unresolvedCalls.has(edge.target)) {
+          continue;
+        }
         issues.push({
           kind: "invalid-port",
           edgeId: edge.id,
@@ -191,6 +312,9 @@ export function validateFlow(
       continue;
     }
     if (sourcePort.role !== targetPort.role) {
+      if (unresolvedCalls.has(edge.source) || unresolvedCalls.has(edge.target)) {
+        continue;
+      }
       issues.push({
         kind: "incompatible-port-role",
         edgeId: edge.id,
@@ -203,6 +327,9 @@ export function validateFlow(
       targetPort.role === "data" &&
       !areFlowDataTypesCompatible(sourcePort.dataType, targetPort.dataType)
     ) {
+      if (unresolvedCalls.has(edge.source) || unresolvedCalls.has(edge.target)) {
+        continue;
+      }
       issues.push({
         kind: "incompatible-port-type",
         edgeId: edge.id,
@@ -266,7 +393,7 @@ export function validateFlow(
         });
       }
     }
-    for (const port of flowDataInputPorts(node.type, node.data)) {
+    for (const port of flowDataInputPorts(node.type, node.data, portContext)) {
       const count = incomingDataByPort.get(portKey(node.id, port.id))?.length ?? 0;
       if (count > 1) {
         issues.push({
@@ -274,6 +401,31 @@ export function validateFlow(
           nodeId: node.id,
           port: port.id,
           message: `Data input port "${port.id}" on node "${node.id}" has ${count} edges; expected at most 1.`,
+        });
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.type !== "call") {
+      continue;
+    }
+    const signature = callSignatures.get(node.id);
+    if (signature === undefined) {
+      continue;
+    }
+    for (const param of signature.params) {
+      if (param.defaultValue !== undefined) {
+        continue;
+      }
+      const count =
+        incomingDataByPort.get(portKey(node.id, param.name))?.length ?? 0;
+      if (count === 0) {
+        issues.push({
+          kind: "missing-call-argument",
+          nodeId: node.id,
+          port: param.name,
+          message: `Parameter "${param.name}" on call node "${node.id}" has no incoming edge and no default value.`,
         });
       }
     }
@@ -346,8 +498,9 @@ export function validateFlow(
 export function compileFlow(
   nodes: readonly FlowNode[],
   edges: readonly FlowEdge[],
+  options: ValidateFlowOptions = {},
 ): CompiledFlow {
-  const issues = validateFlow(nodes, edges);
+  const issues = validateFlow(nodes, edges, options);
   const order = issues.length === 0 ? deterministicOrder(nodes, edges) : [];
   return { valid: issues.length === 0, issues, order };
 }
