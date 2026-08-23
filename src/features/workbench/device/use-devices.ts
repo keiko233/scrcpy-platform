@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { useDeviceList } from "@/hooks/query/use-device-list";
+import {
+  deviceListQueryKey,
+  useDeviceList,
+} from "@/hooks/query/use-device-list";
 import {
   deviceSessionQueryKey,
   useDeviceSession,
@@ -10,6 +13,7 @@ import type {
   AdbDeviceDto,
   ConnectDeviceFailure,
   DeviceSessionDto,
+  WirelessOperationFailure,
 } from "@/shared/device-contracts";
 
 export interface DeviceManager {
@@ -20,12 +24,16 @@ export interface DeviceManager {
   loadingDevices: boolean;
   connecting: boolean;
   disconnecting: boolean;
+  wirelessBusy: boolean;
   listError: string | null;
   sessionError: string | null;
   setSelectedTransportId: (transportId: string) => void;
   refresh: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
+  pairWireless: (address: string, password: string) => Promise<void>;
+  connectWireless: (address: string) => Promise<void>;
+  disconnectWireless: (address: string) => Promise<void>;
   clearError: () => void;
   clearSessionError: () => void;
 }
@@ -50,6 +58,20 @@ const SERVER_UNAVAILABLE_MESSAGE =
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+function describeWirelessFailure(
+  error: WirelessOperationFailure,
+  message: string,
+): string {
+  const prefix = {
+    "server-unavailable": "ADB server is not reachable.",
+    unauthorized: "Wireless debugging rejected the pairing or connection.",
+    "already-connected": "The wireless device is already connected.",
+    "network-error": "The wireless device could not be reached.",
+    "operation-failed": "The wireless ADB operation failed.",
+  }[error];
+  return message.length > 0 ? `${prefix} ${message}` : prefix;
 }
 
 export function useDevices(): DeviceManager {
@@ -138,6 +160,42 @@ export function useDevices(): DeviceManager {
       }),
   });
 
+  const pairWirelessMutation = useMutation({
+    mutationFn: (input: { address: string; password: string }) =>
+      window.androidPlatform.pairWirelessDevice(input),
+    onSuccess: (result) => {
+      if (result.status === "error") {
+        setSessionError(describeWirelessFailure(result.error, result.message));
+      }
+    },
+    onSettled: () =>
+      void queryClient.invalidateQueries({ queryKey: deviceListQueryKey }),
+  });
+
+  const connectWirelessMutation = useMutation({
+    mutationFn: (address: string) =>
+      window.androidPlatform.connectWirelessDevice({ address }),
+    onSuccess: (result) => {
+      if (result.status === "error") {
+        setSessionError(describeWirelessFailure(result.error, result.message));
+      }
+    },
+    onSettled: () =>
+      void queryClient.invalidateQueries({ queryKey: deviceListQueryKey }),
+  });
+
+  const disconnectWirelessMutation = useMutation({
+    mutationFn: (address: string) =>
+      window.androidPlatform.disconnectWirelessDevice({ address }),
+    onSuccess: (result) => {
+      if (result.status === "error") {
+        setSessionError(describeWirelessFailure(result.error, result.message));
+      }
+    },
+    onSettled: () =>
+      void queryClient.invalidateQueries({ queryKey: deviceListQueryKey }),
+  });
+
   const connect = useCallback(async () => {
     if (selectedTransportId === null) {
       return;
@@ -159,6 +217,42 @@ export function useDevices(): DeviceManager {
     }
   }, [disconnectMutation]);
 
+  const pairWireless = useCallback(
+    async (address: string, password: string) => {
+      setSessionError(null);
+      try {
+        await pairWirelessMutation.mutateAsync({ address, password });
+      } catch (cause) {
+        setSessionError(errorMessage(cause));
+      }
+    },
+    [pairWirelessMutation],
+  );
+
+  const connectWireless = useCallback(
+    async (address: string) => {
+      setSessionError(null);
+      try {
+        await connectWirelessMutation.mutateAsync(address);
+      } catch (cause) {
+        setSessionError(errorMessage(cause));
+      }
+    },
+    [connectWirelessMutation],
+  );
+
+  const disconnectWireless = useCallback(
+    async (address: string) => {
+      setSessionError(null);
+      try {
+        await disconnectWirelessMutation.mutateAsync(address);
+      } catch (cause) {
+        setSessionError(errorMessage(cause));
+      }
+    },
+    [disconnectWirelessMutation],
+  );
+
   const refresh = useCallback(async () => {
     await devicesQuery.refetch();
   }, [devicesQuery]);
@@ -174,12 +268,19 @@ export function useDevices(): DeviceManager {
     loadingDevices,
     connecting: connectMutation.isPending,
     disconnecting: disconnectMutation.isPending,
+    wirelessBusy:
+      pairWirelessMutation.isPending ||
+      connectWirelessMutation.isPending ||
+      disconnectWirelessMutation.isPending,
     listError,
     sessionError,
     setSelectedTransportId,
     refresh,
     connect,
     disconnect,
+    pairWireless,
+    connectWireless,
+    disconnectWireless,
     clearError,
     clearSessionError,
   };

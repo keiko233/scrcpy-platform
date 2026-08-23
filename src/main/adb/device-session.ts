@@ -9,6 +9,9 @@ import type {
   InstalledAppDto,
   InstalledAppsSnapshot,
   ListDevicesResult,
+  WirelessConnectInput,
+  WirelessOperationResult,
+  WirelessPairInput,
 } from "../../shared/device-contracts";
 import { Timing } from "../../shared/constants/timing";
 import { AppMetadataCacheStore } from "./app-cache";
@@ -47,7 +50,27 @@ export type BeforeDeviceDisconnectHook = (
 export interface DeviceGateway {
   listDevices(): Promise<DeviceInfo[]>;
   connectDevice(device: DeviceInfo): Promise<DeviceConnection>;
+  pairWirelessDevice(input: WirelessPairInput): Promise<void>;
+  connectWirelessDevice(input: WirelessConnectInput): Promise<void>;
+  disconnectWirelessDevice(input: WirelessConnectInput): Promise<void>;
   dispose(): Promise<void>;
+}
+
+export type WirelessGatewayErrorCode =
+  | "server-unavailable"
+  | "unauthorized"
+  | "already-connected"
+  | "network-error"
+  | "operation-failed";
+
+export class WirelessGatewayError extends Error {
+  readonly code: WirelessGatewayErrorCode;
+
+  constructor(code: WirelessGatewayErrorCode, message: string) {
+    super(message);
+    this.name = "WirelessGatewayError";
+    this.code = code;
+  }
 }
 
 /**
@@ -304,6 +327,39 @@ export class DeviceSessionService {
     return this.#enqueue(() => this.#disconnectLocked());
   }
 
+  pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult> {
+    return this.#enqueue(async () => {
+      try {
+        await this.#gateway.pairWirelessDevice(input);
+        return { status: "ok" };
+      } catch (error) {
+        return this.#wirelessFailure(error);
+      }
+    });
+  }
+
+  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult> {
+    return this.#enqueue(async () => {
+      try {
+        await this.#gateway.connectWirelessDevice(input);
+        return { status: "ok" };
+      } catch (error) {
+        return this.#wirelessFailure(error);
+      }
+    });
+  }
+
+  disconnectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult> {
+    return this.#enqueue(async () => {
+      try {
+        await this.#gateway.disconnectWirelessDevice(input);
+        return { status: "ok" };
+      } catch (error) {
+        return this.#wirelessFailure(error);
+      }
+    });
+  }
+
   /**
    * Attempts to tear down the active connection (if any) and releases the
    * gateway. Bounded by `timeoutMs` so application shutdown never hangs on an
@@ -422,6 +478,21 @@ export class DeviceSessionService {
       return "server-unavailable";
     }
     return "connection-failed";
+  }
+
+  #wirelessFailure(error: unknown): WirelessOperationResult {
+    if (error instanceof WirelessGatewayError) {
+      return {
+        status: "error",
+        error: error.code,
+        message: error.message,
+      };
+    }
+    return {
+      status: "error",
+      error: "operation-failed",
+      message: errorMessageOf(error),
+    };
   }
 
   #snapshot(): DeviceSessionDto {

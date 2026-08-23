@@ -8,6 +8,9 @@ import {
   type InstalledAppDto,
   type InstalledAppsSnapshot,
   type ListDevicesResult,
+  WirelessConnectInputSchema,
+  type WirelessOperationResult,
+  WirelessPairInputSchema,
 } from "../../shared/device-contracts";
 import type { DeviceSessionService } from "../adb/device-session";
 
@@ -43,5 +46,29 @@ export function registerDeviceHandlers(service: DeviceSessionService): void {
   ipcMain.handle(
     ELECTRON_CHANNELS.devicesDisconnect,
     (): Promise<DisconnectDeviceResult> => service.disconnectDevice(),
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.devicesWirelessPair,
+    (_event, raw: unknown): Promise<WirelessOperationResult> => {
+      const input = WirelessPairInputSchema.parse(raw);
+      return service.pairWirelessDevice(input);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.devicesWirelessConnect,
+    (_event, raw: unknown): Promise<WirelessOperationResult> => {
+      const input = WirelessConnectInputSchema.parse(raw);
+      return service.connectWirelessDevice(input);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.devicesWirelessDisconnect,
+    (_event, raw: unknown): Promise<WirelessOperationResult> => {
+      const input = WirelessConnectInputSchema.parse(raw);
+      return service.disconnectWirelessDevice(input);
+    },
   );
 }

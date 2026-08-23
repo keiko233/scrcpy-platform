@@ -2,10 +2,15 @@ import { AdbServerClient } from "@yume-chan/adb";
 import type { Adb } from "@yume-chan/adb";
 import { AdbServerNodeTcpConnector } from "@yume-chan/adb-server-node-tcp";
 import type { SocketConnectOpts } from "node:net";
-import type { AdbDeviceDto } from "../../shared/device-contracts";
+import type {
+  AdbDeviceDto,
+  WirelessConnectInput,
+  WirelessPairInput,
+} from "../../shared/device-contracts";
 import { AdbConstants } from "../../shared/constants/app";
 import {
   DeviceServerUnavailableError,
+  WirelessGatewayError,
   type DeviceConnection,
   type DeviceGateway,
   type DeviceInfo,
@@ -169,6 +174,33 @@ export class TangoAdbGateway implements DeviceGateway {
     }
   }
 
+  async pairWirelessDevice({ address, password }: WirelessPairInput): Promise<void> {
+    try {
+      await this.#client.wireless.pair(address, password);
+    } catch (error) {
+      throw mapWirelessError(error);
+    }
+  }
+
+  async connectWirelessDevice({ address }: WirelessConnectInput): Promise<void> {
+    try {
+      await this.#client.wireless.connect(address);
+    } catch (error) {
+      if (error instanceof AdbServerClient.AlreadyConnectedError) {
+        return;
+      }
+      throw mapWirelessError(error);
+    }
+  }
+
+  async disconnectWirelessDevice({ address }: WirelessConnectInput): Promise<void> {
+    try {
+      await this.#client.wireless.disconnect(address);
+    } catch (error) {
+      throw mapWirelessError(error);
+    }
+  }
+
   async dispose(): Promise<void> {
     // The client and connector hold no resources that survive the connections
     // created for each device; active connections are closed by the session.
@@ -177,4 +209,23 @@ export class TangoAdbGateway implements DeviceGateway {
 
 function errorMessageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function mapWirelessError(error: unknown): WirelessGatewayError {
+  if (error instanceof WirelessGatewayError) {
+    return error;
+  }
+  if (error instanceof DeviceServerUnavailableError || isAdbServerUnavailable(error)) {
+    return new WirelessGatewayError("server-unavailable", errorMessageOf(error));
+  }
+  if (error instanceof AdbServerClient.UnauthorizedError) {
+    return new WirelessGatewayError("unauthorized", errorMessageOf(error));
+  }
+  if (error instanceof AdbServerClient.AlreadyConnectedError) {
+    return new WirelessGatewayError("already-connected", errorMessageOf(error));
+  }
+  if (error instanceof AdbServerClient.NetworkError) {
+    return new WirelessGatewayError("network-error", errorMessageOf(error));
+  }
+  return new WirelessGatewayError("operation-failed", errorMessageOf(error));
 }

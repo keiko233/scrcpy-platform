@@ -51,6 +51,12 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesConnect, input),
   disconnectDevice: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect),
+  pairWirelessDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesWirelessPair, input),
+  connectWirelessDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesWirelessConnect, input),
+  disconnectWirelessDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesWirelessDisconnect, input),
   listInstalledApps: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesPackages),
   enrichInstalledApps: (packages) =>

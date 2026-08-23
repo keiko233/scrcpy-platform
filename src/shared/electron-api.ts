@@ -6,6 +6,9 @@ import type {
   InstalledAppDto,
   InstalledAppsSnapshot,
   ListDevicesResult,
+  WirelessConnectInput,
+  WirelessOperationResult,
+  WirelessPairInput,
 } from "./device-contracts";
 import type {
   CreateVirtualDisplayInput,
@@ -82,6 +85,9 @@ export const ELECTRON_CHANNELS = {
   devicesSession: ElectronChannel.DevicesSession,
   devicesConnect: ElectronChannel.DevicesConnect,
   devicesDisconnect: ElectronChannel.DevicesDisconnect,
+  devicesWirelessPair: ElectronChannel.DevicesWirelessPair,
+  devicesWirelessConnect: ElectronChannel.DevicesWirelessConnect,
+  devicesWirelessDisconnect: ElectronChannel.DevicesWirelessDisconnect,
   devicesPackages: ElectronChannel.DevicesPackages,
   devicesPackagesEnrich: ElectronChannel.DevicesPackagesEnrich,
   screensSession: ElectronChannel.ScreensSession,
@@ -166,6 +172,9 @@ export interface ElectronAPI {
   getDeviceSession(): Promise<DeviceSessionDto>;
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
   disconnectDevice(): Promise<DisconnectDeviceResult>;
+  pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult>;
+  connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult>;
+  disconnectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult>;
   listInstalledApps(): Promise<InstalledAppsSnapshot>;
   enrichInstalledApps(packages: string[]): Promise<InstalledAppDto[]>;
 

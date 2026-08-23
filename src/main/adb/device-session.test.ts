@@ -48,6 +48,8 @@ class FakeGateway implements DeviceGateway {
   connectDelayMs = 0;
   disposeCalls = 0;
   readonly connections = new Map<string, FakeConnection>();
+  readonly wirelessCalls: string[] = [];
+  wirelessFailures: Error[] = [];
 
   async listDevices(): Promise<DeviceInfo[]> {
     const failure = this.listFailures.shift();
@@ -68,6 +70,30 @@ class FakeGateway implements DeviceGateway {
     const connection = new FakeConnection(info.transportId, info.serial);
     this.connections.set(info.transportId, connection);
     return connection;
+  }
+
+  async pairWirelessDevice(input: { address: string; password: string }): Promise<void> {
+    const failure = this.wirelessFailures.shift();
+    if (failure !== undefined) {
+      throw failure;
+    }
+    this.wirelessCalls.push(`pair:${input.address}:${input.password}`);
+  }
+
+  async connectWirelessDevice(input: { address: string }): Promise<void> {
+    const failure = this.wirelessFailures.shift();
+    if (failure !== undefined) {
+      throw failure;
+    }
+    this.wirelessCalls.push(`connect:${input.address}`);
+  }
+
+  async disconnectWirelessDevice(input: { address: string }): Promise<void> {
+    const failure = this.wirelessFailures.shift();
+    if (failure !== undefined) {
+      throw failure;
+    }
+    this.wirelessCalls.push(`disconnect:${input.address}`);
   }
 
   async dispose(): Promise<void> {
@@ -112,6 +138,52 @@ describe("ADB server device mapping", () => {
 });
 
 describe("DeviceSessionService", () => {
+  test("serializes wireless operations through the gateway", async () => {
+    const gateway = new FakeGateway();
+    const service = new DeviceSessionService(gateway);
+
+    assert.deepEqual(
+      await service.pairWirelessDevice({
+        address: "192.168.1.10:37123",
+        password: "123456",
+      }),
+      { status: "ok" },
+    );
+    assert.deepEqual(
+      await service.connectWirelessDevice({ address: "192.168.1.10:5555" }),
+      { status: "ok" },
+    );
+    assert.deepEqual(
+      await service.disconnectWirelessDevice({ address: "192.168.1.10:5555" }),
+      { status: "ok" },
+    );
+    assert.deepEqual(gateway.wirelessCalls, [
+      "pair:192.168.1.10:37123:123456",
+      "connect:192.168.1.10:5555",
+      "disconnect:192.168.1.10:5555",
+    ]);
+  });
+
+  test("maps wireless gateway failures to an IPC-safe result", async () => {
+    const gateway = new FakeGateway();
+    gateway.wirelessFailures.push(
+      new Error("pairing failed: invalid code"),
+    );
+    const service = new DeviceSessionService(gateway);
+
+    assert.deepEqual(
+      await service.pairWirelessDevice({
+        address: "192.168.1.10:37123",
+        password: "123456",
+      }),
+      {
+        status: "error",
+        error: "operation-failed",
+        message: "pairing failed: invalid code",
+      },
+    );
+  });
+
   test("connect then disconnect drives the full session lifecycle", async () => {
     const gateway = new FakeGateway();
     gateway.devices = [device("2")];

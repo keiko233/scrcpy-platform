@@ -21,6 +21,61 @@ export const AdbDeviceDtoSchema = z.object({
 
 export type AdbDeviceDto = z.infer<typeof AdbDeviceDtoSchema>;
 
+function isWirelessAddress(value: string): boolean {
+  if (/\s/.test(value)) {
+    return false;
+  }
+
+  const match = /^\[([^\]]+)\]:(\d{1,5})$/.exec(value) ??
+    /^([^:]+):(\d{1,5})$/.exec(value);
+  if (match === null) {
+    return false;
+  }
+
+  const port = Number.parseInt(match[2], 10);
+  return port > 0 && port <= 65535;
+}
+
+export const WirelessAddressSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .max(255)
+  .refine(isWirelessAddress, "Expected a host:port address");
+
+export const WirelessPairInputSchema = z.object({
+  address: WirelessAddressSchema,
+  password: z.string().regex(/^\d{6}$/, "Pairing code must be six digits"),
+});
+
+export type WirelessPairInput = z.infer<typeof WirelessPairInputSchema>;
+
+export const WirelessConnectInputSchema = z.object({
+  address: WirelessAddressSchema,
+});
+
+export type WirelessConnectInput = z.infer<typeof WirelessConnectInputSchema>;
+
+export const WirelessOperationFailureSchema = z.enum([
+  "server-unavailable",
+  "unauthorized",
+  "already-connected",
+  "network-error",
+  "operation-failed",
+]);
+
+export type WirelessOperationFailure = z.infer<
+  typeof WirelessOperationFailureSchema
+>;
+
+export type WirelessOperationResult =
+  | { status: "ok" }
+  | {
+      status: "error";
+      error: WirelessOperationFailure;
+      message: string;
+    };
+
 export const DeviceSessionStateSchema = z.enum([
   "disconnected",
   "connecting",
