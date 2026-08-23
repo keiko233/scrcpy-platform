@@ -29,12 +29,6 @@ export const Timing = {
   VIDEO_SIZE_WAIT_ATTEMPTS: 300,
   /** Fail over quickly when the current decoded scrcpy frame is unavailable. */
   OCR_SCRCPY_CAPTURE_TIMEOUT_MS: 300,
-  /** Poll interval for newly added virtual display */
-  VIRTUAL_DISPLAY_POLL_MS: 100,
-  /** Max attempts for virtual display stabilization (30 * 100ms = 3s) */
-  VIRTUAL_DISPLAY_WAIT_ATTEMPTS: 30,
-  /** Required consecutive stable observations */
-  VIRTUAL_DISPLAY_STABLE_COUNT: 3,
   /** SQLite busy timeout */
   SQLITE_BUSY_TIMEOUT_MS: 5000,
   /** Audio frame timestamp step (microseconds) at 48kHz */

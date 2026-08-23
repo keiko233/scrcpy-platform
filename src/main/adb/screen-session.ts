@@ -35,7 +35,6 @@ import { DEFAULT_SCRCPY_SETTINGS } from "../../shared/screen-contracts";
 import type { DeviceSessionService } from "./device-session";
 import {
   filterManageableDisplays,
-  findAddedVirtualDisplayId,
   mergeDisplayCatalog,
   parseDisplayDetails,
   parseDisplayIds,
@@ -128,9 +127,8 @@ export class ScreenSessionService {
   #state: ScreenSessionDto["state"] = "disconnected";
   #displays: AndroidDisplayDto[] = [];
   #activeDisplayId: number | null = null;
-  #ownedVirtualDisplayId: number | null = null;
+  readonly #ownedVirtualDisplays = new Map<number, ManagedScrcpyClient>();
   #stream: ManagedScrcpyClient | null = null;
-  #displayOwner: ManagedScrcpyClient | null = null;
   #videoPort: ScreenVideoPort | null = null;
   readonly #videoCaptureWaiters = new Map<string, VideoCaptureWaiter>();
   #videoConfiguration: ScrcpyMediaStreamPacket | null = null;
@@ -172,7 +170,9 @@ export class ScreenSessionService {
       state: connection === null ? "disconnected" : this.#state,
       displays: this.#displays,
       activeDisplayId: this.#activeDisplayId,
-      ownedVirtualDisplayId: this.#ownedVirtualDisplayId,
+      ownedVirtualDisplayIds: [...this.#ownedVirtualDisplays.keys()].sort(
+        (left, right) => left - right,
+      ),
       streamId: this.#stream?.streamId ?? null,
       videoCodec: this.#videoCodec,
       videoWidth: this.#videoWidth,
@@ -350,31 +350,17 @@ export class ScreenSessionService {
       if (this.#deviceSession.getConnection() === null) {
         return this.#failure("not-connected", "Connect an Android device first.");
       }
-      if (this.#displayOwner !== null || this.#ownedVirtualDisplayId !== null) {
-        return this.#failure(
-          "virtual-display-exists",
-          "This device session already owns a virtual display.",
-        );
-      }
-
       this.#state = "switching";
       this.#errorMessage = null;
       let owner: ManagedScrcpyClient | null = null;
       try {
-        // The catalog is refreshed on connect and after every display
-        // operation. Reuse it for the fallback path so the normal scrcpy ID
-        // path does not pay for another full dumpsys/cmd display round trip.
-        const before =
-          this.#displays.length > 0
-            ? [...this.#displays]
-            : await this.#listDisplays();
         console.info("virtual display creation started", {
           serial: this.#deviceSession.getConnection()?.serial,
           width: input.width,
           height: input.height,
           dpi: input.dpi,
           packageName: input.packageName ?? null,
-          beforeDisplays: before.map((display) => display.displayId),
+          existingOwnedDisplays: [...this.#ownedVirtualDisplays.keys()],
           turnScreenOff: this.#settings.turnScreenOff,
         });
         const ownerOptions = this.#createOptions({
@@ -383,7 +369,6 @@ export class ScreenSessionService {
         const displayIdMessage = new DisplayIdDeviceMessageParser();
         ownerOptions.deviceMessageParsers.add(displayIdMessage);
         owner = await this.#startClient(ownerOptions, false);
-        this.#displayOwner = owner;
 
         const identity = await this.#waitForVirtualDisplayIdentity(
           displayIdMessage,
@@ -399,25 +384,31 @@ export class ScreenSessionService {
           serverOutputDisplayId: serverOutputDisplayId ?? null,
           recentOutput: owner.recentOutput.slice(-12),
         });
-        const discovered =
-          outputDisplayId === undefined
-            ? await this.#waitForAddedDisplay(before)
-            : {
-                displayId: outputDisplayId,
-              };
-        if (discovered.displayId === undefined) {
+        if (outputDisplayId === undefined) {
           console.error("virtual display identity resolution failed", {
             scid: owner.scid,
             parserStatus: displayIdMessage.status,
-            beforeDisplays: before.map((display) => display.displayId),
+            existingOwnedDisplays: [...this.#ownedVirtualDisplays.keys()],
             recentOutput: owner.recentOutput.slice(-20),
           });
           throw new Error(
-            "scrcpy started, but Android did not report a new virtual display ID",
+            "scrcpy started, but did not provide a virtual display ID through its device message or server output",
           );
         }
-        this.#ownedVirtualDisplayId = discovered.displayId;
-        this.#displays = await this.#listDisplays();
+        const displayId = outputDisplayId;
+        this.#ownedVirtualDisplays.set(displayId, owner);
+        try {
+          const refreshedDisplays = await this.#listDisplays();
+          if (refreshedDisplays.length > 0) {
+            this.#displays = refreshedDisplays;
+          }
+        } catch (error) {
+          console.warn("could not refresh displays after virtual display creation", {
+            displayId,
+            error: errorMessageOf(error),
+          });
+        }
+        this.#ensureOwnedDisplay(displayId);
 
         if (input.packageName !== undefined) {
           const controller = owner.client.controller;
@@ -427,41 +418,57 @@ export class ScreenSessionService {
           await controller.startApp(input.packageName, { forceStop: true });
         }
 
-        await this.#replaceStream(discovered.displayId);
+        await this.#replaceStream(displayId);
         this.#state = "streaming";
         return { status: "ok", screen: this.getSnapshot() };
       } catch (error) {
+        const ownedDisplayId = [...this.#ownedVirtualDisplays.entries()].find(
+          ([, managed]) => managed === owner,
+        )?.[0];
+        if (ownedDisplayId !== undefined) {
+          this.#ownedVirtualDisplays.delete(ownedDisplayId);
+        }
         if (owner !== null) {
           await this.#closeManaged(owner).catch(() => undefined);
         }
-        if (this.#displayOwner === owner) {
-          this.#displayOwner = null;
-        }
-        this.#ownedVirtualDisplayId = null;
         return this.#operationFailure("Could not create a virtual display", error);
       }
     });
   }
 
-  destroyVirtualDisplay(): Promise<ScreenOperationResult> {
+  destroyVirtualDisplay(displayId: number): Promise<ScreenOperationResult> {
     return this.#enqueue(async () => {
-      const owner = this.#displayOwner;
-      const ownedDisplayId = this.#ownedVirtualDisplayId;
-      if (owner === null || ownedDisplayId === null) {
-        return { status: "ok", screen: this.getSnapshot() };
+      const owner = this.#ownedVirtualDisplays.get(displayId);
+      if (owner === undefined) {
+        return this.#failure(
+          "display-not-found",
+          `Android virtual display ${displayId} is not owned by this session.`,
+        );
       }
       this.#state = "switching";
       this.#errorMessage = null;
       try {
-        if (this.#activeDisplayId === ownedDisplayId) {
+        if (this.#activeDisplayId === displayId) {
           const mainDisplayId =
             this.#displays.find((display) => display.primary)?.displayId ?? 0;
           await this.#replaceStream(mainDisplayId);
         }
-        this.#displayOwner = null;
         await this.#closeManaged(owner);
-        this.#ownedVirtualDisplayId = null;
-        this.#displays = await this.#listDisplays();
+        this.#ownedVirtualDisplays.delete(displayId);
+        try {
+          const refreshedDisplays = await this.#listDisplays();
+          if (refreshedDisplays.length > 0) {
+            this.#displays = refreshedDisplays;
+          }
+        } catch (error) {
+          console.warn("could not refresh displays after virtual display destruction", {
+            displayId,
+            error: errorMessageOf(error),
+          });
+        }
+        this.#displays = this.#displays.filter(
+          (display) => display.displayId !== displayId,
+        );
         this.#state = this.#stream === null ? "idle" : "streaming";
         return { status: "ok", screen: this.getSnapshot() };
       } catch (error) {
@@ -618,11 +625,15 @@ export class ScreenSessionService {
   async #stopLocked(adbOverride?: Adb): Promise<void> {
     this.#closeVideoPort("The device session stopped.");
     const stream = this.#stream;
-    const owner = this.#displayOwner;
+    const owners = [...this.#ownedVirtualDisplays.values()];
     this.#stream = null;
-    this.#displayOwner = null;
+    this.#ownedVirtualDisplays.clear();
     await this.#closeManaged(stream, adbOverride).catch(() => undefined);
-    await this.#closeManaged(owner, adbOverride).catch(() => undefined);
+    for (const owner of owners) {
+      if (owner !== stream) {
+        await this.#closeManaged(owner, adbOverride).catch(() => undefined);
+      }
+    }
     const adb = adbOverride ?? this.#deviceSession.getConnection()?.adb;
     if (adb !== undefined) {
       await adb.subprocess.noneProtocol
@@ -632,7 +643,6 @@ export class ScreenSessionService {
     this.#state = "disconnected";
     this.#displays = [];
     this.#activeDisplayId = null;
-    this.#ownedVirtualDisplayId = null;
     this.#videoConfiguration = null;
     this.#videoCodec = null;
     this.#audioConfiguration = null;
@@ -921,8 +931,7 @@ export class ScreenSessionService {
     }
     const previous = this.#stream;
     const previousDisplayId = this.#activeDisplayId;
-    const targetOwner =
-      this.#ownedVirtualDisplayId === displayId ? this.#displayOwner : null;
+    const targetOwner = this.#ownedVirtualDisplays.get(displayId) ?? null;
     this.#stream = null;
     this.#activeDisplayId = null;
     this.#videoConfiguration = null;
@@ -934,15 +943,31 @@ export class ScreenSessionService {
     this.#closeVideoPort("The observed display changed.");
     if (previous !== null) {
       previous.publishVideo = false;
-      if (previous !== this.#displayOwner) {
+      if (
+        previousDisplayId === null ||
+        this.#ownedVirtualDisplays.get(previousDisplayId) !== previous
+      ) {
         await this.#closeManaged(previous);
       }
     }
 
     if (targetOwner !== null) {
-      await this.#waitForVideoSize(targetOwner);
-      this.#activateManaged(targetOwner, displayId);
-      return;
+      try {
+        await this.#waitForVideoSize(targetOwner);
+        this.#activateManaged(targetOwner, displayId);
+        return;
+      } catch (error) {
+        if (previousDisplayId !== null) {
+          try {
+            await this.#restoreStream(previousDisplayId);
+          } catch (rollbackError) {
+            throw new Error(
+              `${errorMessageOf(error)}; restoring display ${previousDisplayId} also failed: ${errorMessageOf(rollbackError)}`,
+            );
+          }
+        }
+        throw error;
+      }
     }
 
     let next: ManagedScrcpyClient | null = null;
@@ -959,20 +984,7 @@ export class ScreenSessionService {
       }
       if (previousDisplayId !== null) {
         try {
-          if (
-            previousDisplayId === this.#ownedVirtualDisplayId &&
-            this.#displayOwner !== null
-          ) {
-            await this.#waitForVideoSize(this.#displayOwner);
-            this.#activateManaged(this.#displayOwner, previousDisplayId);
-          } else {
-            const restored = await this.#startClient(
-              this.#createOptions({ displayId: previousDisplayId }),
-              true,
-            );
-            await this.#waitForVideoSize(restored);
-            this.#activateManaged(restored, previousDisplayId);
-          }
+          await this.#restoreStream(previousDisplayId);
         } catch (rollbackError) {
           throw new Error(
             `${errorMessageOf(error)}; restoring display ${previousDisplayId} also failed: ${errorMessageOf(rollbackError)}`,
@@ -981,6 +993,21 @@ export class ScreenSessionService {
       }
       throw error;
     }
+  }
+
+  async #restoreStream(displayId: number): Promise<void> {
+    const owner = this.#ownedVirtualDisplays.get(displayId);
+    if (owner !== undefined) {
+      await this.#waitForVideoSize(owner);
+      this.#activateManaged(owner, displayId);
+      return;
+    }
+    const restored = await this.#startClient(
+      this.#createOptions({ displayId }),
+      true,
+    );
+    await this.#waitForVideoSize(restored);
+    this.#activateManaged(restored, displayId);
   }
 
   async #waitForVideoSize(managed: ManagedScrcpyClient): Promise<void> {
@@ -1164,58 +1191,37 @@ export class ScreenSessionService {
         details,
         displayIds,
         new Set(virtualIds),
-        this.#ownedVirtualDisplayId,
+        new Set(this.#ownedVirtualDisplays.keys()),
       ),
-      this.#displayOwner !== null,
+      this.#ownedVirtualDisplays.size > 0,
     );
   }
 
-  async #waitForAddedDisplay(before: readonly AndroidDisplayDto[]): Promise<{
-    displays: AndroidDisplayDto[];
-    displayId?: number;
-  }> {
-    let displays = [...before];
-    let candidate: number | undefined;
-    let stableObservations = 0;
-    console.info("virtual display catalog fallback polling started", {
-      beforeDisplays: before.map((display) => display.displayId),
-      maxWaitMs:
-        Timing.VIRTUAL_DISPLAY_WAIT_ATTEMPTS * Timing.VIRTUAL_DISPLAY_POLL_MS,
-    });
-    for (let attempt = 0; attempt < Timing.VIRTUAL_DISPLAY_WAIT_ATTEMPTS; attempt += 1) {
-      displays = await this.#listDisplays();
-      const displayId = findAddedVirtualDisplayId(before, displays);
-      if (displayId !== undefined) {
-        if (displayId === candidate) {
-          stableObservations += 1;
-        } else {
-          candidate = displayId;
-          stableObservations = 1;
-          console.info("virtual display catalog candidate observed", {
-            attempt,
-            displayId,
-            displayIds: displays.map((display) => display.displayId),
-          });
-        }
-        // Some devices briefly publish a placeholder ID while scrcpy finishes
-        // configuring the virtual display. Require three consecutive catalog
-        // reads before binding a monitor/control stream to the new ID.
-        if (stableObservations >= Timing.VIRTUAL_DISPLAY_STABLE_COUNT) {
-          return { displays, displayId };
-        }
-      } else {
-        candidate = undefined;
-        stableObservations = 0;
-      }
-      await delay(Timing.VIRTUAL_DISPLAY_POLL_MS);
+  #ensureOwnedDisplay(displayId: number): void {
+    const existing = this.#displays.some((display) => display.displayId === displayId);
+    if (existing) {
+      this.#displays = this.#displays.map((display) =>
+        display.displayId === displayId
+          ? {
+              ...display,
+              kind: "virtual" as const,
+              primary: false,
+              ownedBySession: true,
+            }
+          : display,
+      );
+      return;
     }
-    console.error("virtual display catalog fallback polling timed out", {
-      displayIds: displays.map((display) => display.displayId),
-      virtualDisplayIds: displays
-        .filter((display) => display.kind === "virtual")
-        .map((display) => display.displayId),
-    });
-    return { displays };
+    this.#displays = [
+      ...this.#displays,
+      {
+        displayId,
+        name: "scrcpy",
+        kind: "virtual" as const,
+        primary: false,
+        ownedBySession: true,
+      },
+    ].sort((left, right) => left.displayId - right.displayId);
   }
 
   async #waitForVirtualDisplayIdentity(

@@ -61,7 +61,7 @@ export function mergeDisplayCatalog(
   details: readonly ParsedDisplay[],
   displayIds: readonly number[],
   virtualIds: ReadonlySet<number>,
-  ownedVirtualDisplayId: number | null,
+  ownedVirtualDisplayIds: ReadonlySet<number>,
 ): AndroidDisplayDto[] {
   const authoritativeIds =
     displayIds.length > 0 ? new Set(displayIds) : undefined;
@@ -77,7 +77,7 @@ export function mergeDisplayCatalog(
       name: detail.name,
       kind: virtual ? "virtual" : "physical",
       primary: detail.primary && !virtual,
-      ownedBySession: detail.displayId === ownedVirtualDisplayId,
+      ownedBySession: ownedVirtualDisplayIds.has(detail.displayId),
     });
   }
 
@@ -90,14 +90,14 @@ export function mergeDisplayCatalog(
         name: `Display ${displayId}`,
         kind: virtual ? "virtual" : "physical",
         primary: displayId === 0 && !virtual,
-        ownedBySession: displayId === ownedVirtualDisplayId,
+        ownedBySession: ownedVirtualDisplayIds.has(displayId),
       });
-    } else if (virtual || displayId === ownedVirtualDisplayId) {
+    } else if (virtual || ownedVirtualDisplayIds.has(displayId)) {
       displays.set(displayId, {
         ...current,
         kind: "virtual",
         primary: false,
-        ownedBySession: displayId === ownedVirtualDisplayId,
+        ownedBySession: ownedVirtualDisplayIds.has(displayId),
       });
     }
   }
@@ -139,17 +139,5 @@ export function filterManageableDisplays(
       display.kind === "physical" ||
       display.ownedBySession ||
       (keepScrcpyNamed && display.name === SCRCPY_DISPLAY_NAME),
-  );
-}
-
-export function findAddedVirtualDisplayId(
-  before: readonly AndroidDisplayDto[],
-  after: readonly AndroidDisplayDto[],
-): number | undefined {
-  const existingIds = new Set(before.map((display) => display.displayId));
-  const added = after.filter((display) => !existingIds.has(display.displayId));
-  return (
-    added.find((display) => display.kind === "virtual")?.displayId ??
-    (added.length === 1 ? added[0]?.displayId : undefined)
   );
 }

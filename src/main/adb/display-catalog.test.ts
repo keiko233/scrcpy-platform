@@ -2,7 +2,6 @@ import { assert, describe, it } from "vitest";
 
 import {
   filterManageableDisplays,
-  findAddedVirtualDisplayId,
   mergeDisplayCatalog,
   parseDisplayDetails,
   parseDisplayIds,
@@ -22,7 +21,7 @@ Display 7:
   DisplayDeviceInfo{"scrcpy", uniqueId "virtual:android-platform"}
   type VIRTUAL
 `);
-    const result = mergeDisplayCatalog(details, [0, 7], new Set([7]), 7);
+    const result = mergeDisplayCatalog(details, [0, 7], new Set([7]), new Set([7]));
 
     assert.deepEqual(result, [
       {
@@ -42,24 +41,18 @@ Display 7:
     ]);
   });
 
-  it("finds only a newly added display", () => {
-    const main = {
-      displayId: 0,
-      name: "Main",
-      kind: "physical" as const,
-      primary: true,
-      ownedBySession: false,
-    };
-    const virtual = {
-      displayId: 9,
-      name: "Virtual",
-      kind: "virtual" as const,
-      primary: false,
-      ownedBySession: true,
-    };
+  it("marks multiple virtual displays as owned", () => {
+    const result = mergeDisplayCatalog(
+      [],
+      [0, 7, 9],
+      new Set([7, 9]),
+      new Set([7, 9]),
+    );
 
-    assert.equal(findAddedVirtualDisplayId([main], [main, virtual]), 9);
-    assert.equal(findAddedVirtualDisplayId([main, virtual], [main, virtual]), undefined);
+    assert.deepEqual(
+      result.filter((display) => display.ownedBySession).map((display) => display.displayId),
+      [7, 9],
+    );
   });
 
   it("hides system-reserved virtual displays", () => {
