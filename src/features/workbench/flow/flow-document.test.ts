@@ -13,7 +13,9 @@ import {
   groupSelectedNodes,
   mergeEdge,
   nodesFromDocument,
+  parseClipboardPayload,
   pasteSelection,
+  serializeClipboardPayload,
   toFlowDocument,
   ungroupNodes,
   type ClipboardPayload,
@@ -387,6 +389,30 @@ describe("workbench flow document", () => {
 });
 
 describe("workbench copy and paste", () => {
+  it("round-trips clipboard payloads for cross-script paste", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "a",
+          type: "click",
+          position: { x: 10, y: 20 },
+          data: { kind: "click", x: 1, y: 2 },
+        },
+      ],
+      edges: [],
+    };
+
+    assert.deepEqual(
+      parseClipboardPayload(serializeClipboardPayload(payload)),
+      payload,
+    );
+    assert.equal(parseClipboardPayload("plain text"), null);
+    assert.equal(
+      parseClipboardPayload("android-platform:flow-clipboard:v1:{}"),
+      null,
+    );
+  });
+
   it("returns null when no action node is selected", () => {
     const nodes = [
       workbenchNode("start", "start"),
@@ -580,6 +606,34 @@ describe("workbench copy and paste", () => {
     assert.notEqual(group.id, "g1");
     assert.equal(child.parentId, group.id);
     assert.equal(child.extent, "parent");
+  });
+
+  it("remaps parent ids even when a child precedes its group", () => {
+    const payload: ClipboardPayload = {
+      nodes: [
+        {
+          id: "child",
+          type: "click",
+          position: { x: 20, y: 20 },
+          data: { kind: "click" },
+          parentId: "group",
+        },
+        {
+          id: "group",
+          type: "group",
+          position: { x: 100, y: 100 },
+          data: { kind: "group" },
+        },
+      ],
+      edges: [],
+    };
+
+    const { nodes } = pasteSelection(payload, { offset: { x: 0, y: 0 } });
+    const group = nodes.find((node) => node.type === "group");
+    const child = nodes.find((node) => node.type === "click");
+
+    assert.ok(group !== undefined && child !== undefined);
+    assert.equal(child.parentId, group.id);
   });
 });
 

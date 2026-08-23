@@ -43,6 +43,10 @@ import {
   nodesFromDocument,
   pasteSelection,
   patchNodeData,
+  parseClipboardPayload,
+  readStoredClipboardPayload,
+  serializeClipboardPayload,
+  storeClipboardPayload,
   toFlowDocument,
   ungroupNodes,
   viewportFromDocument,
@@ -114,7 +118,9 @@ export function useFlowEditor(
   const [dirty, setDirty] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saving">("idle");
   const [error, setError] = useState<FlowSaveError>(null);
-  const [clipboard, setClipboard] = useState<ClipboardPayload | null>(null);
+  const [clipboard, setClipboard] = useState<ClipboardPayload | null>(
+    readStoredClipboardPayload,
+  );
 
   const queryClient = useQueryClient();
   const saveDraftMutation = useSaveScriptDraft();
@@ -334,19 +340,32 @@ export function useFlowEditor(
     [setNodes, nodesRef],
   );
 
+  const rememberClipboard = useCallback((payload: ClipboardPayload) => {
+    setClipboard(payload);
+    storeClipboardPayload(payload);
+    if (typeof navigator !== "undefined" && navigator.clipboard !== undefined) {
+      void navigator.clipboard
+        .writeText(serializeClipboardPayload(payload))
+        .catch(() => {
+          // The in-app session clipboard is the fallback when browser clipboard
+          // permissions are unavailable in the packaged Electron renderer.
+        });
+    }
+  }, []);
+
   const copySelected = useCallback(() => {
     const payload = copySelection(nodesRef.current, edgesRef.current);
     if (payload !== null) {
-      setClipboard(payload);
+      rememberClipboard(payload);
     }
-  }, [nodesRef, edgesRef]);
+  }, [nodesRef, edgesRef, rememberClipboard]);
 
   const cutSelected = useCallback(() => {
     const payload = copySelection(nodesRef.current, edgesRef.current);
     if (payload === null) {
       return;
     }
-    setClipboard(payload);
+    rememberClipboard(payload);
     const ids = new Set(payload.nodes.map((node) => node.id));
     setNodes((current) =>
       applyNodesChange(
@@ -358,38 +377,52 @@ export function useFlowEditor(
       current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)),
     );
     setDirty(true);
-  }, [nodesRef, edgesRef, setNodes, setEdges]);
+  }, [nodesRef, edgesRef, rememberClipboard, setNodes, setEdges]);
 
   const pasteClipboard = useCallback(
     (position?: XYPosition) => {
-      if (clipboard === null) {
+      const paste = (payload: ClipboardPayload) => {
+        const pasted = pasteSelection(
+          payload,
+          position !== undefined ? { origin: position } : undefined,
+        );
+        setNodes((current) => [
+          ...current.map((node) =>
+            node.selected ? { ...node, selected: false } : node,
+          ),
+          ...pasted.nodes,
+        ]);
+        setEdges((current) => [...current, ...pasted.edges]);
+        rememberClipboard({
+          nodes: payload.nodes.map((node, index) => ({
+            ...node,
+            position: pasted.nodes[index]?.position ?? node.position,
+          })),
+          edges: payload.edges,
+        });
+        setDirty(true);
+      };
+
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.clipboard !== undefined
+      ) {
+        void navigator.clipboard
+          .readText()
+          .then((text) => parseClipboardPayload(text) ?? clipboard)
+          .catch(() => clipboard)
+          .then((payload) => {
+            if (payload !== null) {
+              paste(payload);
+            }
+          });
         return;
       }
-      const pasted = pasteSelection(
-        clipboard,
-        position !== undefined ? { origin: position } : undefined,
-      );
-      setNodes((current) => [
-        ...current.map((node) =>
-          node.selected ? { ...node, selected: false } : node,
-        ),
-        ...pasted.nodes,
-      ]);
-      setEdges((current) => [...current, ...pasted.edges]);
-      setClipboard((current) =>
-        current === null
-          ? null
-          : {
-              nodes: current.nodes.map((node, index) => ({
-                ...node,
-                position: pasted.nodes[index].position,
-              })),
-              edges: current.edges,
-            },
-      );
-      setDirty(true);
+      if (clipboard !== null) {
+        paste(clipboard);
+      }
     },
-    [clipboard, setNodes, setEdges],
+    [clipboard, rememberClipboard, setNodes, setEdges],
   );
 
   const save = useCallback(async (): Promise<boolean> => {

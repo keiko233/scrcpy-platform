@@ -17,6 +17,7 @@ import {
   type FlowViewport,
   type JsonValue,
 } from "../../../shared/project-contracts";
+import { StorageKey } from "../../../shared/constants/enums";
 
 import { UiConstants } from "../../../shared/constants/app";
 import type {
@@ -288,6 +289,104 @@ export interface ClipboardPayload {
   edges: ClipboardEdge[];
 }
 
+const CLIPBOARD_PREFIX = "android-platform:flow-clipboard:v1:";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isPosition(value: unknown): value is XYPosition {
+  return (
+    isRecord(value) &&
+    typeof value.x === "number" &&
+    Number.isFinite(value.x) &&
+    typeof value.y === "number" &&
+    Number.isFinite(value.y)
+  );
+}
+
+function isClipboardPayload(value: unknown): value is ClipboardPayload {
+  if (!isRecord(value) || !Array.isArray(value.nodes) || !Array.isArray(value.edges)) {
+    return false;
+  }
+  const nodes = value.nodes.every((node) => {
+    if (!isRecord(node)) {
+      return false;
+    }
+    return (
+      typeof node.id === "string" &&
+      node.id.length > 0 &&
+      isFlowBlockKind(node.type) &&
+      isPosition(node.position) &&
+      isRecord(node.data) &&
+      isFlowBlockKind(node.data.kind) &&
+      (node.parentId === undefined || typeof node.parentId === "string") &&
+      (node.width === undefined ||
+        (typeof node.width === "number" && Number.isFinite(node.width))) &&
+      (node.height === undefined ||
+        (typeof node.height === "number" && Number.isFinite(node.height)))
+    );
+  });
+  const edges = value.edges.every((edge) => {
+    if (!isRecord(edge)) {
+      return false;
+    }
+    return (
+      typeof edge.source === "string" &&
+      edge.source.length > 0 &&
+      typeof edge.target === "string" &&
+      edge.target.length > 0 &&
+      (edge.sourceHandle === undefined || typeof edge.sourceHandle === "string") &&
+      (edge.targetHandle === undefined || typeof edge.targetHandle === "string")
+    );
+  });
+  return nodes && edges;
+}
+
+/** Serializes the selection so it can survive a script/editor switch. */
+export function serializeClipboardPayload(payload: ClipboardPayload): string {
+  return `${CLIPBOARD_PREFIX}${JSON.stringify(payload)}`;
+}
+
+/** Parses only clipboard text produced by this Flow editor. */
+export function parseClipboardPayload(value: string): ClipboardPayload | null {
+  if (!value.startsWith(CLIPBOARD_PREFIX)) {
+    return null;
+  }
+  try {
+    const parsed: unknown = JSON.parse(value.slice(CLIPBOARD_PREFIX.length));
+    return isClipboardPayload(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export function readStoredClipboardPayload(): ClipboardPayload | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const value = window.sessionStorage.getItem(StorageKey.WorkbenchFlowClipboard);
+    return value === null ? null : parseClipboardPayload(value);
+  } catch {
+    return null;
+  }
+}
+
+export function storeClipboardPayload(payload: ClipboardPayload): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+  try {
+    window.sessionStorage.setItem(
+      StorageKey.WorkbenchFlowClipboard,
+      serializeClipboardPayload(payload),
+    );
+  } catch {
+    // Clipboard persistence is a convenience; the in-memory clipboard remains usable.
+  }
+}
+
 export interface PasteOptions {
   offset?: XYPosition;
   origin?: XYPosition;
@@ -377,9 +476,11 @@ export function pasteSelection(
       ? { x: options.origin.x - minX, y: options.origin.y - minY }
       : (options?.offset ?? { x: UiConstants.PASTE_OFFSET_X, y: UiConstants.PASTE_OFFSET_Y });
   const idMap = new Map<string, string>();
+  for (const node of payload.nodes) {
+    idMap.set(node.id, `node-${crypto.randomUUID()}`);
+  }
   const nodes: WorkbenchNode[] = payload.nodes.map((node) => {
-    const id = `node-${crypto.randomUUID()}`;
-    idMap.set(node.id, id);
+    const id = idMap.get(node.id) as string;
     const next: WorkbenchNode = {
       id,
       type: node.type,

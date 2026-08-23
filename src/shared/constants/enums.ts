@@ -244,6 +244,8 @@ export enum OcrLanguageOption {
 export enum StorageKey {
   /** Persisted workbench layout */
   WorkbenchLayout = "android-platform:workbench-layout",
+  /** Last copied Flow Script selection for cross-script paste */
+  WorkbenchFlowClipboard = "android-platform:workbench-flow-clipboard",
   /** Cached scrcpy settings */
   ScrcpySettings = "android-platform:scrcpy-settings",
   /** Allow running the current unsaved workbench graph */
