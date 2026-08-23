@@ -14,7 +14,7 @@ import { useWorkbench } from "../use-workbench";
 import { m } from "@/paraglide/messages.js";
 
 export function WorkbenchToolbar() {
-  const { library, flow, devices, screens, runs, allowUnsavedRun } = useWorkbench();
+  const { library, flow, devices, screens, runs, toggleRun, allowUnsavedRun } = useWorkbench();
   const { selectedProject, selectedScript } = library;
 
   const canSave =
@@ -42,29 +42,6 @@ export function WorkbenchToolbar() {
             : displayId === null
               ? m.run_panel_select_display_before_run()
               : m.workbench_toolbar_run_saved_flow()));
-
-  const toggleRun = () => {
-    if (running) {
-      void runs.stop();
-      return;
-    }
-    if (
-      !canRun ||
-      selectedScript === null ||
-      session?.transportId === null ||
-      session?.transportId === undefined ||
-      displayId === null
-    ) {
-      return;
-    }
-    void runs.start({
-      scriptId: selectedScript.id,
-      document: flow.getDocument(),
-      deviceId: session.transportId,
-      sessionId: session.sessionId,
-      displayId,
-    });
-  };
 
   return (
     <div className="flex h-9 shrink-0 items-center gap-1.5 border-b bg-card px-2">

@@ -74,7 +74,7 @@ function EditorEmptyState() {
 }
 
 function FlowCanvas() {
-  const { flow } = useWorkbench();
+  const { flow, toggleRun } = useWorkbench();
   const { screenToFlowPosition, getInternalNode } = useReactFlow();
   const [panePosition, setPanePosition] = useState<XYPosition | null>(null);
 
@@ -93,6 +93,8 @@ function FlowCanvas() {
     copySelected,
     cutSelected,
     pasteClipboard,
+    undo,
+    redo,
     clipboard,
     error,
     reloadLatest,
@@ -125,14 +127,34 @@ function FlowCanvas() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) {
+      const key = event.key.toLowerCase();
+      if (!(event.metaKey || event.ctrlKey) && key !== "f5") {
         return;
       }
       if (isEditableTarget(event.target)) {
         return;
       }
-      const key = event.key.toLowerCase();
-      if (key === "c") {
+      if (key === "s" && !event.shiftKey) {
+        event.preventDefault();
+        if (flow.dirty && flow.saveState === "idle" && flow.error === null) {
+          void flow.save();
+        }
+      } else if (
+        (key === "enter" && !event.shiftKey) ||
+        key === "f5"
+      ) {
+        event.preventDefault();
+        toggleRun();
+      } else if (key === "z" && event.shiftKey) {
+        event.preventDefault();
+        redo();
+      } else if (key === "z") {
+        event.preventDefault();
+        undo();
+      } else if (key === "y") {
+        event.preventDefault();
+        redo();
+      } else if (key === "c") {
         event.preventDefault();
         copySelected();
       } else if (key === "x") {
@@ -145,7 +167,7 @@ function FlowCanvas() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [copySelected, cutSelected, pasteClipboard]);
+  }, [copySelected, cutSelected, flow, pasteClipboard, redo, toggleRun, undo]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">

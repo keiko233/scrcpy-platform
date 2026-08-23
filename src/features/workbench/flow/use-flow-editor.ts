@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   EdgeChange,
   IsValidConnection,
@@ -83,12 +83,32 @@ export interface FlowEditor {
   copySelected: () => void;
   cutSelected: () => void;
   pasteClipboard: (position?: XYPosition) => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
   clipboard: ClipboardPayload | null;
   loadDocument: (document: FlowDocument) => void;
   save: () => Promise<boolean>;
   reloadLatest: () => Promise<boolean>;
   forceSave: () => Promise<boolean>;
   clearError: () => void;
+}
+
+interface FlowHistorySnapshot {
+  nodes: WorkbenchNode[];
+  edges: WorkbenchEdge[];
+  viewport: Viewport;
+}
+
+interface FlowHistoryState {
+  past: FlowHistorySnapshot[];
+  future: FlowHistorySnapshot[];
+  dragging: boolean;
+}
+
+function flowDocumentSignature(document: FlowDocument): string {
+  return JSON.stringify(document);
 }
 
 function isStructuralChange(
@@ -128,6 +148,12 @@ export function useFlowEditor(
   const nodesRef = useLatest(nodes);
   const edgesRef = useLatest(edges);
   const viewportRef = useLatest(viewport);
+  const historyRef = useRef<FlowHistoryState>({
+    past: [],
+    future: [],
+    dragging: false,
+  });
+  const savedDocumentSignatureRef = useRef<string | null>(null);
 
   const resolveCallSignature = options.resolveCallSignature;
   const portContext = useMemo(
@@ -135,16 +161,46 @@ export function useFlowEditor(
     [resolveCallSignature],
   );
 
-  const loadDocument = useCallback((document: FlowDocument) => {
-    setNodes(nodesFromDocument(document));
-    setEdges(edgesFromDocument(document));
-    setViewport(viewportFromDocument(document));
-    setDirty(false);
-    setError(null);
-  }, [setNodes, setEdges]);
+  const getHistorySnapshot = useCallback<() => FlowHistorySnapshot>(
+    () => ({
+      nodes: nodesRef.current,
+      edges: edgesRef.current,
+      viewport: viewportRef.current,
+    }),
+    [nodesRef, edgesRef, viewportRef],
+  );
+
+  const recordHistory = useCallback(() => {
+    historyRef.current.past.push(getHistorySnapshot());
+    historyRef.current.future = [];
+  }, [getHistorySnapshot]);
+
+  const clearHistory = useCallback(() => {
+    historyRef.current = { past: [], future: [], dragging: false };
+  }, []);
+
+  const loadDocument = useCallback(
+    (document: FlowDocument) => {
+      clearHistory();
+      const nextNodes = nodesFromDocument(document);
+      const nextEdges = edgesFromDocument(document);
+      const nextViewport = viewportFromDocument(document);
+      savedDocumentSignatureRef.current = flowDocumentSignature(
+        toFlowDocument(nextNodes, nextEdges, nextViewport),
+      );
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      setViewport(nextViewport);
+      setDirty(false);
+      setError(null);
+    },
+    [clearHistory, setNodes, setEdges],
+  );
 
   useEffect(() => {
     if (script === null) {
+      clearHistory();
+      savedDocumentSignatureRef.current = null;
       setNodes([]);
       setEdges([]);
       setViewport(defaultViewport());
@@ -154,39 +210,72 @@ export function useFlowEditor(
     }
     loadDocument(script.draftDocument);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [script?.id]);
+  }, [clearHistory, script?.id]);
 
   const onNodesChange = useCallback<OnNodesChange<WorkbenchNode>>(
     (changes) => {
+      if (changes.some(isStructuralChange)) {
+        const positionChanges = changes.filter(
+          (change) => change.type === "position",
+        );
+        if (positionChanges.length > 0) {
+          const isDragging = positionChanges.some(
+            (change) => change.dragging === true,
+          );
+          if (isDragging) {
+            if (!historyRef.current.dragging) {
+              recordHistory();
+            }
+            historyRef.current.dragging = true;
+          } else {
+            if (!historyRef.current.dragging) {
+              recordHistory();
+            }
+            historyRef.current.dragging = false;
+          }
+        } else {
+          recordHistory();
+          historyRef.current.dragging = false;
+        }
+      }
       rawOnNodesChange(changes);
       if (changes.some(isStructuralChange)) {
         setDirty(true);
       }
     },
-    [rawOnNodesChange],
+    [rawOnNodesChange, recordHistory],
   );
 
   const onEdgesChange = useCallback<OnEdgesChange<WorkbenchEdge>>(
     (changes) => {
+      if (changes.some(isStructuralChange)) {
+        recordHistory();
+        historyRef.current.dragging = false;
+      }
       rawOnEdgesChange(changes);
       if (changes.some(isStructuralChange)) {
         setDirty(true);
       }
     },
-    [rawOnEdgesChange],
+    [rawOnEdgesChange, recordHistory],
   );
 
   const onConnect = useCallback<OnConnect>(
     (connection) => {
-      setEdges((current) => {
-        const next = mergeEdge(current, connection, nodesRef.current, portContext);
-        if (next !== current) {
-          setDirty(true);
-        }
-        return next;
-      });
+      const next = mergeEdge(
+        edgesRef.current,
+        connection,
+        nodesRef.current,
+        portContext,
+      );
+      if (next === edgesRef.current) {
+        return;
+      }
+      recordHistory();
+      setEdges(next);
+      setDirty(true);
     },
-    [setEdges, nodesRef, portContext],
+    [edgesRef, nodesRef, portContext, recordHistory, setEdges],
   );
 
   const isValidConnection = useCallback<IsValidConnection<WorkbenchEdge>>(
@@ -221,6 +310,7 @@ export function useFlowEditor(
           ? { width: DEFAULT_GROUP_WIDTH, height: DEFAULT_GROUP_HEIGHT }
           : {}),
       };
+      recordHistory();
       setNodes((current) => [
         ...current.map((item) =>
           item.selected ? { ...item, selected: false } : item,
@@ -230,12 +320,16 @@ export function useFlowEditor(
       setDirty(true);
       return id;
     },
-    [nodesRef, setNodes],
+    [nodesRef, recordHistory, setNodes],
   );
 
   const deleteNode = useCallback(
     (id: string) => {
       const removedIds = collectRemovedNodeIds(nodesRef.current, [id]);
+      if (removedIds.size === 0) {
+        return;
+      }
+      recordHistory();
       setNodes((current) =>
         applyNodesChange(
           [...removedIds].map((nodeId) => ({ type: "remove", id: nodeId })),
@@ -250,11 +344,15 @@ export function useFlowEditor(
       );
       setDirty(true);
     },
-    [setNodes, setEdges, nodesRef],
+    [nodesRef, recordHistory, setNodes, setEdges],
   );
 
   const updateNodeData = useCallback(
     (id: string, patch: Record<string, JsonValue>) => {
+      if (!nodesRef.current.some((node) => node.id === id)) {
+        return;
+      }
+      recordHistory();
       setNodes((current) => {
         const next = current.map((node) =>
           node.id === id ? patchNodeData(node, patch) : node,
@@ -307,7 +405,7 @@ export function useFlowEditor(
       });
       setDirty(true);
     },
-    [setNodes, setEdges, portContext],
+    [nodesRef, recordHistory, setNodes, setEdges, portContext],
   );
 
   const groupSelection = useCallback(
@@ -318,12 +416,13 @@ export function useFlowEditor(
       if (selectedIds.length === 0) {
         return;
       }
+      recordHistory();
       setNodes((current) =>
         groupSelectedNodes(current, geometry, selectedIds),
       );
       setDirty(true);
     },
-    [setNodes, nodesRef],
+    [nodesRef, recordHistory, setNodes],
   );
 
   const ungroupSelection = useCallback(
@@ -334,10 +433,11 @@ export function useFlowEditor(
       if (groupIds.length === 0) {
         return;
       }
+      recordHistory();
       setNodes((current) => ungroupNodes(current, geometry, groupIds));
       setDirty(true);
     },
-    [setNodes, nodesRef],
+    [nodesRef, recordHistory, setNodes],
   );
 
   const rememberClipboard = useCallback((payload: ClipboardPayload) => {
@@ -366,6 +466,7 @@ export function useFlowEditor(
       return;
     }
     rememberClipboard(payload);
+    recordHistory();
     const ids = new Set(payload.nodes.map((node) => node.id));
     setNodes((current) =>
       applyNodesChange(
@@ -377,11 +478,12 @@ export function useFlowEditor(
       current.filter((edge) => !ids.has(edge.source) && !ids.has(edge.target)),
     );
     setDirty(true);
-  }, [nodesRef, edgesRef, rememberClipboard, setNodes, setEdges]);
+  }, [nodesRef, edgesRef, recordHistory, rememberClipboard, setNodes, setEdges]);
 
   const pasteClipboard = useCallback(
     (position?: XYPosition) => {
       const paste = (payload: ClipboardPayload) => {
+        recordHistory();
         const pasted = pasteSelection(
           payload,
           position !== undefined ? { origin: position } : undefined,
@@ -422,8 +524,43 @@ export function useFlowEditor(
         paste(clipboard);
       }
     },
-    [clipboard, rememberClipboard, setNodes, setEdges],
+    [clipboard, recordHistory, rememberClipboard, setNodes, setEdges],
   );
+
+  const restoreHistorySnapshot = useCallback(
+    (snapshot: FlowHistorySnapshot) => {
+      setNodes(snapshot.nodes);
+      setEdges(snapshot.edges);
+      setViewport(snapshot.viewport);
+      setDirty(
+        savedDocumentSignatureRef.current !==
+          flowDocumentSignature(
+            toFlowDocument(snapshot.nodes, snapshot.edges, snapshot.viewport),
+          ),
+      );
+      setError(null);
+      historyRef.current.dragging = false;
+    },
+    [setNodes, setEdges],
+  );
+
+  const undo = useCallback(() => {
+    const snapshot = historyRef.current.past.pop();
+    if (snapshot === undefined) {
+      return;
+    }
+    historyRef.current.future.push(getHistorySnapshot());
+    restoreHistorySnapshot(snapshot);
+  }, [getHistorySnapshot, restoreHistorySnapshot]);
+
+  const redo = useCallback(() => {
+    const snapshot = historyRef.current.future.pop();
+    if (snapshot === undefined) {
+      return;
+    }
+    historyRef.current.past.push(getHistorySnapshot());
+    restoreHistorySnapshot(snapshot);
+  }, [getHistorySnapshot, restoreHistorySnapshot]);
 
   const save = useCallback(async (): Promise<boolean> => {
     if (script === null) {
@@ -440,6 +577,7 @@ export function useFlowEditor(
       });
       if (result.status === "ok") {
         applyScriptUpdate(result.script);
+        savedDocumentSignatureRef.current = flowDocumentSignature(document);
         setDirty(false);
         return true;
       }
@@ -501,6 +639,7 @@ export function useFlowEditor(
       });
       if (result.status === "ok") {
         applyScriptUpdate(result.script);
+        savedDocumentSignatureRef.current = flowDocumentSignature(document);
         setDirty(false);
         return true;
       }
@@ -542,6 +681,10 @@ export function useFlowEditor(
     copySelected,
     cutSelected,
     pasteClipboard,
+    undo,
+    redo,
+    canUndo: historyRef.current.past.length > 0,
+    canRedo: historyRef.current.future.length > 0,
     clipboard,
     loadDocument,
     save,

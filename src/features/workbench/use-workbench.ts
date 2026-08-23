@@ -29,6 +29,7 @@ export interface WorkbenchContextValue {
   screens: ScreenManager;
   flow: FlowEditor;
   runs: FlowRunManager;
+  toggleRun: () => void;
   allowUnsavedRun: boolean;
   setAllowUnsavedRun: (allow: boolean) => void;
   screenRegionSelection: ScreenRegionSelectionManager;

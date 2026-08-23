@@ -59,6 +59,39 @@ export function WorkbenchProvider({
     restoreRevision,
   } = library;
   const { reloadLatest, updateNodeData } = flow;
+  const toggleRun = useCallback(() => {
+    const running = runs.run?.state === "running" || runs.run?.state === "paused";
+    if (running) {
+      void runs.stop();
+      return;
+    }
+
+    const session = devices.session;
+    const displayId = screens.screen?.activeDisplayId ?? null;
+    const canRun =
+      selectedScript !== null &&
+      (!flow.dirty || allowUnsavedRun) &&
+      !runs.busy &&
+      session?.state === "connected" &&
+      session.transportId !== null &&
+      displayId !== null;
+    if (
+      !canRun ||
+      selectedScript === null ||
+      session?.transportId === null ||
+      session?.transportId === undefined ||
+      displayId === null
+    ) {
+      return;
+    }
+    void runs.start({
+      scriptId: selectedScript.id,
+      document: flow.getDocument(),
+      deviceId: session.transportId,
+      sessionId: session.sessionId,
+      displayId,
+    });
+  }, [allowUnsavedRun, devices.session, flow, runs, screens.screen, selectedScript]);
   const setAllowUnsavedRun = useCallback((allow: boolean) => {
     setAllowUnsavedRunState(allow);
     window.localStorage.setItem(
@@ -193,6 +226,7 @@ export function WorkbenchProvider({
     screens,
     flow,
     runs,
+    toggleRun,
     allowUnsavedRun,
     setAllowUnsavedRun,
     screenRegionSelection: {
