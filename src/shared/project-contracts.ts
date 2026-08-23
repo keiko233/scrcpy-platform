@@ -475,6 +475,31 @@ function derivedCallNodePorts(
   return direction === "input" ? ports.inputs : ports.outputs;
 }
 
+function configuredOutputDataType(
+  kind: FlowNodeKind,
+  data: DynamicPortData,
+): FlowDataType | null {
+  if (kind === "constant") {
+    if (data?.type === "string" || data?.type === "boolean") {
+      return data.type;
+    }
+    // The runtime treats missing/invalid constant types as numbers.
+    return "number";
+  }
+  if (kind === "convert") {
+    if (data?.toType === "string" || data?.toType === "boolean") {
+      return data.toType;
+    }
+    if (data?.toType === "number" || data?.toType === "int") {
+      return "number";
+    }
+    // Invalid conversion settings are rejected by the runtime; keep the
+    // editor permissive until the setting is corrected.
+    return "any";
+  }
+  return null;
+}
+
 /** All flow input port ids for a node, including any dynamic flow inputs. */
 export function flowInputPortIds(
   kind: FlowNodeKind,
@@ -526,7 +551,12 @@ export function flowDataOutputPorts(
   data: DynamicPortData,
   context?: FlowPortContext,
 ): FlowDataPortDefinition[] {
-  const outputs = [...FLOW_NODE_DATA_PORTS[kind].outputs];
+  const configuredType = configuredOutputDataType(kind, data);
+  const outputs = FLOW_NODE_DATA_PORTS[kind].outputs.map((port) =>
+    configuredType !== null && port.id === "value"
+      ? { ...port, dataType: configuredType }
+      : port,
+  );
   if (kind === "input") {
     const seen = new Set<string>();
     for (const param of flowInputNodeParams(data)) {

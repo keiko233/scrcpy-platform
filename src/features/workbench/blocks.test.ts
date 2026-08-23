@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   FLOW_NODE_DATA_PORTS,
   FLOW_NODE_PORTS,
+  flowDataOutputPorts,
 } from "../../shared/project-contracts";
 
 import { BLOCK_DEFINITIONS } from "./blocks";
@@ -73,6 +74,19 @@ describe("workbench block definitions", () => {
       { id: "confidence", label: "Confidence", dataType: "number" },
       { id: "matched", label: "Matched", dataType: "boolean" },
     ]);
+  });
+
+  it("resolves output types from constant and convert settings", () => {
+    expect(
+      ["number", "string", "boolean"].map((type) =>
+        flowDataOutputPorts("constant", { type })[0]?.dataType,
+      ),
+    ).toEqual(["number", "string", "boolean"]);
+    expect(
+      ["number", "int", "string", "boolean"].map((toType) =>
+        flowDataOutputPorts("convert", { toType })[0]?.dataType,
+      ),
+    ).toEqual(["number", "number", "string", "boolean"]);
   });
 
   it("declares the composite screen-region data output and keeps OCR region fields local", () => {

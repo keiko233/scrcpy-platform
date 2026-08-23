@@ -191,13 +191,6 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
         }))
       : []),
     ...dataInputs,
-    ...(dynamicDataConfig !== undefined
-      ? dynamicIds.map((portId) => ({
-          id: portId,
-          label: portId,
-          dataType: dynamicDataConfig.dataType,
-        }))
-      : []),
   ];
   const outputPorts: NodePort[] = [
     ...(definition?.outputPorts ?? []).map((portId) => ({
