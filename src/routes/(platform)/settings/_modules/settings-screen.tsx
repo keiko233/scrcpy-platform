@@ -10,9 +10,12 @@ import {
 import { useSystemInfo } from "@/hooks/query/use-system-info";
 import { useLanguage } from "@/i18n/language";
 import { m } from "@/paraglide/messages.js";
+import { Switch } from "@/components/ui/switch";
+import { useWorkbench } from "@/features/workbench/use-workbench";
 
 export function SettingsScreen() {
   const { language, setLanguage } = useLanguage();
+  const { allowUnsavedRun, setAllowUnsavedRun } = useWorkbench();
   const infoQuery = useSystemInfo();
   const info = infoQuery.data ?? null;
 
@@ -45,6 +48,23 @@ export function SettingsScreen() {
               <SelectItem value="zh-cn">{m.settings_language_chinese()}</SelectItem>
             </SelectContent>
           </Select>
+        </section>
+
+        <section className="rounded-lg border p-3">
+          <h2 className="mb-2 font-medium">{m.settings_run_title()}</h2>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="font-medium">{m.settings_allow_unsaved_run_title()}</p>
+              <p className="mt-1 text-muted-foreground">
+                {m.settings_allow_unsaved_run_description()}
+              </p>
+            </div>
+            <Switch
+              checked={allowUnsavedRun}
+              onCheckedChange={setAllowUnsavedRun}
+              aria-label={m.settings_allow_unsaved_run_title()}
+            />
+          </div>
         </section>
 
         <section className="rounded-lg border p-3">

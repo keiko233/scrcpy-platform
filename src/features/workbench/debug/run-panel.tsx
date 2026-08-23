@@ -59,8 +59,19 @@ function getRunStateLabel(state: string): string {
   }
 }
 
+function getRunModeLabel(mode: string): string | null {
+  switch (mode) {
+    case "single-node":
+      return m.run_mode_single_node();
+    case "from-node":
+      return m.run_mode_from_node();
+    default:
+      return null;
+  }
+}
+
 export function RunPanel() {
-  const { library, flow, devices, screens, runs } = useWorkbench();
+  const { library, flow, devices, screens, runs, allowUnsavedRun } = useWorkbench();
   const { selectedScript } = library;
   const session = devices.session;
   const displayId = screens.screen?.activeDisplayId ?? null;
@@ -74,7 +85,7 @@ export function RunPanel() {
 
   const canRun =
     selectedScript !== null &&
-    !flow.dirty &&
+    (!flow.dirty || allowUnsavedRun) &&
     !runs.busy &&
     session?.state === "connected" &&
     session.transportId !== null &&
@@ -92,6 +103,7 @@ export function RunPanel() {
     }
     void runs.start({
       scriptId: selectedScript.id,
+      document: flow.getDocument(),
       deviceId: session.transportId,
       sessionId: session.sessionId,
       displayId,
@@ -115,8 +127,8 @@ export function RunPanel() {
     runs.error ??
     (selectedScript === null
       ? m.run_panel_select_script_to_run()
-      : flow.dirty
-        ? m.run_panel_save_before_run()
+        : flow.dirty && !allowUnsavedRun
+          ? m.run_panel_save_before_run()
         : session?.state !== "connected"
           ? m.run_panel_connect_device_before_run()
           : displayId === null
@@ -131,6 +143,11 @@ export function RunPanel() {
         {runs.run !== null && (
           <Badge size="sm" variant={stateVariant(runs.run.state)}>
             {getRunStateLabel(runs.run.state)}
+          </Badge>
+        )}
+        {runs.run !== null && getRunModeLabel(runs.run.mode) !== null && (
+          <Badge size="sm" variant="secondary">
+            {getRunModeLabel(runs.run.mode)}
           </Badge>
         )}
         {runs.breakpoints.size > 0 && (

@@ -251,6 +251,140 @@ describe("FlowRuntimeService", () => {
     assert.ok(snapshots.length >= 4);
   });
 
+  test("runs the supplied current document without changing the saved script", async () => {
+    const savedClick = node("saved-click", "click", { x: 1, y: 2 });
+    const unsavedClick = node("unsaved-click", "click", { x: 3, y: 4 });
+    const savedDocument = linearDocument([savedClick]);
+    const { service, driver } = serviceFor(savedDocument);
+
+    const result = service.start({
+      ...RUN_INPUT,
+      document: linearDocument([unsavedClick]),
+    });
+    assert.equal(result.status, "ok");
+    await waitForTerminal(service);
+
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["unsaved-click"]);
+    assert.deepEqual(
+      savedDocument.nodes.map((item) => item.id),
+      ["start", "saved-click", "end"],
+    );
+  });
+
+  test("runs an isolated debug block without requiring Start, End, or flow edges", async () => {
+    const isolatedClick = node("isolated-click", "click", { x: 30, y: 40 });
+    const { service, driver } = serviceFor(linearDocument());
+
+    const result = service.start({
+      ...RUN_INPUT,
+      document: {
+        schemaVersion: 1,
+        nodes: [isolatedClick],
+        edges: [],
+      },
+      mode: "single-node",
+      entryNodeId: isolatedClick.id,
+    });
+    assert.equal(result.status, "ok");
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), [isolatedClick.id]);
+  });
+
+  test("ends a from-node debug run at an unconnected output", async () => {
+    const isolatedSwipe = node("isolated-swipe", "swipe", {
+      fromX: 1,
+      fromY: 2,
+      toX: 3,
+      toY: 4,
+      durationMs: 100,
+    });
+    const { service, driver } = serviceFor(linearDocument());
+
+    const result = service.start({
+      ...RUN_INPUT,
+      document: {
+        schemaVersion: 1,
+        nodes: [isolatedSwipe],
+        edges: [],
+      },
+      mode: "from-node",
+      entryNodeId: isolatedSwipe.id,
+    });
+    assert.equal(result.status, "ok");
+    const completed = await waitForTerminal(service);
+
+    assert.equal(completed.state, "completed");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), [isolatedSwipe.id]);
+  });
+
+  test("runs only the selected block in single-node debug mode", async () => {
+    const first = node("first", "click", { x: 10, y: 20 });
+    const second = node("second", "swipe", {
+      fromX: 1,
+      fromY: 2,
+      toX: 3,
+      toY: 4,
+      durationMs: 100,
+    });
+    const { service, driver } = serviceFor(linearDocument([first, second]));
+
+    const result = service.start({
+      ...RUN_INPUT,
+      mode: "single-node",
+      entryNodeId: "first",
+    });
+    assert.equal(result.status, "ok");
+    const run = await waitForTerminal(service);
+
+    assert.equal(run.mode, "single-node");
+    assert.equal(run.entryNodeId, "first");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["first"]);
+    assert.deepEqual(
+      run.steps.map((step) => [step.nodeId, step.state]),
+      [
+        ["start", "skipped"],
+        ["first", "completed"],
+        ["second", "skipped"],
+        ["end", "skipped"],
+      ],
+    );
+  });
+
+  test("starts from a selected block and continues through the remaining flow", async () => {
+    const first = node("first", "click", { x: 10, y: 20 });
+    const second = node("second", "swipe", {
+      fromX: 1,
+      fromY: 2,
+      toX: 3,
+      toY: 4,
+      durationMs: 100,
+    });
+    const { service, driver } = serviceFor(linearDocument([first, second]));
+
+    const result = service.start({
+      ...RUN_INPUT,
+      mode: "from-node",
+      entryNodeId: "second",
+    });
+    assert.equal(result.status, "ok");
+    const run = await waitForTerminal(service);
+
+    assert.equal(run.mode, "from-node");
+    assert.equal(run.entryNodeId, "second");
+    assert.deepEqual(driver.calls.map((call) => call.nodeId), ["second"]);
+    assert.deepEqual(
+      run.steps.map((step) => [step.nodeId, step.state]),
+      [
+        ["start", "skipped"],
+        ["first", "skipped"],
+        ["second", "completed"],
+        ["end", "completed"],
+      ],
+    );
+  });
+
   test("rejects missing scripts, target mismatches, and invalid graphs", () => {
     const { service, driver } = serviceFor(linearDocument());
     assert.deepEqual(

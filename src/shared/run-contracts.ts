@@ -1,6 +1,10 @@
 import { z } from "zod";
 
-import { FLOW_NODE_KINDS, JsonValueSchema } from "./project-contracts";
+import {
+  FLOW_NODE_KINDS,
+  FlowDocumentSchema,
+  JsonValueSchema,
+} from "./project-contracts";
 import type { FlowValidationIssue } from "./flow-graph";
 
 export const StartFlowRunInputSchema = z
@@ -9,6 +13,10 @@ export const StartFlowRunInputSchema = z
     deviceId: z.string().min(1),
     sessionId: z.string().min(1),
     displayId: z.number().int().nonnegative(),
+    /** Optional current editor document for running unsaved changes. */
+    document: FlowDocumentSchema.optional(),
+    mode: z.enum(["flow", "single-node", "from-node"]).optional(),
+    entryNodeId: z.string().min(1).optional(),
     breakpoints: z.array(z.string().min(1)).optional(),
   })
   .strict();
@@ -28,6 +36,9 @@ export type StartFlowRunInput = z.infer<typeof StartFlowRunInputSchema>;
 export type StopFlowRunInput = z.infer<typeof StopFlowRunInputSchema>;
 export type ResumeFlowRunInput = z.infer<typeof ResumeFlowRunInputSchema>;
 export type ResumeAction = ResumeFlowRunInput["action"];
+
+export const FlowRunModeSchema = z.enum(["flow", "single-node", "from-node"]);
+export type FlowRunMode = z.infer<typeof FlowRunModeSchema>;
 
 export const FlowRunStateSchema = z.enum([
   "running",
@@ -64,6 +75,8 @@ export const FlowRunDtoSchema = z
     deviceId: z.string().min(1),
     sessionId: z.string().min(1),
     displayId: z.number().int().nonnegative(),
+    mode: FlowRunModeSchema,
+    entryNodeId: z.string().min(1).nullable(),
     state: FlowRunStateSchema,
     currentNodeId: z.string().min(1).nullable(),
     startedAt: z.string().datetime(),

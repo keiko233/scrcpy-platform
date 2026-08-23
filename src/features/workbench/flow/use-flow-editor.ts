@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   EdgeChange,
   IsValidConnection,
@@ -70,7 +70,7 @@ export interface FlowEditor {
   onConnect: OnConnect;
   isValidConnection: IsValidConnection<WorkbenchEdge>;
   onViewportChange: (viewport: Viewport) => void;
-  onMoveEnd: () => void;
+  getDocument: () => FlowDocument;
   addBlock: (kind: FlowBlockKind, position?: XYPosition) => string;
   deleteNode: (id: string) => void;
   updateNodeData: (id: string, patch: Record<string, JsonValue>) => void;
@@ -122,7 +122,6 @@ export function useFlowEditor(
   const nodesRef = useLatest(nodes);
   const edgesRef = useLatest(edges);
   const viewportRef = useLatest(viewport);
-  const suppressViewportDirtyRef = useRef(false);
 
   const resolveCallSignature = options.resolveCallSignature;
   const portContext = useMemo(
@@ -131,10 +130,6 @@ export function useFlowEditor(
   );
 
   const loadDocument = useCallback((document: FlowDocument) => {
-    suppressViewportDirtyRef.current = true;
-    window.setTimeout(() => {
-      suppressViewportDirtyRef.current = false;
-    }, 0);
     setNodes(nodesFromDocument(document));
     setEdges(edgesFromDocument(document));
     setViewport(viewportFromDocument(document));
@@ -197,12 +192,10 @@ export function useFlowEditor(
     setViewport(nextViewport);
   }, []);
 
-  const onMoveEnd = useCallback(() => {
-    if (suppressViewportDirtyRef.current) {
-      return;
-    }
-    setDirty(true);
-  }, []);
+  const getDocument = useCallback(
+    () => toFlowDocument(nodesRef.current, edgesRef.current, viewportRef.current),
+    [nodesRef, edgesRef, viewportRef],
+  );
 
   const addBlock = useCallback(
     (kind: FlowBlockKind, position?: XYPosition): string => {
@@ -231,7 +224,7 @@ export function useFlowEditor(
       setDirty(true);
       return id;
     },
-    [setNodes],
+    [nodesRef, setNodes],
   );
 
   const deleteNode = useCallback(
@@ -405,11 +398,7 @@ export function useFlowEditor(
     }
     setSaveState("saving");
     setError(null);
-    const document = toFlowDocument(
-      nodesRef.current,
-      edgesRef.current,
-      viewportRef.current,
-    );
+    const document = getDocument();
     try {
       const result = await saveDraftMutation.mutateAsync({
         scriptId: script.id,
@@ -430,7 +419,7 @@ export function useFlowEditor(
     } finally {
       setSaveState("idle");
     }
-  }, [script, applyScriptUpdate, saveDraftMutation]);
+  }, [script, applyScriptUpdate, getDocument, saveDraftMutation]);
 
   const reloadLatest = useCallback(async (): Promise<boolean> => {
     if (script === null) {
@@ -471,11 +460,7 @@ export function useFlowEditor(
         return false;
       }
       applyScriptUpdate(fresh);
-      const document = toFlowDocument(
-        nodesRef.current,
-        edgesRef.current,
-        viewportRef.current,
-      );
+      const document = getDocument();
       const result = await saveDraftMutation.mutateAsync({
         scriptId: script.id,
         expectedDraftVersion: fresh.draftVersion,
@@ -495,7 +480,7 @@ export function useFlowEditor(
     } finally {
       setSaveState("idle");
     }
-  }, [script, applyScriptUpdate, saveDraftMutation, queryClient]);
+  }, [script, applyScriptUpdate, getDocument, saveDraftMutation, queryClient]);
 
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedNode = selectedNodes.length === 1 ? selectedNodes[0] : null;
@@ -515,7 +500,7 @@ export function useFlowEditor(
     onConnect,
     isValidConnection,
     onViewportChange,
-    onMoveEnd,
+    getDocument,
     addBlock,
     deleteNode,
     updateNodeData,

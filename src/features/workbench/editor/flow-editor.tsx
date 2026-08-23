@@ -88,7 +88,6 @@ function FlowCanvas() {
     onConnect,
     isValidConnection,
     onViewportChange,
-    onMoveEnd,
     addBlock,
     deleteNode,
     copySelected,
@@ -202,7 +201,6 @@ function FlowCanvas() {
               isValidConnection={isValidConnection}
               viewport={viewport}
               onViewportChange={onViewportChange}
-              onMoveEnd={onMoveEnd}
               onPaneContextMenu={(event) => event.preventDefault()}
               deleteKeyCode={["Backspace", "Delete"]}
               selectionKeyCode={["Meta", "Control"]}

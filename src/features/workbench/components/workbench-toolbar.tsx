@@ -14,7 +14,7 @@ import { useWorkbench } from "../use-workbench";
 import { m } from "@/paraglide/messages.js";
 
 export function WorkbenchToolbar() {
-  const { library, flow, devices, screens, runs } = useWorkbench();
+  const { library, flow, devices, screens, runs, allowUnsavedRun } = useWorkbench();
   const { selectedProject, selectedScript } = library;
 
   const canSave =
@@ -24,7 +24,7 @@ export function WorkbenchToolbar() {
   const displayId = screens.screen?.activeDisplayId ?? null;
   const canRun =
     selectedScript !== null &&
-    !flow.dirty &&
+    (!flow.dirty || allowUnsavedRun) &&
     !runs.busy &&
     session?.state === "connected" &&
     session.transportId !== null &&
@@ -35,7 +35,7 @@ export function WorkbenchToolbar() {
     : (runs.error ??
       (selectedScript === null
         ? m.run_panel_select_script_to_run()
-        : flow.dirty
+        : flow.dirty && !allowUnsavedRun
           ? m.run_panel_save_before_run()
           : session?.state !== "connected"
             ? m.run_panel_connect_device_before_run()
@@ -59,6 +59,7 @@ export function WorkbenchToolbar() {
     }
     void runs.start({
       scriptId: selectedScript.id,
+      document: flow.getDocument(),
       deviceId: session.transportId,
       sessionId: session.sessionId,
       displayId,

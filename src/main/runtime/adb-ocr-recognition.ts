@@ -82,6 +82,7 @@ export class AdbScreenCaptureSource implements ScreenCaptureSource {
     const runner = connection.adb.subprocess.noneProtocol;
     let surfaceFlingerId = this.#surfaceFlingerIds.get(context.displayId);
     if (surfaceFlingerId === undefined) {
+      const dumpsysStartedAt = performance.now();
       const output = await runner.spawnWait(["dumpsys", "display"]);
       abortIfNeeded(signal);
       const uniqueId = findDisplayUniqueId(
@@ -98,7 +99,13 @@ export class AdbScreenCaptureSource implements ScreenCaptureSource {
         );
       }
       this.#surfaceFlingerIds.set(context.displayId, surfaceFlingerId);
+      console.info("ocr display id resolved", {
+        displayId: context.displayId,
+        surfaceFlingerId,
+        elapsedMs: Math.round(performance.now() - dumpsysStartedAt),
+      });
     }
+    const screencapStartedAt = performance.now();
     const png = await runner.spawnWait([
       "screencap",
       "-p",
@@ -106,6 +113,10 @@ export class AdbScreenCaptureSource implements ScreenCaptureSource {
       surfaceFlingerId,
     ]);
     abortIfNeeded(signal);
+    console.info("ocr screenshot captured", {
+      bytes: png.byteLength,
+      elapsedMs: Math.round(performance.now() - screencapStartedAt),
+    });
     if (png.byteLength > 64 * 1024 * 1024) {
       throw new Error("Android screencap returned an image larger than 64 MiB.");
     }
@@ -130,12 +141,25 @@ export class TesseractOcrEngine implements OcrEngine {
     signal: AbortSignal,
   ): Promise<OcrEngineResult> {
     abortIfNeeded(signal);
+    const workerStartedAt = performance.now();
     const worker = await this.#getWorker(languages);
+    const workerElapsedMs = Math.round(performance.now() - workerStartedAt);
     abortIfNeeded(signal);
     await worker.setParameters({ tessedit_char_whitelist: whitelist });
     abortIfNeeded(signal);
+    const recognizeStartedAt = performance.now();
     const result = await worker.recognize(Buffer.from(png), { rectangle });
     abortIfNeeded(signal);
+    console.info("ocr recognized", {
+      languages: [...languages].join("+"),
+      rectangle,
+      whitelist,
+      bytes: png.byteLength,
+      confidence: result.data.confidence,
+      textLength: result.data.text.length,
+      workerInitMs: workerElapsedMs,
+      recognizeMs: Math.round(performance.now() - recognizeStartedAt),
+    });
     return {
       text: result.data.text,
       confidence: result.data.confidence,
@@ -158,6 +182,7 @@ export class TesseractOcrEngine implements OcrEngine {
     }
     await this.dispose();
     await this.#prepareLanguages(languages);
+    const initStartedAt = performance.now();
     const creating = createWorker([...languages], OEM.LSTM_ONLY, {
       langPath: this.#languageDirectory,
       cacheMethod: "none",
@@ -165,7 +190,12 @@ export class TesseractOcrEngine implements OcrEngine {
     this.#workerLanguages = key;
     this.#worker = creating;
     try {
-      return await creating;
+      const created = await creating;
+      console.info("ocr tesseract worker initialized", {
+        languages: key,
+        elapsedMs: Math.round(performance.now() - initStartedAt),
+      });
+      return created;
     } catch (error) {
       if (this.#worker === creating) {
         this.#worker = null;

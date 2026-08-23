@@ -246,6 +246,8 @@ export enum StorageKey {
   WorkbenchLayout = "android-platform:workbench-layout",
   /** Cached scrcpy settings */
   ScrcpySettings = "android-platform:scrcpy-settings",
+  /** Allow running the current unsaved workbench graph */
+  WorkbenchAllowUnsavedRun = "android-platform:workbench-allow-unsaved-run",
   /** Selected locale */
   Locale = "app.locale",
   /** Sidebar collapsed state cookie */

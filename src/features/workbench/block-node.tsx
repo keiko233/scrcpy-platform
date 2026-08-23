@@ -1,11 +1,20 @@
-import { useState } from "react";
+import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import { MinusIcon, PlusIcon, StickyNoteIcon, Trash2Icon } from "lucide-react";
+import {
+  BugIcon,
+  MinusIcon,
+  PlayIcon,
+  PlusIcon,
+  StepForwardIcon,
+  StickyNoteIcon,
+  Trash2Icon,
+} from "lucide-react";
 
 import {
   ContextMenu,
   ContextMenuItem,
   ContextMenuPopup,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
@@ -148,10 +157,88 @@ function PortType({ type }: { type: NodePort["dataType"] }) {
   );
 }
 
+function DebugContextItems({
+  canRun,
+  isBreakpoint,
+  onRunSingle,
+  onRunFromHere,
+  onToggleBreakpoint,
+}: {
+  canRun: boolean;
+  isBreakpoint: boolean;
+  onRunSingle: () => void;
+  onRunFromHere: () => void;
+  onToggleBreakpoint: () => void;
+}) {
+  return (
+    <>
+      <ContextMenuItem disabled={!canRun} onClick={onRunSingle}>
+        <PlayIcon />
+        {m.block_node_run_once()}
+      </ContextMenuItem>
+      <ContextMenuItem disabled={!canRun} onClick={onRunFromHere}>
+        <StepForwardIcon />
+        {m.block_node_run_from_here()}
+      </ContextMenuItem>
+      <ContextMenuItem onClick={onToggleBreakpoint}>
+        <BugIcon />
+        {isBreakpoint
+          ? m.block_node_remove_breakpoint()
+          : m.block_node_add_breakpoint()}
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+    </>
+  );
+}
+
+function DebugNodeButtons({
+  canRun,
+  onRunSingle,
+  onRunFromHere,
+}: {
+  canRun: boolean;
+  onRunSingle: () => void;
+  onRunFromHere: () => void;
+}) {
+  const stopNodeInteraction = (event: ReactMouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+  };
+  return (
+    <div className="nodrag flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover/node:opacity-100">
+      <button
+        type="button"
+        className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        title={m.block_node_run_once()}
+        aria-label={m.block_node_run_once()}
+        disabled={!canRun}
+        onClick={(event) => {
+          stopNodeInteraction(event);
+          onRunSingle();
+        }}
+      >
+        <PlayIcon className="size-3" />
+      </button>
+      <button
+        type="button"
+        className="flex size-5 items-center justify-center rounded text-muted-foreground hover:bg-accent hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+        title={m.block_node_run_from_here()}
+        aria-label={m.block_node_run_from_here()}
+        disabled={!canRun}
+        onClick={(event) => {
+          stopNodeInteraction(event);
+          onRunFromHere();
+        }}
+      >
+        <StepForwardIcon className="size-3" />
+      </button>
+    </div>
+  );
+}
+
 export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNode>) {
   const { deleteNode, updateNodeData } = useFlowApi();
   const portContext = useFlowPortContext();
-  const { library, runs, flow } = useWorkbench();
+  const { library, devices, screens, runs, flow, allowUnsavedRun } = useWorkbench();
   const [configOpen, setConfigOpen] = useState(false);
   const definition = BLOCK_DEFINITIONS[data.kind];
   const Icon = definition?.icon;
@@ -163,12 +250,51 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
       ? (library.scripts.find((script) => script.id === data.targetScriptId)
           ?.name ?? m.block_field_call_target_placeholder())
       : rawSummary;
-  const isBreakpoint = runs.breakpoints.has(id);
-  const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
-  const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
   const hasFlowPorts =
     (definition?.inputPorts.length ?? 0) > 0 ||
     (definition?.outputPorts.length ?? 0) > 0;
+  const isBreakpoint = runs.breakpoints.has(id);
+  const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
+  const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
+  const session = devices.session;
+  const displayId = screens.screen?.activeDisplayId ?? null;
+  const canDebug =
+    data.kind !== "start" &&
+    data.kind !== "end" &&
+    data.kind !== "note" &&
+    data.kind !== "group" &&
+    data.kind !== "input" &&
+    data.kind !== "screen-region" &&
+    data.kind !== "constant" &&
+    data.kind !== "compare" &&
+    library.selectedScript !== null &&
+    (!flow.dirty || allowUnsavedRun) &&
+    !runs.busy &&
+    runs.run?.state !== "running" &&
+    runs.run?.state !== "paused" &&
+    session?.state === "connected" &&
+    session.transportId !== null &&
+    displayId !== null;
+  const startDebugRun = (mode: "single-node" | "from-node") => {
+    if (
+      !canDebug ||
+      library.selectedScript === null ||
+      session?.transportId === null ||
+      session?.transportId === undefined ||
+      displayId === null
+    ) {
+      return;
+    }
+    void runs.start({
+      scriptId: library.selectedScript.id,
+      document: flow.getDocument(),
+      deviceId: session.transportId,
+      sessionId: session.sessionId,
+      displayId,
+      mode,
+      entryNodeId: id,
+    });
+  };
   const dataInputs = flowDataInputPorts(data.kind, data, portContext);
   const dataOutputs = flowDataOutputPorts(data.kind, data, portContext);
   const dynamicFlowConfig = FLOW_NODE_DYNAMIC_FLOW_INPUTS[data.kind];
@@ -384,7 +510,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               isCurrent && "ring-2 ring-primary",
             )}
           >
-            <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-warning/30 bg-warning/5 px-2 py-1.5">
+            <div className="group/node flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-warning/30 bg-warning/5 px-2 py-1.5">
               {hasFlowPorts && (
                 <button
                   type="button"
@@ -423,6 +549,11 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                   {summary}
                 </div>
               </div>
+              <DebugNodeButtons
+                canRun={canDebug}
+                onRunSingle={() => startDebugRun("single-node")}
+                onRunFromHere={() => startDebugRun("from-node")}
+              />
               <NodeConfigPopover
                 nodeId={id}
                 data={data}
@@ -489,6 +620,13 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
           </div>
         </ContextMenuTrigger>
         <ContextMenuPopup sideOffset={4}>
+          <DebugContextItems
+            canRun={canDebug}
+            isBreakpoint={isBreakpoint}
+            onRunSingle={() => startDebugRun("single-node")}
+            onRunFromHere={() => startDebugRun("from-node")}
+            onToggleBreakpoint={() => runs.toggleBreakpoint(id)}
+          />
           <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
             <Trash2Icon />
             {m.block_node_delete_block()}
@@ -513,7 +651,7 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             isCurrent && "ring-2 ring-primary",
           )}
         >
-          <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
+          <div className="group/node flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
             {hasFlowPorts && (
               <button
                 type="button"
@@ -552,6 +690,11 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
                 {summary}
               </div>
             </div>
+            <DebugNodeButtons
+              canRun={canDebug}
+              onRunSingle={() => startDebugRun("single-node")}
+              onRunFromHere={() => startDebugRun("from-node")}
+            />
             <NodeConfigPopover
               nodeId={id}
               data={data}
@@ -643,6 +786,13 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
         </div>
       </ContextMenuTrigger>
       <ContextMenuPopup sideOffset={4}>
+        <DebugContextItems
+          canRun={canDebug}
+          isBreakpoint={isBreakpoint}
+          onRunSingle={() => startDebugRun("single-node")}
+          onRunFromHere={() => startDebugRun("from-node")}
+          onToggleBreakpoint={() => runs.toggleBreakpoint(id)}
+        />
         <ContextMenuItem variant="destructive" onClick={() => deleteNode(id)}>
           <Trash2Icon />
           {m.block_node_delete_block()}

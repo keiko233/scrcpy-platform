@@ -13,6 +13,7 @@ import {
   callTargetIdFromData,
   flowDataInputPorts,
   flowDataOutputPorts,
+  flowInputPortIds,
   flowInputNodeParams,
   flowOutputNodeResults,
   matchesFlowDataType as matchesDataType,
@@ -33,6 +34,7 @@ import type {
   FlowRunLogLevel,
   FlowRunLogListener,
   FlowRunStepDto,
+  FlowRunMode,
   ResumeFlowRunInput,
   ResumeFlowRunResult,
   StartFlowRunInput,
@@ -480,6 +482,9 @@ interface CallableScript {
 interface FrameInvocation {
   document: FlowDocument;
   startNodeId: string;
+  initialArrivalPort?: string | null;
+  stopAfterNodeId?: string | null;
+  allowTerminalWithoutEdge?: boolean;
   argValues: ReadonlyMap<string, JsonValue>;
   depth: number;
   signal: AbortSignal;
@@ -576,29 +581,70 @@ export class FlowRuntimeService {
       return { status: "error", error: "session-mismatch" };
     }
 
-    const compiled = compileFlow(
-      script.draftDocument.nodes,
-      script.draftDocument.edges,
-      { resolveDocument: (scriptId) => this.#loadDocument(scriptId) },
-    );
-    if (!compiled.valid) {
-      return {
-        status: "error",
-        error: "invalid-flow",
-        issues: compiled.issues,
-      };
-    }
-
+    const document = input.document ?? script.draftDocument;
+    const mode: FlowRunMode = input.mode ?? "flow";
+    const entryNodeId = input.entryNodeId ?? null;
     const nodeById = new Map(
-      script.draftDocument.nodes.map((node) => [node.id, node]),
+      document.nodes.map((node) => [node.id, node]),
     );
-    const orderedNodes = compiled.order.map((nodeId) => {
-      const node = nodeById.get(nodeId);
-      if (node === undefined) {
-        throw new Error(`Compiled flow references missing node "${nodeId}".`);
+    const entryNode = entryNodeId === null ? null : nodeById.get(entryNodeId);
+    if (mode !== "flow") {
+      if (entryNode === undefined || entryNode === null) {
+        return {
+          status: "error",
+          error: "invalid-flow",
+          issues: [
+            {
+              kind: "missing-endpoint",
+              nodeId: entryNodeId ?? undefined,
+              message: "A debug run requires an existing entry node.",
+            },
+          ],
+        };
       }
-      return node;
-    });
+      if (
+        entryNode.type === "start" ||
+        entryNode.type === "end" ||
+        flowInputPortIds(entryNode.type, entryNode.data).length === 0
+      ) {
+        return {
+          status: "error",
+          error: "invalid-flow",
+          issues: [
+            {
+              kind: "incompatible-port-role",
+              nodeId: entryNode.id,
+              message: `Node "${entryNode.id}" cannot be used as a debug entry point.`,
+            },
+          ],
+        };
+      }
+    }
+    let orderedNodes: FlowNode[];
+    if (mode === "flow") {
+      const compiled = compileFlow(
+        document.nodes,
+        document.edges,
+        { resolveDocument: (scriptId) => this.#loadDocument(scriptId) },
+      );
+      if (!compiled.valid) {
+        return {
+          status: "error",
+          error: "invalid-flow",
+          issues: compiled.issues,
+        };
+      }
+      orderedNodes = compiled.order.map((nodeId) => {
+        const node = nodeById.get(nodeId);
+        if (node === undefined) {
+          throw new Error(`Compiled flow references missing node "${nodeId}".`);
+        }
+        return node;
+      });
+    } else {
+      // Debug runs intentionally do not require a complete Start -> End graph.
+      orderedNodes = [...document.nodes];
+    }
     const runId = this.#createRunId();
     const startedAt = this.#now();
     const steps: FlowRunStepDto[] = orderedNodes.map((node) => ({
@@ -616,6 +662,8 @@ export class FlowRuntimeService {
       deviceId: input.deviceId,
       sessionId: input.sessionId,
       displayId: input.displayId,
+      mode,
+      entryNodeId,
       state: "running",
       currentNodeId: null,
       startedAt,
@@ -633,17 +681,24 @@ export class FlowRuntimeService {
     this.#transitions = 0;
     this.#callCache.clear();
     this.#signatureCache.clear();
+    const executionStartNodeId =
+      mode === "flow" ? orderedNodes[0]?.id ?? "" : entryNode?.id ?? "";
     this.#publish();
     this.#emitLog(null, "info", "Flow run started", {
       scriptId: input.scriptId,
       deviceId: input.deviceId,
       displayId: input.displayId,
+      mode,
+      entryNodeId,
       breakpoints: [...this.#breakpoints],
       nodeCount: steps.length,
     });
     this.#execution = this.#execute(
-      script.draftDocument,
-      orderedNodes[0]?.id ?? "",
+      document,
+      executionStartNodeId,
+      mode === "flow" ? null : "in",
+      mode === "single-node" ? entryNodeId : null,
+      mode !== "flow",
       controller.signal,
     ).finally(
       () => {
@@ -697,6 +752,9 @@ export class FlowRuntimeService {
   async #execute(
     document: FlowDocument,
     startNodeId: string,
+    initialArrivalPort: string | null,
+    stopAfterNodeId: string | null,
+    allowTerminalWithoutEdge: boolean,
     signal: AbortSignal,
   ): Promise<void> {
     const run = this.#run as FlowRunDto;
@@ -710,6 +768,9 @@ export class FlowRuntimeService {
       const result = await this.#walkFrame({
         document,
         startNodeId,
+        initialArrivalPort,
+        stopAfterNodeId,
+        allowTerminalWithoutEdge,
         argValues: new Map(),
         depth: 0,
         signal,
@@ -769,7 +830,15 @@ export class FlowRuntimeService {
    * node that terminated the frame, or null when an End node ended it.
    */
   async #walkFrame(frame: FrameInvocation): Promise<JsonValue | null> {
-    const { document, startNodeId, argValues, depth, signal, context } = frame;
+    const {
+      document,
+      startNodeId,
+      argValues,
+      depth,
+      signal,
+      context,
+      allowTerminalWithoutEdge,
+    } = frame;
     const run = this.#run as FlowRunDto;
     const portContext = this.#portContext();
 
@@ -846,7 +915,7 @@ export class FlowRuntimeService {
     let frameResult: JsonValue | null = null;
 
     let currentNodeId: string | null = startNodeId;
-    let arrivalPort: string | null = null;
+    let arrivalPort: string | null = frame.initialArrivalPort ?? null;
 
     const computePureDataNode = (node: FlowNode): void => {
       if (computingData.has(node.id)) {
@@ -1011,6 +1080,11 @@ const resolved = resolveNodeInputs(
       });
       this.#publish();
 
+      if (frame.stopAfterNodeId === node.id) {
+        currentNodeId = null;
+        continue;
+      }
+
       if (result.flowPort === null) {
         currentNodeId = null;
         continue;
@@ -1023,6 +1097,10 @@ const resolved = resolveNodeInputs(
           result.flowPort,
       );
       if (edge === undefined) {
+        if (allowTerminalWithoutEdge) {
+          currentNodeId = null;
+          continue;
+        }
         throw new Error(
           `Node "${node.id}" has no edge for output port "${result.flowPort}".`,
         );

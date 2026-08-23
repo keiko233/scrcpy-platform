@@ -16,6 +16,14 @@ import {
   type WorkbenchContextValue,
 } from "@/features/workbench/use-workbench";
 import { m } from "@/paraglide/messages.js";
+import { StorageKey } from "@/shared/constants/enums";
+
+function getInitialAllowUnsavedRun(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(StorageKey.WorkbenchAllowUnsavedRun) === "true";
+}
 
 export function WorkbenchProvider({
   children,
@@ -33,6 +41,9 @@ export function WorkbenchProvider({
     resolveCallSignature,
   });
   const runs = useFlowRun();
+  const [allowUnsavedRun, setAllowUnsavedRunState] = useState(
+    getInitialAllowUnsavedRun,
+  );
   const [screenRegionNodeId, setScreenRegionNodeId] = useState<string | null>(
     null,
   );
@@ -48,6 +59,13 @@ export function WorkbenchProvider({
     restoreRevision,
   } = library;
   const { reloadLatest, updateNodeData } = flow;
+  const setAllowUnsavedRun = useCallback((allow: boolean) => {
+    setAllowUnsavedRunState(allow);
+    window.localStorage.setItem(
+      StorageKey.WorkbenchAllowUnsavedRun,
+      String(allow),
+    );
+  }, []);
   const activeScreenRegionNodeId =
     screenRegionNodeId !== null &&
     flow.nodes.some(
@@ -175,6 +193,8 @@ export function WorkbenchProvider({
     screens,
     flow,
     runs,
+    allowUnsavedRun,
+    setAllowUnsavedRun,
     screenRegionSelection: {
       nodeId: activeScreenRegionNodeId,
       start: startScreenRegionSelection,
