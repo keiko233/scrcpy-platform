@@ -1,4 +1,4 @@
-import { ipcMain } from "electron";
+import { BrowserWindow, ipcMain } from "electron";
 import { ELECTRON_CHANNELS } from "../../shared/electron-api";
 import {
   ConnectDeviceInputSchema,
@@ -15,7 +15,7 @@ import {
 } from "../../shared/device-contracts";
 import type { DeviceSessionService } from "../adb/device-session";
 
-export function registerDeviceHandlers(service: DeviceSessionService): void {
+export function registerDeviceHandlers(service: DeviceSessionService): () => void {
   ipcMain.handle(
     ELECTRON_CHANNELS.devicesList,
     (): Promise<ListDevicesResult> => service.listDevices(),
@@ -72,4 +72,12 @@ export function registerDeviceHandlers(service: DeviceSessionService): void {
       return service.disconnectWirelessDevice(input);
     },
   );
+
+  return service.subscribe((session) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) {
+        window.webContents.send(ELECTRON_CHANNELS.devicesSessionChanged, session);
+      }
+    }
+  });
 }

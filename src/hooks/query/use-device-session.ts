@@ -1,4 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { DeviceSessionDto } from "@/shared/device-contracts";
 import { QueryKey } from "@/shared/constants/enums";
@@ -12,6 +13,14 @@ export const deviceSessionQueryFn = (): Promise<DeviceSessionDto> =>
 const SESSION_POLL_MS = Timing.DEVICE_SESSION_POLL_MS;
 
 export function useDeviceSession() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    return window.androidPlatform.onDeviceSession((session) => {
+      queryClient.setQueryData(deviceSessionQueryKey, session);
+    });
+  }, [queryClient]);
+
   return useQuery({
     queryKey: deviceSessionQueryKey,
     queryFn: deviceSessionQueryFn,

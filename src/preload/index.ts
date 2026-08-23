@@ -47,6 +47,15 @@ const api: ElectronAPI = {
   listDevices: () => ipcRenderer.invoke(ELECTRON_CHANNELS.devicesList),
   getDeviceSession: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesSession),
+  onDeviceSession: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      session: Parameters<typeof listener>[0],
+    ) => listener(session);
+    ipcRenderer.on(ELECTRON_CHANNELS.devicesSessionChanged, handler);
+    return () =>
+      ipcRenderer.removeListener(ELECTRON_CHANNELS.devicesSessionChanged, handler);
+  },
   connectDevice: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesConnect, input),
   disconnectDevice: () =>

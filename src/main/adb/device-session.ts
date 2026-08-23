@@ -43,6 +43,8 @@ export type BeforeDeviceDisconnectHook = (
   connection: DeviceConnection,
 ) => Promise<void>;
 
+export type DeviceSessionListener = (session: DeviceSessionDto) => void;
+
 /**
  * Injected abstraction over the ADB transport.
  * Kept free of Electron and Tango imports so the session model is unit-testable.
@@ -161,6 +163,7 @@ export class DeviceSessionService {
   #queue: Promise<void> = Promise.resolve();
   #disposePromise: Promise<void> | null = null;
   readonly #beforeDisconnectHooks = new Set<BeforeDeviceDisconnectHook>();
+  readonly #listeners = new Set<DeviceSessionListener>();
   readonly #appCache: AppMetadataCacheStore | null;
   #packageRecords: Map<string, PackageRecord> | null = null;
 
@@ -196,6 +199,11 @@ export class DeviceSessionService {
 
   getSession(): DeviceSessionDto {
     return this.#snapshot();
+  }
+
+  subscribe(listener: DeviceSessionListener): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
   }
 
   getConnection(): DeviceConnection | null {
@@ -429,9 +437,8 @@ export class DeviceSessionService {
       return { status: "error", error: "session-busy" };
     }
 
-    this.#state = "connecting";
     this.#target = { transportId, serial: "" };
-    this.#errorMessage = null;
+    this.#transition("connecting", null);
 
     try {
       const devices = await this.#gateway.listDevices();
@@ -450,8 +457,7 @@ export class DeviceSessionService {
       const connection = await this.#gateway.connectDevice(device);
       this.#connection = connection;
       this.#target = { transportId, serial: device.serial };
-      this.#state = "connected";
-      this.#errorMessage = null;
+      this.#transition("connected", null);
       return { status: "ok", session: this.#snapshot() };
     } catch (error) {
       this.#fail(errorMessageOf(error));
@@ -468,8 +474,7 @@ export class DeviceSessionService {
     }
 
     const connection = this.#connection;
-    this.#state = "disconnecting";
-    this.#errorMessage = null;
+    this.#transition("disconnecting", null);
     if (connection !== null) {
       this.#connection = null;
       try {
@@ -479,19 +484,26 @@ export class DeviceSessionService {
         await connection.close();
       } catch (error) {
         this.#target = null;
-        this.#state = "disconnected";
-        this.#errorMessage = errorMessageOf(error);
+        this.#transition("disconnected", errorMessageOf(error));
         return { status: "error", error: "disconnect-failed" };
       }
     }
     this.#target = null;
-    this.#state = "disconnected";
+    this.#transition("disconnected", null);
     return { status: "ok", session: this.#snapshot() };
   }
 
   #fail(message: string): void {
-    this.#state = "error";
-    this.#errorMessage = message;
+    this.#transition("error", message);
+  }
+
+  #transition(state: DeviceSessionState, errorMessage: string | null): void {
+    this.#state = state;
+    this.#errorMessage = errorMessage;
+    const snapshot = this.#snapshot();
+    for (const listener of this.#listeners) {
+      listener(snapshot);
+    }
   }
 
   #classifyConnectError(error: unknown): ConnectDeviceFailure {

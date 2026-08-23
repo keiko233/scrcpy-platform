@@ -276,6 +276,7 @@ export enum ElectronChannel {
   RevisionsRestore = "revisions:restore",
   DevicesList = "devices:list",
   DevicesSession = "devices:session",
+  DevicesSessionChanged = "devices:session-changed",
   DevicesConnect = "devices:connect",
   DevicesDisconnect = "devices:disconnect",
   DevicesWirelessPair = "devices:wireless-pair",

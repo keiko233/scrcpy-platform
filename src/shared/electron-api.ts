@@ -84,6 +84,7 @@ export const ELECTRON_CHANNELS = {
   revisionsRestore: ElectronChannel.RevisionsRestore,
   devicesList: ElectronChannel.DevicesList,
   devicesSession: ElectronChannel.DevicesSession,
+  devicesSessionChanged: ElectronChannel.DevicesSessionChanged,
   devicesConnect: ElectronChannel.DevicesConnect,
   devicesDisconnect: ElectronChannel.DevicesDisconnect,
   devicesWirelessPair: ElectronChannel.DevicesWirelessPair,
@@ -119,6 +120,8 @@ export const ELECTRON_CHANNELS = {
 export const SCREEN_VIDEO_WINDOW_EVENT = AppConstants.SCREEN_VIDEO_WINDOW_EVENT;
 
 export type SystemPlatform = `${SystemPlatformEnum}`;
+
+export type DeviceSessionListener = (session: DeviceSessionDto) => void;
 
 export interface SystemInfo {
   runtime: "electron";
@@ -171,6 +174,7 @@ export interface ElectronAPI {
 
   listDevices(): Promise<ListDevicesResult>;
   getDeviceSession(): Promise<DeviceSessionDto>;
+  onDeviceSession(listener: DeviceSessionListener): () => void;
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
   disconnectDevice(): Promise<DisconnectDeviceResult>;
   pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult>;

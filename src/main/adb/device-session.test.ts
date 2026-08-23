@@ -239,6 +239,27 @@ describe("DeviceSessionService", () => {
     assert.equal(gateway.connections.get("2")?.closeCalls, 1);
   });
 
+  test("publishes state transitions to subscribers", async () => {
+    const gateway = new FakeGateway();
+    gateway.devices = [device("2")];
+    const service = new DeviceSessionService(gateway);
+    const states: string[] = [];
+    const unsubscribe = service.subscribe((session) => {
+      states.push(session.state);
+    });
+
+    await service.connectDevice("2");
+    await service.disconnectDevice();
+    unsubscribe();
+
+    assert.deepEqual(states, [
+      "connecting",
+      "connected",
+      "disconnecting",
+      "disconnected",
+    ]);
+  });
+
   test("connecting to the already-connected device is idempotent", async () => {
     const gateway = new FakeGateway();
     gateway.devices = [device("2"), device("3")];
