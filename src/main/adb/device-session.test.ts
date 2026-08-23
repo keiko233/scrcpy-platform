@@ -140,6 +140,7 @@ describe("ADB server device mapping", () => {
 describe("DeviceSessionService", () => {
   test("serializes wireless operations through the gateway", async () => {
     const gateway = new FakeGateway();
+    gateway.devices = [device("7", { serial: "192.168.1.10:5555" })];
     const service = new DeviceSessionService(gateway);
 
     assert.deepEqual(
@@ -153,6 +154,7 @@ describe("DeviceSessionService", () => {
       await service.connectWirelessDevice({ address: "192.168.1.10:5555" }),
       { status: "ok" },
     );
+    assert.equal(service.getSession().state, "connected");
     assert.deepEqual(
       await service.disconnectWirelessDevice({ address: "192.168.1.10:5555" }),
       { status: "ok" },
@@ -162,6 +164,21 @@ describe("DeviceSessionService", () => {
       "connect:192.168.1.10:5555",
       "disconnect:192.168.1.10:5555",
     ]);
+  });
+
+  test("reports when a wireless transport is not present after adb connect", async () => {
+    const gateway = new FakeGateway();
+    const service = new DeviceSessionService(gateway);
+
+    assert.deepEqual(
+      await service.connectWirelessDevice({ address: "192.168.1.10:5555" }),
+      {
+        status: "error",
+        error: "operation-failed",
+        message:
+          "Wireless transport connected, but device 192.168.1.10:5555 was not found in the ADB device list.",
+      },
+    );
   });
 
   test("maps wireless gateway failures to an IPC-safe result", async () => {

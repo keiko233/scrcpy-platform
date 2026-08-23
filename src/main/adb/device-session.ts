@@ -342,7 +342,27 @@ export class DeviceSessionService {
     return this.#enqueue(async () => {
       try {
         await this.#gateway.connectWirelessDevice(input);
-        return { status: "ok" };
+        const devices = await this.#gateway.listDevices();
+        const device = devices.find(
+          (item) => item.serial === input.address,
+        );
+        if (device === undefined) {
+          return {
+            status: "error",
+            error: "operation-failed",
+            message: `Wireless transport connected, but device ${input.address} was not found in the ADB device list.`,
+          };
+        }
+
+        const session = await this.#connectLocked(device.transportId);
+        if (session.status === "ok") {
+          return { status: "ok" };
+        }
+        return {
+          status: "error",
+          error: "operation-failed",
+          message: `Wireless transport connected, but the application session could not connect (${session.error}).`,
+        };
       } catch (error) {
         return this.#wirelessFailure(error);
       }
