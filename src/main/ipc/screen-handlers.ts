@@ -57,7 +57,10 @@ export function registerScreenHandlers(service: ScreenSessionService): void {
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensDestroyVirtual,
-    (): Promise<ScreenOperationResult> => service.destroyVirtualDisplay(),
+    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+      const input = DisplayIdInputSchema.parse(raw);
+      return service.destroyVirtualDisplay(input.displayId);
+    },
   );
 
   ipcMain.handle(

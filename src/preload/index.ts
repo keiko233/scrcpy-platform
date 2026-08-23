@@ -83,8 +83,8 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensStart, input),
   createVirtualScreen: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensCreateVirtual, input),
-  destroyVirtualScreen: () =>
-    ipcRenderer.invoke(ELECTRON_CHANNELS.screensDestroyVirtual),
+  destroyVirtualScreen: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensDestroyVirtual, input),
   pressDeviceButton: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensPressButton, input),
   injectScreenTouch: (input) =>

@@ -53,13 +53,13 @@ export function DisplayTabs() {
                 className="ml-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
                 onClick={(event) => {
                   event.stopPropagation();
-                  void screens.destroyVirtualDisplay();
+                  void screens.destroyVirtualDisplay(display.displayId);
                 }}
                 onKeyDown={(event) => {
                   if (event.key === "Enter" || event.key === " ") {
                     event.stopPropagation();
                     event.preventDefault();
-                    void screens.destroyVirtualDisplay();
+                    void screens.destroyVirtualDisplay(display.displayId);
                   }
                 }}
                 role="button"

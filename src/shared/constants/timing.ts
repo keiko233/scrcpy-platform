@@ -19,8 +19,8 @@ export const Timing = {
   INSTALLED_APPS_CACHE_TTL_MS: 24 * 60 * 60_000,
   /** Device session dispose timeout */
   DEVICE_SESSION_DISPOSE_TIMEOUT_MS: 4000,
-  /** Timeout waiting for scrcpy to report virtual display id */
-  SCRCPY_DISPLAY_REPORT_TIMEOUT_MS: 1500,
+  /** Short grace period for scrcpy's virtual display ID device message */
+  SCRCPY_DISPLAY_REPORT_TIMEOUT_MS: 750,
   /** Grace period when closing scrcpy streams */
   STREAM_CLOSE_GRACE_MS: 500,
   /** Poll step while waiting for video size */
@@ -31,8 +31,8 @@ export const Timing = {
   OCR_SCRCPY_CAPTURE_TIMEOUT_MS: 300,
   /** Poll interval for newly added virtual display */
   VIRTUAL_DISPLAY_POLL_MS: 100,
-  /** Max attempts for virtual display stabilization (50 * 100ms = 5s) */
-  VIRTUAL_DISPLAY_WAIT_ATTEMPTS: 50,
+  /** Max attempts for virtual display stabilization (30 * 100ms = 3s) */
+  VIRTUAL_DISPLAY_WAIT_ATTEMPTS: 30,
   /** Required consecutive stable observations */
   VIRTUAL_DISPLAY_STABLE_COUNT: 3,
   /** SQLite busy timeout */

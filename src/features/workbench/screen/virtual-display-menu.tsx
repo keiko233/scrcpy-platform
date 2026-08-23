@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useForm } from "@tanstack/react-form";
+import { z } from "zod";
 import { PlusIcon, SmartphoneIcon } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,9 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { CreateVirtualDisplayInputSchema } from "@/shared/screen-contracts";
+import { StorageKey } from "@/shared/constants/enums";
+import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
+import { toastManager } from "@/components/ui/toast";
 
 import { useInstalledApps } from "@/hooks/query/use-installed-apps";
 import { useWorkbench } from "../use-workbench";
@@ -42,10 +46,26 @@ const DEFAULT_VIRTUAL_DISPLAY_VALUES: VirtualDisplayFormValues = {
   packageName: "",
 };
 
+const virtualDisplaySettingsSchema = z
+  .object({
+    width: z.string(),
+    height: z.string(),
+    dpi: z.string(),
+  })
+  .default({
+    width: DEFAULT_VIRTUAL_DISPLAY_VALUES.width,
+    height: DEFAULT_VIRTUAL_DISPLAY_VALUES.height,
+    dpi: DEFAULT_VIRTUAL_DISPLAY_VALUES.dpi,
+  });
+
 export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
   const { devices, screens } = useWorkbench();
   const [open, setOpen] = useState(false);
   const [showSystemApps, setShowSystemApps] = useState(false);
+  const [savedValues, setSavedValues] = useSafeLocalStorage(
+    StorageKey.VirtualDisplaySettings,
+    virtualDisplaySettingsSchema,
+  );
   const appsQuery = useInstalledApps(
     open && connected,
     devices.session?.sessionId ?? null,
@@ -54,7 +74,10 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
   const allApps = appsQuery.data?.apps ?? [];
   const apps = showSystemApps ? allApps : allApps.filter((app) => !app.system);
   const form = useForm({
-    defaultValues: DEFAULT_VIRTUAL_DISPLAY_VALUES,
+    defaultValues: {
+      ...DEFAULT_VIRTUAL_DISPLAY_VALUES,
+      ...savedValues,
+    },
     onSubmit: async ({ value }) => {
       const result = CreateVirtualDisplayInputSchema.safeParse({
         width: Number.parseInt(value.width, 10),
@@ -63,10 +86,16 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
         packageName: value.packageName.trim() || undefined,
       });
       if (!result.success) {
+        toastManager.add({
+          type: "error",
+          title: m.virtual_display_invalid_values_title(),
+          description: m.virtual_display_invalid_values_description(),
+        });
         return;
       }
-      await screens.createVirtualDisplay(result.data);
-      setOpen(false);
+      if (await screens.createVirtualDisplay(result.data)) {
+        setOpen(false);
+      }
     },
   });
 
@@ -98,7 +127,11 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                     nativeInput
                     max={7680}
                     min={320}
-                    onChange={(event) => field.handleChange(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      field.handleChange(value);
+                      setSavedValues((current) => ({ ...current, width: value }));
+                    }}
                     size="sm"
                     type="number"
                     value={field.state.value}
@@ -114,7 +147,11 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                     nativeInput
                     max={7680}
                     min={320}
-                    onChange={(event) => field.handleChange(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      field.handleChange(value);
+                      setSavedValues((current) => ({ ...current, height: value }));
+                    }}
                     size="sm"
                     type="number"
                     value={field.state.value}
@@ -130,7 +167,11 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
                     nativeInput
                     max={960}
                     min={72}
-                    onChange={(event) => field.handleChange(event.target.value)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      field.handleChange(value);
+                      setSavedValues((current) => ({ ...current, dpi: value }));
+                    }}
                     size="sm"
                     type="number"
                     value={field.state.value}
@@ -226,7 +267,7 @@ export function VirtualDisplayMenu({ connected }: { connected: boolean }) {
           <div>
             <Button
               className="flex-1"
-              disabled={!connected || screens.screen?.ownedVirtualDisplayId !== null}
+              disabled={!connected}
               loading={screens.busy}
               size="xs"
               type="submit"

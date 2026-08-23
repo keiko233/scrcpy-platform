@@ -191,7 +191,9 @@ export interface ElectronAPI {
   createVirtualScreen(
     input: CreateVirtualDisplayInput,
   ): Promise<ScreenOperationResult>;
-  destroyVirtualScreen(): Promise<ScreenOperationResult>;
+  destroyVirtualScreen(
+    input: DisplayIdInput,
+  ): Promise<ScreenOperationResult>;
   pressDeviceButton(
     input: PressDeviceButtonInput,
   ): Promise<ScreenOperationResult>;

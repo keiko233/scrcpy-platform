@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { toastManager } from "@/components/ui/toast";
 import {
   screenSessionQueryKey,
   useScreenSession,
@@ -12,6 +13,7 @@ import type {
   ScreenOperationResult,
   ScreenSessionDto,
 } from "@/shared/screen-contracts";
+import { m } from "@/paraglide/messages.js";
 import type { DeviceManager } from "../device/use-devices";
 
 export interface ScreenManager {
@@ -20,8 +22,8 @@ export interface ScreenManager {
   error: string | null;
   refresh: () => Promise<void>;
   selectDisplay: (displayId: number) => Promise<void>;
-  createVirtualDisplay: (input: CreateVirtualDisplayInput) => Promise<void>;
-  destroyVirtualDisplay: () => Promise<void>;
+  createVirtualDisplay: (input: CreateVirtualDisplayInput) => Promise<boolean>;
+  destroyVirtualDisplay: (displayId: number) => Promise<void>;
   pressButton: (button: DeviceButton) => Promise<void>;
   injectTouch: (input: InjectScreenTouchInput) => Promise<void>;
   clearError: () => void;
@@ -48,7 +50,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
   const error = operationError ?? screenError;
 
   const applyResult = useCallback(
-    (result: ScreenOperationResult): boolean => {
+    (result: ScreenOperationResult, notify = false): boolean => {
       if (result.status === "ok") {
         queryClient.setQueryData<ScreenSessionDto>(
           screenSessionQueryKey,
@@ -58,6 +60,13 @@ export function useScreens(devices: DeviceManager): ScreenManager {
         return true;
       }
       setOperationError(result.error.message);
+      if (notify) {
+        toastManager.add({
+          type: "error",
+          title: m.screen_operation_failed_title(),
+          description: result.error.message,
+        });
+      }
       return false;
     },
     [queryClient],
@@ -68,9 +77,15 @@ export function useScreens(devices: DeviceManager): ScreenManager {
       operationCountRef.current += 1;
       setBusy(true);
       try {
-        return applyResult(await operation());
+        return applyResult(await operation(), true);
       } catch (cause) {
-        setOperationError(errorMessage(cause));
+        const message = errorMessage(cause);
+        setOperationError(message);
+        toastManager.add({
+          type: "error",
+          title: m.screen_operation_failed_title(),
+          description: message,
+        });
         return false;
       } finally {
         operationCountRef.current -= 1;
@@ -95,13 +110,13 @@ export function useScreens(devices: DeviceManager): ScreenManager {
 
   const createVirtualDisplay = useCallback(
     async (input: CreateVirtualDisplayInput) => {
-      await run(() => window.androidPlatform.createVirtualScreen(input));
+      return await run(() => window.androidPlatform.createVirtualScreen(input));
     },
     [run],
   );
 
-  const destroyVirtualDisplay = useCallback(async () => {
-    await run(() => window.androidPlatform.destroyVirtualScreen());
+  const destroyVirtualDisplay = useCallback(async (displayId: number) => {
+    await run(() => window.androidPlatform.destroyVirtualScreen({ displayId }));
   }, [run]);
 
   const pressButton = useCallback(

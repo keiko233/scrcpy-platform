@@ -58,7 +58,7 @@ export const ScreenSessionDtoSchema = z.object({
   state: ScreenStateSchema,
   displays: z.array(AndroidDisplayDtoSchema),
   activeDisplayId: z.number().int().nonnegative().nullable(),
-  ownedVirtualDisplayId: z.number().int().nonnegative().nullable(),
+  ownedVirtualDisplayIds: z.array(z.number().int().nonnegative()),
   streamId: z.string().nullable(),
   videoCodec: z.number().int().nullable(),
   videoWidth: z.number().int().nonnegative(),

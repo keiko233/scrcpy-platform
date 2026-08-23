@@ -250,6 +250,8 @@ export enum StorageKey {
   WorkbenchFlowClipboard = "android-platform:workbench-flow-clipboard",
   /** Cached scrcpy settings */
   ScrcpySettings = "android-platform:scrcpy-settings",
+  /** Last virtual display dimensions and density */
+  VirtualDisplaySettings = "android-platform:virtual-display-settings",
   /** Allow running the current unsaved workbench graph */
   WorkbenchAllowUnsavedRun = "android-platform:workbench-allow-unsaved-run",
   /** Selected locale */

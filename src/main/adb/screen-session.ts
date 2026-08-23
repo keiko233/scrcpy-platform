@@ -80,6 +80,7 @@ interface ManagedScrcpyClient {
   touchActive: boolean;
   touchX: number;
   touchY: number;
+  recentOutput: string[];
 }
 
 interface VideoCaptureWaiter {
@@ -96,6 +97,16 @@ function errorMessageOf(error: unknown): string {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function displayIdFromServerOutput(lines: readonly string[]): number | undefined {
+  for (const line of [...lines].reverse()) {
+    const match = line.match(/\bNew display: .*\(id=(\d+)\)/i);
+    if (match !== null) {
+      return Number.parseInt(match[1], 10);
+    }
+  }
+  return undefined;
 }
 
 const BUTTON_KEY_CODES: Record<DeviceButton, AndroidKeyCode> = {
@@ -350,7 +361,22 @@ export class ScreenSessionService {
       this.#errorMessage = null;
       let owner: ManagedScrcpyClient | null = null;
       try {
-        const before = await this.#listDisplays();
+        // The catalog is refreshed on connect and after every display
+        // operation. Reuse it for the fallback path so the normal scrcpy ID
+        // path does not pay for another full dumpsys/cmd display round trip.
+        const before =
+          this.#displays.length > 0
+            ? [...this.#displays]
+            : await this.#listDisplays();
+        console.info("virtual display creation started", {
+          serial: this.#deviceSession.getConnection()?.serial,
+          width: input.width,
+          height: input.height,
+          dpi: input.dpi,
+          packageName: input.packageName ?? null,
+          beforeDisplays: before.map((display) => display.displayId),
+          turnScreenOff: this.#settings.turnScreenOff,
+        });
         const ownerOptions = this.#createOptions({
           newDisplay: `${input.width}x${input.height}/${input.dpi}`,
         });
@@ -359,18 +385,33 @@ export class ScreenSessionService {
         owner = await this.#startClient(ownerOptions, false);
         this.#displayOwner = owner;
 
-        const reportedDisplayId = await Promise.race([
-          displayIdMessage.displayId.catch(() => undefined),
-          delay(Timing.SCRCPY_DISPLAY_REPORT_TIMEOUT_MS).then(() => undefined),
-        ]);
+        const identity = await this.#waitForVirtualDisplayIdentity(
+          displayIdMessage,
+          owner,
+        );
+        const serverOutputDisplayId = displayIdFromServerOutput(owner.recentOutput);
+        const outputDisplayId = identity?.displayId ?? serverOutputDisplayId;
+        console.info("virtual display identity resolution", {
+          scid: owner.scid,
+          parserStatus: displayIdMessage.status,
+          identitySource: identity?.source ?? (serverOutputDisplayId === undefined ? "none" : "server-output"),
+          reportedDisplayId: identity?.displayId ?? null,
+          serverOutputDisplayId: serverOutputDisplayId ?? null,
+          recentOutput: owner.recentOutput.slice(-12),
+        });
         const discovered =
-          reportedDisplayId === undefined
+          outputDisplayId === undefined
             ? await this.#waitForAddedDisplay(before)
             : {
-                displays: await this.#listDisplays(),
-                displayId: reportedDisplayId,
+                displayId: outputDisplayId,
               };
         if (discovered.displayId === undefined) {
+          console.error("virtual display identity resolution failed", {
+            scid: owner.scid,
+            parserStatus: displayIdMessage.status,
+            beforeDisplays: before.map((display) => display.displayId),
+            recentOutput: owner.recentOutput.slice(-20),
+          });
           throw new Error(
             "scrcpy started, but Android did not report a new virtual display ID",
           );
@@ -646,6 +687,10 @@ export class ScreenSessionService {
       maxFps: target.maxFps ?? settings.maxFps,
       videoBitRate: target.videoBitRate ?? settings.videoBitRate,
       videoCodec: settings.videoCodec,
+      // Avoid scrcpy powering the physical display on while a screen-off
+      // session is being created. The explicit control command below is still
+      // kept for devices that ignore this startup option.
+      powerOn: !settings.turnScreenOff,
       stayAwake: settings.stayAwake,
       showTouches: settings.showTouches,
       powerOffOnClose: settings.powerOffOnClose,
@@ -692,6 +737,7 @@ export class ScreenSessionService {
             if (recentOutput.length > 40) {
               recentOutput.shift();
             }
+            console.info("scrcpy server output", { scid, line });
           },
         }),
       )
@@ -722,6 +768,7 @@ export class ScreenSessionService {
         touchActive: false,
         touchX: 0,
         touchY: 0,
+        recentOutput,
       } satisfies ManagedScrcpyClient;
       managed.removeSizeListener = video.sizeChanged(({ width, height }) => {
         managed.width = width;
@@ -748,9 +795,23 @@ export class ScreenSessionService {
       managed.videoDone = this.#consumeVideo(managed);
       managed.audioDone = this.#consumeAudio(managed);
       if (this.#settings.turnScreenOff) {
-        void client.controller
-          ?.setScreenPowerMode(AndroidScreenPowerMode.Off)
-          .catch(() => undefined);
+        if (client.controller === undefined) {
+          console.warn("screen-off requested but scrcpy control channel is unavailable", {
+            scid,
+          });
+        } else {
+          await client.controller
+            .setScreenPowerMode(AndroidScreenPowerMode.Off)
+            .then(() => {
+              console.info("scrcpy screen-off command completed", { scid });
+            })
+            .catch((error) => {
+              console.error("scrcpy screen-off command failed", {
+                scid,
+                error: errorMessageOf(error),
+              });
+            });
+        }
       }
       return managed;
     } catch (error) {
@@ -1116,6 +1177,11 @@ export class ScreenSessionService {
     let displays = [...before];
     let candidate: number | undefined;
     let stableObservations = 0;
+    console.info("virtual display catalog fallback polling started", {
+      beforeDisplays: before.map((display) => display.displayId),
+      maxWaitMs:
+        Timing.VIRTUAL_DISPLAY_WAIT_ATTEMPTS * Timing.VIRTUAL_DISPLAY_POLL_MS,
+    });
     for (let attempt = 0; attempt < Timing.VIRTUAL_DISPLAY_WAIT_ATTEMPTS; attempt += 1) {
       displays = await this.#listDisplays();
       const displayId = findAddedVirtualDisplayId(before, displays);
@@ -1125,6 +1191,11 @@ export class ScreenSessionService {
         } else {
           candidate = displayId;
           stableObservations = 1;
+          console.info("virtual display catalog candidate observed", {
+            attempt,
+            displayId,
+            displayIds: displays.map((display) => display.displayId),
+          });
         }
         // Some devices briefly publish a placeholder ID while scrcpy finishes
         // configuring the virtual display. Require three consecutive catalog
@@ -1138,7 +1209,45 @@ export class ScreenSessionService {
       }
       await delay(Timing.VIRTUAL_DISPLAY_POLL_MS);
     }
+    console.error("virtual display catalog fallback polling timed out", {
+      displayIds: displays.map((display) => display.displayId),
+      virtualDisplayIds: displays
+        .filter((display) => display.kind === "virtual")
+        .map((display) => display.displayId),
+    });
     return { displays };
+  }
+
+  async #waitForVirtualDisplayIdentity(
+    parser: DisplayIdDeviceMessageParser,
+    owner: ManagedScrcpyClient,
+  ): Promise<
+    | { source: "device-message" | "server-output"; displayId: number }
+    | undefined
+  > {
+    const parserResult = parser.displayId
+      .then((displayId) => ({ source: "device-message" as const, displayId }))
+      .catch(() => undefined);
+    const deadline = Date.now() + Timing.SCRCPY_DISPLAY_REPORT_TIMEOUT_MS;
+
+    while (Date.now() < deadline) {
+      const serverOutputDisplayId = displayIdFromServerOutput(owner.recentOutput);
+      if (serverOutputDisplayId !== undefined) {
+        return { source: "server-output", displayId: serverOutputDisplayId };
+      }
+      const remainingMs = deadline - Date.now();
+      const result = await Promise.race([
+        parserResult,
+        delay(Math.min(25, Math.max(1, remainingMs))).then(() => undefined),
+      ]);
+      if (result !== undefined) {
+        return result;
+      }
+    }
+    const serverOutputDisplayId = displayIdFromServerOutput(owner.recentOutput);
+    return serverOutputDisplayId === undefined
+      ? undefined
+      : { source: "server-output", displayId: serverOutputDisplayId };
   }
 
   #controller(): ScrcpyControlMessageWriter | null {
