@@ -58,6 +58,7 @@ describe("workbench block definitions", () => {
       "intervalMs",
       "retryOnEmpty",
       "retryEmptyImmediately",
+      "continueOnFailure",
       "failOnTimeout",
     ];
     const ocrInputIds = FLOW_NODE_DATA_PORTS.ocr.inputs.map(
@@ -76,7 +77,7 @@ describe("workbench block definitions", () => {
     expect(fields.languages?.kind).toBe("select");
     expect(fields.matchMode?.kind).toBe("select");
     expect(fields.caseSensitive?.kind).toBe("boolean");
-    expect(fields.failOnTimeout?.kind).toBe("boolean");
+    expect(fields.continueOnFailure?.kind).toBe("boolean");
     expect(fields.timeoutMs?.kind).toBe("number");
     expect(fields.intervalMs?.kind).toBe("number");
     expect(fields.retryOnEmpty?.kind).toBe("boolean");

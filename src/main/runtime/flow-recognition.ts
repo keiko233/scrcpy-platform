@@ -102,6 +102,7 @@ const OcrNodeDataSchema = z
       .default(Timing.OCR_DEFAULT_INTERVAL_MS),
     retryOnEmpty: z.boolean().default(false),
     retryEmptyImmediately: z.boolean().default(false),
+    continueOnFailure: z.boolean().default(false),
     failOnTimeout: z.boolean().default(true),
   })
   .passthrough();
@@ -288,12 +289,13 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
       throw new Error(`Recognition driver cannot execute node type "${node.type}".`);
     }
     const data = OcrNodeDataSchema.parse(node.data);
+    const failOnTimeout = data.continueOnFailure ? false : data.failOnTimeout;
     const deadline = data.timeoutMs === 0 ? null : Date.now() + data.timeoutMs;
     let latest: OcrEngineResult = { text: "", confidence: 0 };
     let attempts = 0;
 
     const result = (matched: boolean): FlowRecognitionResult => {
-      if (!matched && data.failOnTimeout) {
+      if (!matched && failOnTimeout) {
         throw timeoutError(data.timeoutMs, data.expectedText, latest.text);
       }
       return {
@@ -349,6 +351,9 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
           return result(false);
         }
         if (deadline === null) {
+          if (data.continueOnFailure) {
+            return result(false);
+          }
           throw error;
         }
         if (Date.now() >= deadline) {

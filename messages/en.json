@@ -407,6 +407,7 @@
   "block_field_ocr_interval_ms_label": "Retry interval (ms)",
   "block_field_ocr_retry_on_empty_label": "Retry when OCR is empty",
   "block_field_ocr_retry_empty_immediately_label": "Retry empty results immediately",
+  "block_field_ocr_continue_on_failure_label": "Continue on failure and output a boolean",
   "block_field_ocr_fail_on_timeout_label": "Fail on timeout",
   "block_field_ocr_text_variable_label": "Text variable",
   "block_field_ocr_text_variable_placeholder": "ocrText",

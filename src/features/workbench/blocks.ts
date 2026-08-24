@@ -267,6 +267,7 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       intervalMs: 500,
       retryOnEmpty: false,
       retryEmptyImmediately: false,
+      continueOnFailure: false,
       failOnTimeout: true,
     },
     summarize: (data) =>
@@ -458,9 +459,9 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           kind: "boolean",
         },
         {
-          name: "failOnTimeout",
+          name: "continueOnFailure",
           get label() {
-            return m.block_field_ocr_fail_on_timeout_label();
+            return m.block_field_ocr_continue_on_failure_label();
           },
           kind: "boolean",
         },

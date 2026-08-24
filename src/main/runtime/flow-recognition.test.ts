@@ -228,6 +228,50 @@ describe("OcrRecognitionDriver", () => {
     assert.equal(engine.calls.length, 2);
   });
 
+  test("can continue after a timeout and expose an unsuccessful result", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    engine.results = [{ text: "Loading", confidence: 80 }];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({
+        expectedText: "ready",
+        timeoutMs: 0,
+        continueOnFailure: true,
+      }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.deepEqual(result.outputs, {
+      text: "Loading",
+      confidence: 80,
+      matched: false,
+    });
+  });
+
+  test("can continue after repeated empty OCR results", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    engine.results = [{ text: "", confidence: 0 }];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({
+        retryOnEmpty: true,
+        timeoutMs: 120,
+        intervalMs: 100,
+        continueOnFailure: true,
+      }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.equal(result.outputs.matched, false);
+    assert.ok(engine.calls.length > 1);
+  });
+
   test("retries transient capture and recognition failures", async () => {
     const capture = new FakeCapture();
     capture.failures = 1;

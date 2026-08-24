@@ -407,6 +407,7 @@
   "block_field_ocr_interval_ms_label": "重试间隔（毫秒）",
   "block_field_ocr_retry_on_empty_label": "识别到空文本也重试",
   "block_field_ocr_retry_empty_immediately_label": "空文本立即重试",
+  "block_field_ocr_continue_on_failure_label": "失败时继续并输出布尔",
   "block_field_ocr_fail_on_timeout_label": "超时时失败",
   "block_field_ocr_text_variable_label": "文本变量",
   "block_field_ocr_text_variable_placeholder": "ocrText",
