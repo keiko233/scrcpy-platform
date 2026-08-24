@@ -298,7 +298,6 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
     renderedKind !== "screen-region" &&
     renderedKind !== "constant" &&
     renderedKind !== "constant-ref" &&
-    !isReference &&
     renderedKind !== "compare" &&
     library.selectedScript !== null &&
     (!flow.dirty || allowUnsavedRun) &&
