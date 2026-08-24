@@ -277,6 +277,16 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
   const isBreakpoint = runs.breakpoints.has(id);
   const isPaused = runs.run?.state === "paused" && runs.run.currentNodeId === id;
   const isCurrent = runs.run?.state === "running" && runs.run.currentNodeId === id;
+  const hasRuntimeError =
+    runs.run?.state === "failed" &&
+    runs.run.scriptId === library.selectedScript?.id &&
+    runs.run.steps.some(
+      (step) => step.nodeId === id && step.state === "failed",
+    );
+  const hasValidationError =
+    runs.errorScriptId === library.selectedScript?.id &&
+    runs.errorNodeIds.has(id);
+  const hasError = hasRuntimeError || hasValidationError;
   const session = devices.session;
   const displayId = screens.screen?.activeDisplayId ?? null;
   const canDebug =
@@ -392,7 +402,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             className={cn(
               "wb-flow-node wb-block-note min-w-44 !p-0",
               selected && "selected",
+              hasError && "ring-2 ring-destructive ring-offset-1",
             )}
+            title={hasError ? (runs.error ?? undefined) : undefined}
           >
             <div className="flex items-center gap-2 border-b border-warning/30 px-2 py-1.5">
               <StickyNoteIcon
@@ -447,7 +459,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             className={cn(
               "wb-flow-node wb-block-input min-w-40 !p-0",
               selected && "selected",
+              hasError && "ring-2 ring-destructive ring-offset-1",
             )}
+            title={hasError ? (runs.error ?? undefined) : undefined}
           >
             <div className="flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-primary/25 bg-primary/5 px-2 py-1.5">
               {Icon && (
@@ -531,7 +545,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
               selected && "selected",
               isPaused && "ring-2 ring-warning",
               isCurrent && "ring-2 ring-primary",
+              hasError && "ring-2 ring-destructive ring-offset-1",
             )}
+            title={hasError ? (runs.error ?? undefined) : undefined}
           >
             <div className="group/node flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b border-warning/30 bg-warning/5 px-2 py-1.5">
               {hasFlowPorts && (
@@ -672,7 +688,9 @@ export function BlockNodeComponent({ id, data, selected }: NodeProps<WorkbenchNo
             definition?.kind && `wb-block-${definition.kind}`,
             isPaused && "ring-2 ring-warning",
             isCurrent && "ring-2 ring-primary",
+            hasError && "ring-2 ring-destructive ring-offset-1",
           )}
+          title={hasError ? (runs.error ?? undefined) : undefined}
         >
           <div className="group/node flex items-center gap-2 rounded-t-[calc(var(--radius-md)-1px)] border-b bg-muted/50 px-2 py-1.5">
             {hasFlowPorts && (

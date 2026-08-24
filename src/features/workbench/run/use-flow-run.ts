@@ -21,6 +21,9 @@ export interface FlowRunManager {
   run: FlowRunDto | null;
   busy: boolean;
   error: string | null;
+  /** Nodes implicated by a start-time graph validation failure. */
+  errorNodeIds: ReadonlySet<string>;
+  errorScriptId: string | null;
   logs: FlowRunLogEntryDto[];
   breakpoints: ReadonlySet<string>;
   start: (input: StartFlowRunInput) => Promise<boolean>;
@@ -50,6 +53,26 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+function validationErrorNodeIds(
+  input: StartFlowRunInput,
+  result: Extract<StartFlowRunResult, { status: "error" }>,
+): Set<string> {
+  const nodeIds = new Set<string>();
+  for (const issue of result.issues ?? []) {
+    if (issue.nodeId !== undefined) {
+      nodeIds.add(issue.nodeId);
+    }
+    if (issue.edgeId !== undefined) {
+      const edge = input.document?.edges.find((item) => item.id === issue.edgeId);
+      if (edge !== undefined) {
+        nodeIds.add(edge.source);
+        nodeIds.add(edge.target);
+      }
+    }
+  }
+  return nodeIds;
+}
+
 export function useFlowRun(): FlowRunManager {
   const runQuery = useFlowRunQuery();
   const startFlowRunMutation = useStartFlowRun();
@@ -57,6 +80,10 @@ export function useFlowRun(): FlowRunManager {
   const resumeFlowRunMutation = useResumeFlowRun();
   const [busy, setBusy] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [errorNodeIds, setErrorNodeIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const [errorScriptId, setErrorScriptId] = useState<string | null>(null);
   const [logs, setLogs] = useState<FlowRunLogEntryDto[]>([]);
   const [breakpoints, setBreakpoints] = useState<ReadonlySet<string>>(
     () => new Set(),
@@ -93,6 +120,8 @@ export function useFlowRun(): FlowRunManager {
     async (input: StartFlowRunInput) => {
       setBusy(true);
       setLocalError(null);
+      setErrorNodeIds(new Set());
+      setErrorScriptId(null);
       try {
         const result = await startFlowRunMutation.mutateAsync({
           ...input,
@@ -101,6 +130,8 @@ export function useFlowRun(): FlowRunManager {
         if (result.status === "error") {
           const message = describeStartFailure(result);
           setLocalError(message);
+          setErrorNodeIds(validationErrorNodeIds(input, result));
+          setErrorScriptId(input.scriptId);
           toastManager.add({
             type: "error",
             title: m.run_error_start_title(),
@@ -190,11 +221,17 @@ export function useFlowRun(): FlowRunManager {
     });
   }, []);
 
-  const clearError = useCallback(() => setLocalError(null), []);
+  const clearError = useCallback(() => {
+    setLocalError(null);
+    setErrorNodeIds(new Set());
+    setErrorScriptId(null);
+  }, []);
   return {
     run,
     busy,
     error,
+    errorNodeIds,
+    errorScriptId,
     logs,
     breakpoints,
     start,

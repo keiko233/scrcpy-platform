@@ -27,6 +27,7 @@ import { useFlowApi } from "./flow/flow-api-context";
 import { NodeConfigPopover } from "./node-config/node-config-popover";
 import { BlockTitle, customNodeName } from "./node-title";
 import type { WorkbenchNode } from "./types";
+import { useWorkbench } from "./use-workbench";
 
 export function GroupNodeComponent({
   id,
@@ -36,6 +37,7 @@ export function GroupNodeComponent({
   positionAbsoluteY,
 }: NodeProps<WorkbenchNode>) {
   const { addBlock, deleteNode } = useFlowApi();
+  const { library, runs } = useWorkbench();
   const { screenToFlowPosition } = useReactFlow();
   const [configOpen, setConfigOpen] = useState(false);
   const [contextPosition, setContextPosition] = useState<XYPosition | null>(
@@ -44,6 +46,9 @@ export function GroupNodeComponent({
   const definition = BLOCK_DEFINITIONS.group;
   const customName = customNodeName(data.name);
   const fallbackTitle = definition?.label ?? m.node_config_block_fallback();
+  const hasError =
+    runs.errorScriptId === library.selectedScript?.id &&
+    runs.errorNodeIds.has(id);
 
   return (
     <ContextMenu>
@@ -66,7 +71,9 @@ export function GroupNodeComponent({
             "wb-node-group h-full rounded-lg border border-dashed border-muted-foreground/40 bg-muted/10",
             selected &&
               "border-primary shadow-[0_0_0_1px_var(--primary)] bg-primary/5",
+            hasError && "ring-2 ring-destructive ring-offset-1",
           )}
+          title={hasError ? (runs.error ?? undefined) : undefined}
         >
           <NodeResizer
             isVisible={selected}
