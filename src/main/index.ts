@@ -12,6 +12,7 @@ import { registerDeviceHandlers } from "./ipc/device-handlers";
 import { registerScreenHandlers } from "./ipc/screen-handlers";
 import { registerRunHandlers } from "./ipc/run-handlers";
 import { DeviceSessionService } from "./adb/device-session";
+import { ensureAdbServer } from "./adb/adb-server";
 import { ScreenSessionService } from "./adb/screen-session";
 import { TangoAdbGateway } from "./adb/tango-adb-gateway";
 import { Logger } from "./logging/logger";
@@ -124,7 +125,7 @@ function getSystemPlatform(): SystemPlatform {
   return "unsupported";
 }
 
-void app.whenReady().then(() => {
+void app.whenReady().then(async () => {
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
 
   ipcMain.handle(ELECTRON_CHANNELS.windowMinimize, (event) => {
@@ -151,6 +152,12 @@ void app.whenReady().then(() => {
   const store = openPersistence();
   logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
   logger.install();
+  try {
+    const { executable } = await ensureAdbServer();
+    console.info("ADB server is ready", { executable });
+  } catch (error) {
+    console.error("Failed to start ADB server", error);
+  }
   ipcMain.handle(ELECTRON_CHANNELS.logsList, (_event, input?: { limit?: number }) =>
     logger?.list(input?.limit),
   );
