@@ -56,6 +56,8 @@ describe("workbench block definitions", () => {
       "caseSensitive",
       "timeoutMs",
       "intervalMs",
+      "retryOnEmpty",
+      "retryEmptyImmediately",
       "failOnTimeout",
     ];
     const ocrInputIds = FLOW_NODE_DATA_PORTS.ocr.inputs.map(
@@ -77,6 +79,8 @@ describe("workbench block definitions", () => {
     expect(fields.failOnTimeout?.kind).toBe("boolean");
     expect(fields.timeoutMs?.kind).toBe("number");
     expect(fields.intervalMs?.kind).toBe("number");
+    expect(fields.retryOnEmpty?.kind).toBe("boolean");
+    expect(fields.retryEmptyImmediately?.kind).toBe("boolean");
   });
 
   it("declares typed OCR data outputs", () => {

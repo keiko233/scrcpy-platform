@@ -100,6 +100,8 @@ const OcrNodeDataSchema = z
       .min(Timing.OCR_MIN_INTERVAL_MS)
       .max(Timing.OCR_MAX_INTERVAL_MS)
       .default(Timing.OCR_DEFAULT_INTERVAL_MS),
+    retryOnEmpty: z.boolean().default(false),
+    retryEmptyImmediately: z.boolean().default(false),
     failOnTimeout: z.boolean().default(true),
   })
   .passthrough();
@@ -154,7 +156,7 @@ function rectangleOf(
     left + width > image.width ||
     top + height > image.height
   ) {
-    throw new Error(
+    throw new OcrRegionError(
       `OCR region (${left}, ${top}, ${width}, ${height}) exceeds screenshot ${image.width}x${image.height}.`,
     );
   }
@@ -261,6 +263,13 @@ function timeoutError(
   );
 }
 
+class OcrRegionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "OcrRegionError";
+  }
+}
+
 export class OcrRecognitionDriver implements FlowRecognitionDriver {
   readonly #capture: ScreenCaptureSource;
   readonly #engine: OcrEngine;
@@ -281,7 +290,7 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
     const data = OcrNodeDataSchema.parse(node.data);
     const deadline = data.timeoutMs === 0 ? null : Date.now() + data.timeoutMs;
     let latest: OcrEngineResult = { text: "", confidence: 0 };
-    let attempted = false;
+    let attempts = 0;
 
     const result = (matched: boolean): FlowRecognitionResult => {
       if (!matched && data.failOnTimeout) {
@@ -300,9 +309,10 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
 
     while (true) {
       abortIfNeeded(signal);
-      if (attempted && deadline !== null && Date.now() >= deadline) {
+      if (attempts > 0 && deadline !== null && Date.now() >= deadline) {
         return result(false);
       }
+      attempts += 1;
 
       const attemptController = new AbortController();
       const onRunAbort = () => attemptController.abort();
@@ -332,17 +342,35 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
         if (signal.aborted) {
           abortIfNeeded(signal);
         }
+        if (error instanceof OcrRegionError) {
+          throw error;
+        }
         if (attemptController.signal.aborted && deadline !== null) {
           return result(false);
         }
-        throw error;
+        if (deadline === null) {
+          throw error;
+        }
+        if (Date.now() >= deadline) {
+          return result(false);
+        }
+        console.warn("ocr attempt failed, retrying", {
+          nodeId: node.id,
+          attempt: attempts,
+          timeoutMs: data.timeoutMs,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        await delay(
+          Math.min(data.intervalMs, Math.max(0, deadline - Date.now())),
+          signal,
+        );
+        continue;
       } finally {
         signal.removeEventListener("abort", onRunAbort);
         if (timeout !== null) {
           clearTimeout(timeout);
         }
       }
-      attempted = true;
       abortIfNeeded(signal);
       const matched = matchesText(
         latest.text,
@@ -350,18 +378,22 @@ export class OcrRecognitionDriver implements FlowRecognitionDriver {
         data.matchMode,
         data.caseSensitive,
       );
+      const empty = latest.text.trim().length === 0;
+      const retryingEmpty = empty && data.retryOnEmpty;
       if (
-        matched ||
+        (matched && !retryingEmpty) ||
         deadline === null ||
         Date.now() >= deadline ||
-        data.expectedText.trim() === ""
+        (data.expectedText.trim() === "" && !retryingEmpty)
       ) {
         return result(matched);
       }
-      await delay(
-        Math.min(data.intervalMs, Math.max(0, deadline - Date.now())),
-        signal,
-      );
+      if (!retryingEmpty || !data.retryEmptyImmediately) {
+        await delay(
+          Math.min(data.intervalMs, Math.max(0, deadline - Date.now())),
+          signal,
+        );
+      }
     }
   }
 

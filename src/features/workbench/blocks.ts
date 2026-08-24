@@ -265,6 +265,8 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
       caseSensitive: false,
       timeoutMs: 5000,
       intervalMs: 500,
+      retryOnEmpty: false,
+      retryEmptyImmediately: false,
       failOnTimeout: true,
     },
     summarize: (data) =>
@@ -440,6 +442,20 @@ export const BLOCK_DEFINITIONS: Record<FlowBlockKind, BlockDefinition> = {
           kind: "number",
           step: 100,
           min: 100,
+        },
+        {
+          name: "retryOnEmpty",
+          get label() {
+            return m.block_field_ocr_retry_on_empty_label();
+          },
+          kind: "boolean",
+        },
+        {
+          name: "retryEmptyImmediately",
+          get label() {
+            return m.block_field_ocr_retry_empty_immediately_label();
+          },
+          kind: "boolean",
         },
         {
           name: "failOnTimeout",

@@ -60,9 +60,14 @@ function ocrNode(data: Record<string, unknown> = {}): FlowNode {
 
 class FakeCapture implements ScreenCaptureSource {
   calls = 0;
+  failures = 0;
 
   async capturePng(): Promise<Uint8Array> {
     this.calls += 1;
+    if (this.failures > 0) {
+      this.failures -= 1;
+      throw new Error("temporary screen capture failure");
+    }
     return png();
   }
 }
@@ -74,6 +79,7 @@ class FakeEngine implements OcrEngine {
     whitelist: string;
   }> = [];
   results: OcrEngineResult[] = [{ text: "Ready", confidence: 96 }];
+  failures: unknown[] = [];
   disposed = false;
 
   async recognize(
@@ -83,6 +89,10 @@ class FakeEngine implements OcrEngine {
     whitelist: string,
   ): Promise<OcrEngineResult> {
     this.calls.push({ languages, rectangle, whitelist });
+    const failure = this.failures[this.calls.length - 1];
+    if (failure !== undefined) {
+      throw failure;
+    }
     return this.results[Math.min(this.calls.length - 1, this.results.length - 1)];
   }
 
@@ -168,6 +178,108 @@ describe("OcrRecognitionDriver", () => {
 
     assert.equal(result.outputs.matched, true);
     assert.equal(capture.calls, 2);
+  });
+
+  test("can retry an empty OCR result when enabled", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    engine.results = [
+      { text: "", confidence: 0 },
+      { text: "Ready", confidence: 91 },
+    ];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({
+        retryOnEmpty: true,
+        timeoutMs: 1_000,
+        intervalMs: 100,
+      }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.equal(result.outputs.text, "Ready");
+    assert.equal(result.outputs.matched, true);
+    assert.equal(engine.calls.length, 2);
+  });
+
+  test("can retry empty OCR results immediately", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    engine.results = [
+      { text: "", confidence: 0 },
+      { text: "Ready", confidence: 91 },
+    ];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({
+        retryOnEmpty: true,
+        retryEmptyImmediately: true,
+        timeoutMs: 50,
+        intervalMs: 100,
+      }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.equal(result.outputs.matched, true);
+    assert.equal(engine.calls.length, 2);
+  });
+
+  test("retries transient capture and recognition failures", async () => {
+    const capture = new FakeCapture();
+    capture.failures = 1;
+    const engine = new FakeEngine();
+    engine.failures = [new Error("temporary OCR engine failure")];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({ timeoutMs: 1_000, intervalMs: 100 }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+
+    assert.equal(result.outputs.matched, true);
+    assert.equal(capture.calls, 3);
+    assert.equal(engine.calls.length, 2);
+  });
+
+  test("returns or fails only after transient errors exhaust the timeout", async () => {
+    const capture = new FakeCapture();
+    const engine = new FakeEngine();
+    engine.failures = [
+      new Error("temporary OCR engine failure"),
+      new Error("temporary OCR engine failure"),
+      new Error("temporary OCR engine failure"),
+    ];
+    const driver = new OcrRecognitionDriver(capture, engine);
+
+    const result = await driver.recognize(
+      ocrNode({ timeoutMs: 250, intervalMs: 100, failOnTimeout: false }),
+      CONTEXT,
+      new AbortController().signal,
+    );
+    assert.deepEqual(result.outputs, {
+      text: "",
+      confidence: 0,
+      matched: false,
+    });
+    assert.ok(engine.calls.length > 1);
+
+    const strictEngine = new FakeEngine();
+    strictEngine.failures = Array.from(
+      { length: 10 },
+      () => new Error("temporary OCR engine failure"),
+    );
+    await expect(
+      new OcrRecognitionDriver(new FakeCapture(), strictEngine).recognize(
+        ocrNode({ timeoutMs: 250, intervalMs: 100, failOnTimeout: true }),
+        CONTEXT,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow(/OCR timed out/);
   });
 
   test("can return a false match or fail after a single timed attempt", async () => {
