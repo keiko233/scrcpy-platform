@@ -14,6 +14,7 @@ import type {
 import type {
   CreateVirtualDisplayInput,
   DisplayIdInput,
+  InjectScreenKeyboardInput,
   InjectScreenTouchInput,
   PressDeviceButtonInput,
   RequestScreenVideoInput,
@@ -101,6 +102,7 @@ export const ELECTRON_CHANNELS = {
   screensDestroyVirtual: ElectronChannel.ScreensDestroyVirtual,
   screensPressButton: ElectronChannel.ScreensPressButton,
   screensInjectTouch: ElectronChannel.ScreensInjectTouch,
+  screensInjectKeyboard: ElectronChannel.ScreensInjectKeyboard,
   screensRequestVideo: ElectronChannel.ScreensRequestVideo,
   screensVideoPort: ElectronChannel.ScreensVideoPort,
   screensVideoCaptureResponse: ElectronChannel.ScreensVideoCaptureResponse,
@@ -199,6 +201,9 @@ export interface ElectronAPI {
   ): Promise<ScreenOperationResult>;
   injectScreenTouch(
     input: InjectScreenTouchInput,
+  ): Promise<ScreenOperationResult>;
+  injectScreenKeyboard(
+    input: InjectScreenKeyboardInput,
   ): Promise<ScreenOperationResult>;
   requestScreenVideo(input: RequestScreenVideoInput): void;
   sendScreenVideoCaptureResponse(

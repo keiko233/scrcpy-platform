@@ -4,6 +4,7 @@ import { ELECTRON_CHANNELS } from "../../shared/electron-api";
 import {
   CreateVirtualDisplayInputSchema,
   DisplayIdInputSchema,
+  InjectScreenKeyboardInputSchema,
   InjectScreenTouchInputSchema,
   PressDeviceButtonInputSchema,
   RequestScreenVideoInputSchema,
@@ -76,6 +77,14 @@ export function registerScreenHandlers(service: ScreenSessionService): void {
     (_event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = InjectScreenTouchInputSchema.parse(raw);
       return service.injectTouch(input);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensInjectKeyboard,
+    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+      const input = InjectScreenKeyboardInputSchema.parse(raw);
+      return service.injectKeyboard(input);
     },
   );
 

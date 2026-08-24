@@ -13,6 +13,7 @@ import {
   ScrcpyPointerId,
 } from "@yume-chan/scrcpy";
 import type {
+  AndroidKeyEventMeta,
   ScrcpyControlMessageWriter,
   ScrcpyMediaStreamPacket,
 } from "@yume-chan/scrcpy";
@@ -23,6 +24,7 @@ import type {
   AndroidDisplayDto,
   CreateVirtualDisplayInput,
   DeviceButton,
+  InjectScreenKeyboardInput,
   InjectScreenTouchInput,
   ScreenFailureCode,
   ScreenOperationResult,
@@ -553,6 +555,41 @@ export class ScreenSessionService {
         return { status: "ok", screen: this.getSnapshot() };
       } catch (error) {
         return this.#operationFailure("Could not inject touch input", error);
+      }
+    });
+  }
+
+  injectKeyboard(
+    input: InjectScreenKeyboardInput,
+  ): Promise<ScreenOperationResult> {
+    return this.#enqueue(async () => {
+      const controller = this.#controller();
+      if (
+        controller === null ||
+        this.#activeDisplayId !== input.displayId
+      ) {
+        return this.#failure(
+          "not-streaming",
+          "The selected display does not have an active video/control stream.",
+        );
+      }
+      try {
+        if (input.type === "text") {
+          await controller.injectText(input.text);
+        } else {
+          await controller.injectKeyCode({
+            action:
+              input.action === "down"
+                ? AndroidKeyEventAction.Down
+                : AndroidKeyEventAction.Up,
+            keyCode: input.keyCode as AndroidKeyCode,
+            repeat: input.repeat,
+            metaState: input.metaState as AndroidKeyEventMeta,
+          });
+        }
+        return { status: "ok", screen: this.getSnapshot() };
+      } catch (error) {
+        return this.#operationFailure("Could not inject keyboard input", error);
       }
     });
   }

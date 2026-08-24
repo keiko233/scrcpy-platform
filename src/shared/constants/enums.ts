@@ -298,6 +298,7 @@ export enum ElectronChannel {
   ScreensDestroyVirtual = "screens:destroy-virtual",
   ScreensPressButton = "screens:press-button",
   ScreensInjectTouch = "screens:inject-touch",
+  ScreensInjectKeyboard = "screens:inject-keyboard",
   ScreensRequestVideo = "screens:request-video",
   ScreensVideoPort = "screens:video-port",
   ScreensVideoCaptureResponse = "screens:video-capture-response",

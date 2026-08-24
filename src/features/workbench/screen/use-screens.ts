@@ -9,6 +9,7 @@ import {
 import type {
   CreateVirtualDisplayInput,
   DeviceButton,
+  InjectScreenKeyboardInput,
   InjectScreenTouchInput,
   ScreenOperationResult,
   ScreenSessionDto,
@@ -26,6 +27,7 @@ export interface ScreenManager {
   destroyVirtualDisplay: (displayId: number) => Promise<void>;
   pressButton: (button: DeviceButton) => Promise<void>;
   injectTouch: (input: InjectScreenTouchInput) => Promise<void>;
+  injectKeyboard: (input: InjectScreenKeyboardInput) => Promise<void>;
   clearError: () => void;
 }
 
@@ -136,6 +138,16 @@ export function useScreens(devices: DeviceManager): ScreenManager {
     [],
   );
 
+  const injectKeyboard = useCallback(
+    async (input: InjectScreenKeyboardInput) => {
+      const result = await window.androidPlatform.injectScreenKeyboard(input);
+      if (result.status === "error") {
+        setOperationError(result.error.message);
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     const session = devices.session;
     if (session?.state !== "connected" || session.serial === null) {
@@ -183,6 +195,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
     destroyVirtualDisplay,
     pressButton,
     injectTouch,
+    injectKeyboard,
     clearError,
   };
 }

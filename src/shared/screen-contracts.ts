@@ -116,6 +116,25 @@ export type InjectScreenTouchInput = z.infer<
   typeof InjectScreenTouchInputSchema
 >;
 
+export const InjectScreenKeyboardInputSchema = z.discriminatedUnion("type", [
+  z.object({
+    type: z.literal("key"),
+    displayId: z.number().int().nonnegative(),
+    action: z.enum(["down", "up"]),
+    keyCode: z.number().int().min(0).max(512),
+    repeat: z.number().int().min(0).max(0x7fffffff),
+    metaState: z.number().int().min(0).max(0x7fffffff),
+  }),
+  z.object({
+    type: z.literal("text"),
+    displayId: z.number().int().nonnegative(),
+    text: z.string().min(1).max(4096),
+  }),
+]);
+export type InjectScreenKeyboardInput = z.infer<
+  typeof InjectScreenKeyboardInputSchema
+>;
+
 export const RequestScreenVideoInputSchema = z.object({
   streamId: z.string().min(1),
 });

@@ -27,6 +27,7 @@ import {
   screenRegionFromDrag,
   type NormalizedScreenPoint,
 } from "./screen-region-selection";
+import { screenKeyboardCommand } from "./screen-keyboard";
 import { m } from "@/paraglide/messages.js";
 
 type DeviceButtonConfig = {
@@ -89,6 +90,8 @@ export function DeviceMonitor() {
   const moveFrameRef = useRef<number | null>(null);
   const pendingMoveRef = useRef<{ x: number; y: number } | null>(null);
   const selectionDraftRef = useRef<ScreenRegionSelectionDraft | null>(null);
+  const pressedKeysRef = useRef(new Set<number>());
+  const composingRef = useRef(false);
   const [selectionDraft, setSelectionDraft] = useState<ScreenRegionSelectionDraft | null>(null);
   const session = devices.session;
   const video = useScreenVideo(canvasRef, screens.screen?.streamId ?? null);
@@ -120,10 +123,95 @@ export function DeviceMonitor() {
     });
   };
 
+  const sendKeyboard = (command: ReturnType<typeof screenKeyboardCommand>) => {
+    if (
+      command === null ||
+      screens.screen?.activeDisplayId === null ||
+      screens.screen?.activeDisplayId === undefined
+    ) {
+      return false;
+    }
+    if (command.type === "key") {
+      if (command.action === "down") {
+        pressedKeysRef.current.add(command.keyCode);
+      } else {
+        pressedKeysRef.current.delete(command.keyCode);
+      }
+    }
+    void screens.injectKeyboard({
+      displayId: screens.screen.activeDisplayId,
+      ...command,
+    });
+    return true;
+  };
+
+  const releasePressedKeys = () => {
+    const displayId = screens.screen?.activeDisplayId;
+    if (displayId === null || displayId === undefined) {
+      pressedKeysRef.current.clear();
+      return;
+    }
+    for (const keyCode of pressedKeysRef.current) {
+      void screens.injectKeyboard({
+        type: "key",
+        displayId,
+        action: "up",
+        keyCode,
+        repeat: 0,
+        metaState: 0,
+      });
+    }
+    pressedKeysRef.current.clear();
+  };
+
+  const keyboardDown = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (
+      !video.connected ||
+      screenRegionNodeId !== null ||
+      screenPointNodeId !== null ||
+      composingRef.current
+    ) {
+      return;
+    }
+    const command = screenKeyboardCommand(event.nativeEvent, "down");
+    if (sendKeyboard(command)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const keyboardUp = (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+    if (
+      !video.connected ||
+      screenRegionNodeId !== null ||
+      screenPointNodeId !== null ||
+      composingRef.current
+    ) {
+      return;
+    }
+    const command = screenKeyboardCommand(event.nativeEvent, "up");
+    if (sendKeyboard(command)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+
+  const compositionStart = () => {
+    composingRef.current = true;
+  };
+
+  const compositionEnd = (event: React.CompositionEvent<HTMLCanvasElement>) => {
+    composingRef.current = false;
+    if (video.connected && event.data.length > 0) {
+      sendKeyboard({ type: "text", text: event.data });
+    }
+  };
+
   const pointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (event.button !== 0 || !video.connected) {
       return;
     }
+    event.currentTarget.focus();
     event.currentTarget.setPointerCapture(event.pointerId);
     const position = point(event);
     if (screenRegionNodeId !== null) {
@@ -274,6 +362,9 @@ export function DeviceMonitor() {
         <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
           <canvas
             aria-label={m.device_monitor_live_display_aria()}
+            onBlur={releasePressedKeys}
+            onCompositionEnd={compositionEnd}
+            onCompositionStart={compositionStart}
             className={cn(
               "h-auto max-h-full w-auto max-w-full touch-none bg-black",
               (screenRegionNodeId !== null || screenPointNodeId !== null) && "cursor-crosshair",
@@ -282,6 +373,9 @@ export function DeviceMonitor() {
             onPointerDown={pointerDown}
             onPointerMove={pointerMove}
             onPointerUp={(event) => pointerEnd("up", event)}
+            onKeyDown={keyboardDown}
+            onKeyUp={keyboardUp}
+            tabIndex={0}
             ref={canvasRef}
           />
 
