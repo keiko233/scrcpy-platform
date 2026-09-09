@@ -138,6 +138,14 @@ export const ConnectDeviceInputSchema = z.object({
 
 export type ConnectDeviceInput = z.infer<typeof ConnectDeviceInputSchema>;
 
+export const DisconnectDeviceInputSchema = z
+  .object({ sessionId: z.string().min(1).optional() })
+  .strict();
+
+export type DisconnectDeviceInput = z.infer<
+  typeof DisconnectDeviceInputSchema
+>;
+
 export const ListDevicesFailureSchema = z.literal("server-unavailable");
 export const ConnectDeviceFailureSchema = z.enum([
   "server-unavailable",

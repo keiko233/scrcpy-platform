@@ -6,6 +6,7 @@ import type { AndroidDisplayDto } from "@/shared/screen-contracts";
 
 import { VirtualDisplayMenu } from "@/features/workbench/screen/virtual-display-menu";
 import { useWorkbench } from "@/features/workbench/use-workbench";
+import { useWindowContext } from "@/hooks/query/use-window-context";
 import { m } from "@/paraglide/messages.js";
 
 function labelFor(display: AndroidDisplayDto): string {
@@ -19,10 +20,17 @@ function labelFor(display: AndroidDisplayDto): string {
 
 export function DisplayTabs() {
   const { screens, devices } = useWorkbench();
+  const windowContext = useWindowContext();
   const navigate = useNavigate();
   const connected = devices.session?.state === "connected";
-  const displays = screens.screen?.displays ?? [];
-  const activeId = screens.screen?.activeDisplayId ?? null;
+  const screenContext = windowContext.data?.context;
+  const targetDisplayId = screenContext?.kind === "screen"
+    ? screenContext.target.displayId
+    : null;
+  const displays = (screens.screen?.displays ?? []).filter(
+    (display) => targetDisplayId === null || display.displayId === targetDisplayId,
+  );
+  const activeId = targetDisplayId ?? screens.screen?.activeDisplayId ?? null;
 
   return (
     <div className="app-no-drag flex h-full items-center gap-0.5 px-1.5">
@@ -40,14 +48,16 @@ export function DisplayTabs() {
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
             onClick={() => {
-              void screens.selectDisplay(display.displayId);
-              void navigate({ to: "/$tab", params: { tab: "workbench" } });
+              if (targetDisplayId === null) {
+                void screens.selectDisplay(display.displayId);
+                void navigate({ to: "/$tab", params: { tab: "workbench" } });
+              }
             }}
             title={display.name}
           >
             <Icon className="size-3.5" />
             <span>{labelFor(display)}</span>
-            {display.ownedBySession && (
+            {display.ownedBySession && targetDisplayId === null && (
               <span
                 aria-label={m.display_tabs_destroy_virtual_display_aria()}
                 className="ml-0.5 flex size-4 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
@@ -73,7 +83,7 @@ export function DisplayTabs() {
         );
       })}
 
-      {connected && <VirtualDisplayMenu connected={connected} />}
+      {connected && targetDisplayId === null && <VirtualDisplayMenu connected={connected} />}
     </div>
   );
 }

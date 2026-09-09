@@ -616,7 +616,6 @@ function WirelessConnectionPanel({ manager }: { manager: DeviceManager }) {
 export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
   const {
     devices,
-    session,
     selectedTransportId,
     loadingDevices,
     connecting,
@@ -630,7 +629,6 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
   } = manager;
 
   const busy = connecting;
-  const state = session?.state ?? "disconnected";
   const canConnect =
     selectedTransportId !== null && devices.some((device) => device.transportId === selectedTransportId);
 
@@ -714,7 +712,7 @@ export function DeviceConnectionPanel({ manager }: { manager: DeviceManager }) {
               size="sm"
               variant="default"
               className="flex-1"
-              disabled={!canConnect || busy || state === "connected"}
+              disabled={!canConnect || busy}
               loading={connecting}
               onClick={() => void connect()}
             >

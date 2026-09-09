@@ -1,6 +1,7 @@
 import type {
   ConnectDeviceInput,
   ConnectDeviceResult,
+  DisconnectDeviceInput,
   DisconnectDeviceResult,
   DeviceSessionDto,
   InstalledAppDto,
@@ -23,6 +24,14 @@ import type {
   ScreenSessionDto,
   ScrcpySettings,
 } from "./screen-contracts";
+import type {
+  CreateVirtualScreenForDeviceInput,
+  ListScreenDisplaysInput,
+  ScreenOpenResult,
+  WindowBootstrapResult,
+  OpenScreenInput,
+  ScreenRef,
+} from "./window-contracts";
 import type {
   CreateProjectInput,
   CreateRevisionInput,
@@ -86,6 +95,7 @@ export const ELECTRON_CHANNELS = {
   devicesList: ElectronChannel.DevicesList,
   devicesSession: ElectronChannel.DevicesSession,
   devicesSessionChanged: ElectronChannel.DevicesSessionChanged,
+  devicesSessions: ElectronChannel.DevicesSessions,
   devicesConnect: ElectronChannel.DevicesConnect,
   devicesDisconnect: ElectronChannel.DevicesDisconnect,
   devicesWirelessPair: ElectronChannel.DevicesWirelessPair,
@@ -94,6 +104,10 @@ export const ELECTRON_CHANNELS = {
   devicesPackages: ElectronChannel.DevicesPackages,
   devicesPackagesEnrich: ElectronChannel.DevicesPackagesEnrich,
   screensSession: ElectronChannel.ScreensSession,
+  screensSessionChanged: ElectronChannel.ScreensSessionChanged,
+  screensDisplays: ElectronChannel.ScreensDisplays,
+  screensCreateVirtualForDevice: ElectronChannel.ScreensCreateVirtualForDevice,
+  screensOpenWindow: ElectronChannel.ScreensOpenWindow,
   screensSettingsGet: ElectronChannel.ScreensSettingsGet,
   screensSettingsSet: ElectronChannel.ScreensSettingsSet,
   screensRefresh: ElectronChannel.ScreensRefresh,
@@ -117,6 +131,11 @@ export const ELECTRON_CHANNELS = {
   windowClose: ElectronChannel.WindowClose,
   windowIsMaximized: ElectronChannel.WindowIsMaximized,
   windowMaximizedChanged: ElectronChannel.WindowMaximizedChanged,
+  windowContext: ElectronChannel.WindowContext,
+  windowOpenManager: ElectronChannel.WindowOpenManager,
+  windowOpenPair: ElectronChannel.WindowOpenPair,
+  windowOpenSettings: ElectronChannel.WindowOpenSettings,
+  windowOpenScreen: ElectronChannel.WindowOpenScreen,
 } as const;
 
 export const SCREEN_VIDEO_WINDOW_EVENT = AppConstants.SCREEN_VIDEO_WINDOW_EVENT;
@@ -175,10 +194,11 @@ export interface ElectronAPI {
   restoreRevision(input: RestoreRevisionInput): Promise<RestoreRevisionResult>;
 
   listDevices(): Promise<ListDevicesResult>;
-  getDeviceSession(): Promise<DeviceSessionDto>;
+  listDeviceSessions(): Promise<DeviceSessionDto[]>;
+  getDeviceSession(input?: { sessionId?: string }): Promise<DeviceSessionDto>;
   onDeviceSession(listener: DeviceSessionListener): () => void;
   connectDevice(input: ConnectDeviceInput): Promise<ConnectDeviceResult>;
-  disconnectDevice(): Promise<DisconnectDeviceResult>;
+  disconnectDevice(input?: DisconnectDeviceInput): Promise<DisconnectDeviceResult>;
   pairWirelessDevice(input: WirelessPairInput): Promise<WirelessOperationResult>;
   connectWirelessDevice(input: WirelessConnectInput): Promise<WirelessConnectResult>;
   disconnectWirelessDevice(input: WirelessConnectInput): Promise<WirelessOperationResult>;
@@ -186,6 +206,12 @@ export interface ElectronAPI {
   enrichInstalledApps(packages: string[]): Promise<InstalledAppDto[]>;
 
   getScreenSession(): Promise<ScreenSessionDto>;
+  onScreenSession(listener: (screen: ScreenSessionDto) => void): () => void;
+  listScreenDisplays(input: ListScreenDisplaysInput): Promise<ScreenOperationResult>;
+  openScreen(input: OpenScreenInput): Promise<ScreenOpenResult>;
+  createVirtualScreenForDevice(
+    input: CreateVirtualScreenForDeviceInput,
+  ): Promise<ScreenOperationResult>;
   getScrcpySettings(): Promise<ScrcpySettings>;
   setScrcpySettings(input: ScrcpySettings): Promise<ScrcpySettings>;
   refreshScreens(): Promise<ScreenOperationResult>;
@@ -222,4 +248,9 @@ export interface ElectronAPI {
   windowClose(): Promise<void>;
   windowIsMaximized(): Promise<boolean>;
   onWindowMaximized(listener: (maximized: boolean) => void): () => void;
+  getWindowContext(): Promise<WindowBootstrapResult>;
+  openManagerWindow(): Promise<void>;
+  openPairWindow(): Promise<void>;
+  openSettingsWindow(): Promise<void>;
+  openScreenWindow(ref: ScreenRef): Promise<void>;
 }

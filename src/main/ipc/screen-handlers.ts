@@ -1,4 +1,4 @@
-import { ipcMain, MessageChannelMain } from "electron";
+import { BrowserWindow, ipcMain, MessageChannelMain } from "electron";
 
 import { ELECTRON_CHANNELS } from "../../shared/electron-api";
 import {
@@ -9,105 +9,270 @@ import {
   PressDeviceButtonInputSchema,
   RequestScreenVideoInputSchema,
   ScrcpySettingsSchema,
-  type ScrcpySettings,
-  type ScreenVideoCaptureResponseMessage,
   type ScreenOperationResult,
+  type ScreenSessionDto,
+  type ScreenVideoCaptureResponseMessage,
+  type ScrcpySettings,
 } from "../../shared/screen-contracts";
-import type { ScreenSessionService } from "../adb/screen-session";
+import {
+  CreateVirtualScreenForDeviceInputSchema,
+  ListScreenDisplaysInputSchema,
+  OpenScreenInputSchema,
+} from "../../shared/window-contracts";
+import type { DeviceRegistryService } from "../devices/device-registry";
+import type { ScreenRegistryService } from "../screens/screen-registry";
+import type { WindowManager } from "../windows/window-manager";
+import { WindowContextRegistry } from "../windows/window-context-registry";
 
-export function registerScreenHandlers(service: ScreenSessionService): void {
-  ipcMain.handle(ELECTRON_CHANNELS.screensSession, () => service.getSnapshot());
+function errorResult(
+  code: Extract<ScreenOperationResult, { status: "error" }>['error']['code'],
+  message: string,
+): ScreenOperationResult {
+  return { status: "error", error: { code, message } };
+}
 
-  ipcMain.handle(ELECTRON_CHANNELS.screensSettingsGet, () =>
-    service.getSettings(),
+function emptyScreen(): ScreenSessionDto {
+  return {
+    sessionId: "no-screen-session",
+    serial: null,
+    state: "disconnected",
+    displays: [],
+    activeDisplayId: null,
+    ownedVirtualDisplayIds: [],
+    streamId: null,
+    videoCodec: null,
+    videoWidth: 0,
+    videoHeight: 0,
+    errorMessage: null,
+  };
+}
+
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function registerScreenHandlers(
+  screens: ScreenRegistryService,
+  devices: DeviceRegistryService,
+  contexts: WindowContextRegistry,
+  windows: WindowManager,
+): () => void {
+  const getScreenContext = (senderId: number) => contexts.getScreen(senderId);
+
+  ipcMain.handle(ELECTRON_CHANNELS.screensSession, (event): ScreenSessionDto => {
+    const context = getScreenContext(event.sender.id);
+    return context === null
+      ? emptyScreen()
+      : screens.getContext(context.target.screenInstanceId)?.screen ?? emptyScreen();
+  });
+
+  ipcMain.handle(ELECTRON_CHANNELS.screensDisplays, (_event, raw: unknown) => {
+    const input = ListScreenDisplaysInputSchema.parse(raw);
+    return screens.listDisplays(input.sessionId);
+  });
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensSettingsGet,
+    (event): ScrcpySettings => {
+      const context = getScreenContext(event.sender.id);
+      return screens.getSettings(context?.target);
+    },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensSettingsSet,
-    (_event, raw: unknown): ScrcpySettings => {
+    (event, raw: unknown): ScrcpySettings => {
       const settings = ScrcpySettingsSchema.parse(
         raw !== null && typeof raw === "object"
           ? { ocrCaptureSource: "scrcpy", ...raw }
           : raw,
       );
-      service.setSettings(settings);
-      return service.getSettings();
+      const context = getScreenContext(event.sender.id);
+      return screens.setSettings(settings, context?.target);
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensRefresh,
-    (): Promise<ScreenOperationResult> => service.refreshDisplays(),
+    (event): Promise<ScreenOperationResult> => {
+      const context = getScreenContext(event.sender.id);
+      return context === null
+        ? Promise.resolve(errorResult("scope-mismatch", "Display refresh is only available in a screen window."))
+        : screens.refresh(context.target);
+    },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensStart,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    (event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = DisplayIdInputSchema.parse(raw);
-      return service.startDisplay(input.displayId);
+      const context = getScreenContext(event.sender.id);
+      if (context === null) {
+        return Promise.resolve(errorResult("scope-mismatch", "A screen window is required to start a display stream."));
+      }
+      if (input.displayId !== context.target.displayId) {
+        return Promise.resolve(errorResult("scope-mismatch", "The requested display is outside this screen window."));
+      }
+      return screens.start(context.target);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensOpenWindow,
+    async (_event, raw: unknown) => {
+      const input = OpenScreenInputSchema.parse(raw);
+      const opened = await screens.openScreen(input);
+      if (opened.status === "error") {
+        return opened;
+      }
+      try {
+        windows.openScreen(opened.ref);
+      } catch (error) {
+        await screens.close(opened.ref.screenInstanceId, true);
+        return {
+          status: "error",
+          message: `The screen window could not be opened: ${messageOf(error)}`,
+        };
+      }
+      return { status: "ok", ref: opened.ref, reused: opened.reused };
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensCreateVirtualForDevice,
+    async (_event, raw: unknown): Promise<ScreenOperationResult> => {
+      const input = CreateVirtualScreenForDeviceInputSchema.parse(raw);
+      const result = await screens.createVirtualDisplay(input.sessionId, input);
+      if (result.status === "ok") {
+        const displayId = result.screen.activeDisplayId;
+        if (displayId !== null) {
+          const context = screens.getContextForDisplay(input.sessionId, displayId);
+          if (context !== null) {
+            try {
+              windows.openScreen(context.ref);
+            } catch (error) {
+              await screens.close(context.ref.screenInstanceId, true);
+              return errorResult(
+                "operation-failed",
+                `The screen window could not be opened: ${messageOf(error)}`,
+              );
+            }
+          }
+        }
+      }
+      return result;
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensCreateVirtual,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    async (_event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = CreateVirtualDisplayInputSchema.parse(raw);
-      return service.createVirtualDisplay(input);
+      const primary = devices.getSession();
+      if (primary.state !== "connected") {
+        return errorResult("not-connected", "Connect an Android device first.");
+      }
+      return screens.createVirtualDisplay(primary.sessionId, input);
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensDestroyVirtual,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    async (event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = DisplayIdInputSchema.parse(raw);
-      return service.destroyVirtualDisplay(input.displayId);
+      const context = getScreenContext(event.sender.id);
+      const sessionId =
+        context?.target.sessionId ?? input.sessionId ?? devices.getSession().sessionId;
+      if (context !== null && input.displayId !== context.target.displayId) {
+        return errorResult("scope-mismatch", "The requested display is outside this screen window.");
+      }
+      return screens.destroyVirtualDisplay(sessionId, input.displayId);
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensPressButton,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    (event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = PressDeviceButtonInputSchema.parse(raw);
-      return service.pressButton(input.button);
+      const context = getScreenContext(event.sender.id);
+      const target = context === null ? null : screens.getContextByRef(context.target);
+      return target === null
+        ? Promise.resolve(errorResult("scope-mismatch", "A screen window is required to control a display."))
+        : target.service.pressButton(input.button);
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensInjectTouch,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    (event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = InjectScreenTouchInputSchema.parse(raw);
-      return service.injectTouch(input);
+      const context = getScreenContext(event.sender.id);
+      if (context === null || input.displayId !== context.target.displayId) {
+        return Promise.resolve(errorResult("scope-mismatch", "The requested display is outside this screen window."));
+      }
+      const target = screens.getContextByRef(context.target);
+      return target === null
+        ? Promise.resolve(errorResult("screen-stale", "The screen window target is stale."))
+        : target.service.injectTouch(input);
     },
   );
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensInjectKeyboard,
-    (_event, raw: unknown): Promise<ScreenOperationResult> => {
+    (event, raw: unknown): Promise<ScreenOperationResult> => {
       const input = InjectScreenKeyboardInputSchema.parse(raw);
-      return service.injectKeyboard(input);
+      const context = getScreenContext(event.sender.id);
+      if (context === null || input.displayId !== context.target.displayId) {
+        return Promise.resolve(errorResult("scope-mismatch", "The requested display is outside this screen window."));
+      }
+      const target = screens.getContextByRef(context.target);
+      return target === null
+        ? Promise.resolve(errorResult("screen-stale", "The screen window target is stale."))
+        : target.service.injectKeyboard(input);
     },
   );
 
   ipcMain.on(ELECTRON_CHANNELS.screensRequestVideo, (event, raw: unknown) => {
     const parsed = RequestScreenVideoInputSchema.safeParse(raw);
-    if (!parsed.success) {
+    const context = getScreenContext(event.sender.id);
+    if (!parsed.success || context === null) {
       return;
     }
-    const input = parsed.data;
     const { port1, port2 } = new MessageChannelMain();
-    console.debug("screen video port requested", { streamId: input.streamId });
-    service.attachVideoPort(input.streamId, port1);
+    console.debug("screen video port requested", {
+      streamId: parsed.data.streamId,
+      screenInstanceId: context.target.screenInstanceId,
+    });
+    if (!screens.attachVideoPort(context.target, parsed.data.streamId, port1)) {
+      port2.close();
+      return;
+    }
     event.sender.postMessage(
       ELECTRON_CHANNELS.screensVideoPort,
-      { streamId: input.streamId },
+      { streamId: parsed.data.streamId },
       [port2],
     );
   });
 
   ipcMain.on(
     ELECTRON_CHANNELS.screensVideoCaptureResponse,
-    (_event, raw: unknown) => {
-      service.handleVideoCaptureResponse(raw as ScreenVideoCaptureResponseMessage);
+    (event, raw: unknown) => {
+      const context = getScreenContext(event.sender.id);
+      if (context !== null) {
+        screens.handleVideoCaptureResponse(context.target, raw as ScreenVideoCaptureResponseMessage);
+      }
     },
   );
+
+  return screens.subscribe(({ ref, screen }) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (window.isDestroyed()) {
+        continue;
+      }
+      const context = contexts.getScreen(window.webContents.id);
+      if (context?.target.screenInstanceId === ref.screenInstanceId) {
+        window.webContents.send(ELECTRON_CHANNELS.screensSessionChanged, screen);
+      }
+    }
+  });
 }

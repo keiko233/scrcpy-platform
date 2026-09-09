@@ -10,10 +10,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as deviceRouteRouteImport } from './routes/(device)/route'
 import { Route as platformRouteRouteImport } from './routes/(platform)/route'
+import { Route as managerManagerRouteImport } from './routes/(manager)/manager'
+import { Route as screenScreenRouteImport } from './routes/(screen)/screen'
+import { Route as settingsSettingsRouteImport } from './routes/(settings)/settings'
 import { Route as devicePairIndexRouteImport } from './routes/(device)/pair/index'
 import { Route as platformTabIndexRouteImport } from './routes/(platform)/$tab/index'
 import { Route as platformDebugIndexRouteImport } from './routes/(platform)/debug/index'
-import { Route as platformSettingsIndexRouteImport } from './routes/(platform)/settings/index'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -26,6 +28,21 @@ const deviceRouteRoute = deviceRouteRouteImport.update({
 } as any)
 const platformRouteRoute = platformRouteRouteImport.update({
   id: '/(platform)',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const managerManagerRoute = managerManagerRouteImport.update({
+  id: '/(manager)/manager',
+  path: '/manager',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const screenScreenRoute = screenScreenRouteImport.update({
+  id: '/(screen)/screen',
+  path: '/screen',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const settingsSettingsRoute = settingsSettingsRouteImport.update({
+  id: '/(settings)/settings',
+  path: '/settings',
   getParentRoute: () => rootRouteImport,
 } as any)
 const devicePairIndexRoute = devicePairIndexRouteImport.update({
@@ -43,56 +60,63 @@ const platformDebugIndexRoute = platformDebugIndexRouteImport.update({
   path: '/debug/',
   getParentRoute: () => platformRouteRoute,
 } as any)
-const platformSettingsIndexRoute = platformSettingsIndexRouteImport.update({
-  id: '/settings/',
-  path: '/settings/',
-  getParentRoute: () => platformRouteRoute,
-} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/manager': typeof managerManagerRoute
+  '/screen': typeof screenScreenRoute
+  '/settings': typeof settingsSettingsRoute
   '/pair/': typeof devicePairIndexRoute
   '/$tab/': typeof platformTabIndexRoute
   '/debug/': typeof platformDebugIndexRoute
-  '/settings/': typeof platformSettingsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/manager': typeof managerManagerRoute
+  '/screen': typeof screenScreenRoute
+  '/settings': typeof settingsSettingsRoute
   '/pair': typeof devicePairIndexRoute
   '/$tab': typeof platformTabIndexRoute
   '/debug': typeof platformDebugIndexRoute
-  '/settings': typeof platformSettingsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/(device)': typeof deviceRouteRouteWithChildren
   '/(platform)': typeof platformRouteRouteWithChildren
+  '/(manager)/manager': typeof managerManagerRoute
+  '/(screen)/screen': typeof screenScreenRoute
+  '/(settings)/settings': typeof settingsSettingsRoute
   '/(device)/pair/': typeof devicePairIndexRoute
   '/(platform)/$tab/': typeof platformTabIndexRoute
   '/(platform)/debug/': typeof platformDebugIndexRoute
-  '/(platform)/settings/': typeof platformSettingsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/pair/' | '/$tab/' | '/debug/' | '/settings/'
+  fullPaths:
+    '/' | '/manager' | '/screen' | '/settings' | '/pair/' | '/$tab/' | '/debug/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/pair' | '/$tab' | '/debug' | '/settings'
+  to: '/' | '/manager' | '/screen' | '/settings' | '/pair' | '/$tab' | '/debug'
   id:
     | '__root__'
     | '/'
     | '/(device)'
     | '/(platform)'
+    | '/(manager)/manager'
+    | '/(screen)/screen'
+    | '/(settings)/settings'
     | '/(device)/pair/'
     | '/(platform)/$tab/'
     | '/(platform)/debug/'
-    | '/(platform)/settings/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   deviceRouteRoute: typeof deviceRouteRouteWithChildren
   platformRouteRoute: typeof platformRouteRouteWithChildren
+  managerManagerRoute: typeof managerManagerRoute
+  screenScreenRoute: typeof screenScreenRoute
+  settingsSettingsRoute: typeof settingsSettingsRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -118,6 +142,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof platformRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/(manager)/manager': {
+      id: '/(manager)/manager'
+      path: '/manager'
+      fullPath: '/manager'
+      preLoaderRoute: typeof managerManagerRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(screen)/screen': {
+      id: '/(screen)/screen'
+      path: '/screen'
+      fullPath: '/screen'
+      preLoaderRoute: typeof screenScreenRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/(settings)/settings': {
+      id: '/(settings)/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof settingsSettingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/(device)/pair/': {
       id: '/(device)/pair/'
       path: '/pair'
@@ -139,13 +184,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof platformDebugIndexRouteImport
       parentRoute: typeof platformRouteRoute
     }
-    '/(platform)/settings/': {
-      id: '/(platform)/settings/'
-      path: '/settings'
-      fullPath: '/settings/'
-      preLoaderRoute: typeof platformSettingsIndexRouteImport
-      parentRoute: typeof platformRouteRoute
-    }
   }
 }
 
@@ -164,13 +202,11 @@ const deviceRouteRouteWithChildren = deviceRouteRoute._addFileChildren(
 interface platformRouteRouteChildren {
   platformTabIndexRoute: typeof platformTabIndexRoute
   platformDebugIndexRoute: typeof platformDebugIndexRoute
-  platformSettingsIndexRoute: typeof platformSettingsIndexRoute
 }
 
 const platformRouteRouteChildren: platformRouteRouteChildren = {
   platformTabIndexRoute: platformTabIndexRoute,
   platformDebugIndexRoute: platformDebugIndexRoute,
-  platformSettingsIndexRoute: platformSettingsIndexRoute,
 }
 
 const platformRouteRouteWithChildren = platformRouteRoute._addFileChildren(
@@ -181,6 +217,9 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   deviceRouteRoute: deviceRouteRouteWithChildren,
   platformRouteRoute: platformRouteRouteWithChildren,
+  managerManagerRoute: managerManagerRoute,
+  screenScreenRoute: screenScreenRoute,
+  settingsSettingsRoute: settingsSettingsRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

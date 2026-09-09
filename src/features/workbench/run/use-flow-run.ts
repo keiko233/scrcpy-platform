@@ -41,6 +41,7 @@ function describeStartFailure(result: Extract<StartFlowRunResult, { status: "err
       return "Connect an Android device before running the flow.";
     case "device-mismatch":
     case "session-mismatch":
+    case "scope-mismatch":
       return "The Android device session changed. Refresh and run again.";
     case "run-busy":
       return "Another flow is already running.";

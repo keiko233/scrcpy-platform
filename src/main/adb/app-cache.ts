@@ -38,8 +38,14 @@ export class AppMetadataCacheStore {
   #loadPromise: Promise<AppMetadataCache> | null = null;
   #writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(userDataPath: string) {
-    this.#file = join(userDataPath, FilePath.APP_CACHE_FILE);
+  constructor(userDataPath: string, scope: string | null = null) {
+    const suffix = scope === null
+      ? ""
+      : `.${scope.replace(/[^A-Za-z0-9._-]/g, "_")}`;
+    this.#file = join(
+      userDataPath,
+      `${FilePath.APP_CACHE_FILE}${suffix}`,
+    );
   }
 
   load(): Promise<AppMetadataCache> {

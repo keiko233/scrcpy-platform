@@ -43,6 +43,17 @@ export type BeforeDeviceDisconnectHook = (
   connection: DeviceConnection,
 ) => Promise<void>;
 
+export interface DeviceSessionOptions {
+  /**
+   * Device registries share one ADB gateway. Standalone sessions keep the
+   * historical default and dispose their gateway; registry-owned sessions do
+   * not.
+   */
+  disposeGateway?: boolean;
+  /** Isolates app metadata cache writes between registry-owned sessions. */
+  cacheScope?: string;
+}
+
 export type DeviceSessionListener = (session: DeviceSessionDto) => void;
 
 /**
@@ -162,6 +173,7 @@ export class DeviceSessionService {
   #errorMessage: string | null = null;
   #queue: Promise<void> = Promise.resolve();
   #disposePromise: Promise<void> | null = null;
+  readonly #disposeGateway: boolean;
   readonly #beforeDisconnectHooks = new Set<BeforeDeviceDisconnectHook>();
   readonly #listeners = new Set<DeviceSessionListener>();
   readonly #appCache: AppMetadataCacheStore | null;
@@ -171,12 +183,14 @@ export class DeviceSessionService {
     gateway: DeviceGateway,
     sessionId: string = randomSessionId(),
     userDataPath: string | null = null,
+    options: DeviceSessionOptions = {},
   ) {
     this.#gateway = gateway;
     this.sessionId = sessionId;
+    this.#disposeGateway = options.disposeGateway ?? true;
     this.#appCache = userDataPath === null
       ? null
-      : new AppMetadataCacheStore(userDataPath);
+      : new AppMetadataCacheStore(userDataPath, options.cacheScope ?? null);
   }
 
   #enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -455,7 +469,7 @@ export class DeviceSessionService {
 
   async #disposeOnce(timeoutMs: number): Promise<void> {
     const cleanup = this.#enqueue(() => this.#disconnectLocked()).then(() =>
-      this.#gateway.dispose(),
+      this.#disposeGateway ? this.#gateway.dispose() : undefined,
     );
     let timer: NodeJS.Timeout | undefined;
     try {

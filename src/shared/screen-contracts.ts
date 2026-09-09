@@ -69,6 +69,7 @@ export type ScreenSessionDto = z.infer<typeof ScreenSessionDtoSchema>;
 
 export const DisplayIdInputSchema = z.object({
   displayId: z.number().int().nonnegative(),
+  sessionId: z.string().min(1).optional(),
 });
 export type DisplayIdInput = z.infer<typeof DisplayIdInputSchema>;
 
@@ -147,6 +148,9 @@ export const ScreenFailureCodeSchema = z.enum([
   "not-streaming",
   "display-not-found",
   "virtual-display-exists",
+  "scope-mismatch",
+  "session-stale",
+  "screen-stale",
   "busy",
   "unsupported",
   "operation-failed",

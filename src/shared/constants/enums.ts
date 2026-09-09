@@ -289,7 +289,12 @@ export enum ElectronChannel {
   DevicesWirelessDisconnect = "devices:wireless-disconnect",
   DevicesPackages = "devices:packages",
   DevicesPackagesEnrich = "devices:packages:enrich",
+  DevicesSessions = "devices:sessions",
   ScreensSession = "screens:session",
+  ScreensSessionChanged = "screens:session-changed",
+  ScreensDisplays = "screens:displays",
+  ScreensCreateVirtualForDevice = "screens:create-virtual-for-device",
+  ScreensOpenWindow = "screens:open-window",
   ScreensSettingsGet = "screens:settings:get",
   ScreensSettingsSet = "screens:settings:set",
   ScreensRefresh = "screens:refresh",
@@ -313,6 +318,11 @@ export enum ElectronChannel {
   WindowClose = "window:close",
   WindowIsMaximized = "window:is-maximized",
   WindowMaximizedChanged = "window:maximized-changed",
+  WindowContext = "window:context",
+  WindowOpenManager = "window:open-manager",
+  WindowOpenPair = "window:open-pair",
+  WindowOpenSettings = "window:open-settings",
+  WindowOpenScreen = "window:open-screen",
 }
 
 export enum QueryKey {

@@ -123,6 +123,7 @@ export type StartFlowRunFailure =
   | "device-not-connected"
   | "device-mismatch"
   | "session-mismatch"
+  | "scope-mismatch"
   | "run-busy"
   | "invalid-flow";
 

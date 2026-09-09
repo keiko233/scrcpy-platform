@@ -45,8 +45,10 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.revisionsRestore, input),
 
   listDevices: () => ipcRenderer.invoke(ELECTRON_CHANNELS.devicesList),
-  getDeviceSession: () =>
-    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesSession),
+  listDeviceSessions: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesSessions),
+  getDeviceSession: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesSession, input),
   onDeviceSession: (listener) => {
     const handler = (
       _event: Electron.IpcRendererEvent,
@@ -58,8 +60,8 @@ const api: ElectronAPI = {
   },
   connectDevice: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesConnect, input),
-  disconnectDevice: () =>
-    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect),
+  disconnectDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.devicesDisconnect, input),
   pairWirelessDevice: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.devicesWirelessPair, input),
   connectWirelessDevice: (input) =>
@@ -73,6 +75,21 @@ const api: ElectronAPI = {
 
   getScreenSession: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensSession),
+  onScreenSession: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      screen: Parameters<typeof listener>[0],
+    ) => listener(screen);
+    ipcRenderer.on(ELECTRON_CHANNELS.screensSessionChanged, handler);
+    return () =>
+      ipcRenderer.removeListener(ELECTRON_CHANNELS.screensSessionChanged, handler);
+  },
+  listScreenDisplays: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensDisplays, input),
+  openScreen: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensOpenWindow, input),
+  createVirtualScreenForDevice: (input) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensCreateVirtualForDevice, input),
   getScrcpySettings: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsGet),
   setScrcpySettings: (input) =>
@@ -136,6 +153,16 @@ const api: ElectronAPI = {
     return () =>
       ipcRenderer.removeListener(ELECTRON_CHANNELS.windowMaximizedChanged, handler);
   },
+  getWindowContext: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowContext),
+  openManagerWindow: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowOpenManager),
+  openPairWindow: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowOpenPair),
+  openSettingsWindow: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowOpenSettings),
+  openScreenWindow: (ref) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.windowOpenScreen, ref),
 };
 
 ipcRenderer.on(ELECTRON_CHANNELS.screensVideoPort, (event, payload) => {

@@ -4,21 +4,26 @@ import { useEffect } from "react";
 
 import { Button } from "@/components/ui/button";
 import { useWorkbench } from "@/features/workbench/use-workbench";
+import { useWindowContext } from "@/hooks/query/use-window-context";
 import { m } from "@/paraglide/messages.js";
 
 export function DeviceStatus(): React.ReactElement | null {
   const { devices, flow } = useWorkbench();
   const { session, disconnecting, disconnect } = devices;
   const navigate = useNavigate();
+  const contextQuery = useWindowContext();
+  const isScreenWindow = contextQuery.data?.context.kind === "screen";
 
   useEffect(() => {
-    if (session?.state === "disconnected") {
+    if (session?.state === "disconnected" && !isScreenWindow) {
       void navigate({ to: "/pair" });
     }
-  }, [session?.state, navigate]);
+  }, [isScreenWindow, session?.state, navigate]);
 
   if (session?.state !== "connected") {
-    return null;
+    return isScreenWindow ? (
+      <span className="app-no-drag px-2 text-[11px] text-warning-foreground">设备已断开</span>
+    ) : null;
   }
 
   const handleDisconnect = () => {
@@ -37,17 +42,19 @@ export function DeviceStatus(): React.ReactElement | null {
         <span className="size-1.5 rounded-full bg-success" />
         {m.device_status_connected()}
       </span>
-      <Button
-        aria-label={m.device_status_disconnect_aria_label()}
-        disabled={disconnecting}
-        loading={disconnecting}
-        onClick={handleDisconnect}
-        size="sm"
-        variant="ghost"
-      >
-        <UnplugIcon />
-        {m.device_status_disconnect()}
-      </Button>
+      {!isScreenWindow && (
+        <Button
+          aria-label={m.device_status_disconnect_aria_label()}
+          disabled={disconnecting}
+          loading={disconnecting}
+          onClick={handleDisconnect}
+          size="sm"
+          variant="ghost"
+        >
+          <UnplugIcon />
+          {m.device_status_disconnect()}
+        </Button>
+      )}
     </div>
   );
 }

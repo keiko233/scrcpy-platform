@@ -22,11 +22,13 @@ import {
 } from "@/shared/screen-contracts";
 import { StorageKey } from "@/shared/constants/enums";
 import { Switch } from "@/components/ui/switch";
-import { useWorkbench } from "@/features/workbench/use-workbench";
+import { useState } from "react";
 
 export function SettingsScreen() {
   const { language, setLanguage } = useLanguage();
-  const { allowUnsavedRun, setAllowUnsavedRun } = useWorkbench();
+  const [allowUnsavedRun, setAllowUnsavedRun] = useState(
+    () => window.localStorage.getItem(StorageKey.WorkbenchAllowUnsavedRun) === "true",
+  );
   const infoQuery = useSystemInfo();
   const scrcpySettingsQuery = useScrcpySettings();
   const setScrcpySettings = useSetScrcpySettings();
@@ -80,7 +82,13 @@ export function SettingsScreen() {
             </div>
             <Switch
               checked={allowUnsavedRun}
-              onCheckedChange={setAllowUnsavedRun}
+              onCheckedChange={(checked) => {
+                setAllowUnsavedRun(checked);
+                window.localStorage.setItem(
+                  StorageKey.WorkbenchAllowUnsavedRun,
+                  String(checked),
+                );
+              }}
               aria-label={m.settings_allow_unsaved_run_title()}
             />
           </div>

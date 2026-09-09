@@ -1,6 +1,4 @@
-import { useNavigate } from "@tanstack/react-router";
 import { InfoIcon } from "lucide-react";
-import { useEffect } from "react";
 
 import { useDevices } from "@/features/workbench/device/use-devices";
 import { m } from "@/paraglide/messages.js";
@@ -9,15 +7,6 @@ import { DeviceConnectionPanel } from "./device-connection";
 
 export function PairDeviceRoute() {
   const devices = useDevices();
-  const navigate = useNavigate();
-
-  const state = devices.session?.state ?? "disconnected";
-
-  useEffect(() => {
-    if (state === "connected") {
-      void navigate({ to: "/$tab", params: { tab: "workbench" } });
-    }
-  }, [state, navigate]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-background">
