@@ -14,6 +14,9 @@ export interface WindowManagerOptions {
     context: WindowContext,
   ) => Promise<boolean> | boolean;
   onReadyToShow?: (window: BrowserWindow, context: WindowContext) => void;
+  /** When a system tray is present, closing the manager hides it instead. */
+  hideManagerOnClose?: boolean;
+  onManagerHidden?: (window: BrowserWindow) => void;
 }
 
 type WindowRoute = "/manager" | "/pair" | "/settings" | "/screen";
@@ -111,6 +114,17 @@ export class WindowManager {
     return BrowserWindow.getAllWindows().filter((window) => !window.isDestroyed());
   }
 
+  /**
+   * Tears down every window without running the per-window close
+   * coordination (which may ask to keep a screen open). Used only by the
+   * explicit quit path, after background services have been disposed.
+   */
+  destroyAllWindows(): void {
+    for (const window of this.allWindows()) {
+      window.destroy();
+    }
+  }
+
   #create(kind: "manager" | "pair" | "settings" | "screen", target?: ScreenRef): BrowserWindow {
     const window = new BrowserWindow({
       width: kind === "screen" ? 1100 : kind === "pair" ? 720 : 1200,
@@ -162,26 +176,35 @@ export class WindowManager {
     window.webContents.on("will-navigate", (event) => {
       event.preventDefault();
     });
-    if (this.#options.onBeforeClose !== undefined) {
-      window.on("close", (event) => {
-        if (this.#closing.has(window)) {
-          this.#closing.delete(window);
-          return;
-        }
+    window.on("close", (event) => {
+      if (this.#closing.has(window)) {
+        this.#closing.delete(window);
+        return;
+      }
+      if (kind === "manager" && this.#options.hideManagerOnClose === true) {
+        // The tray keeps the app reachable; closing the manager only hides
+        // it so background work (screens, runs, ADB) keeps running.
         event.preventDefault();
-        void Promise.resolve(this.#options.onBeforeClose?.(window, context))
-          .then((allow) => {
-            if (allow !== true || window.isDestroyed()) {
-              return;
-            }
-            this.#closing.add(window);
-            window.close();
-          })
-          .catch((error) => {
-            console.error("window close coordination failed", error);
-          });
-      });
-    }
+        window.hide();
+        this.#options.onManagerHidden?.(window);
+        return;
+      }
+      if (this.#options.onBeforeClose === undefined) {
+        return;
+      }
+      event.preventDefault();
+      void Promise.resolve(this.#options.onBeforeClose?.(window, context))
+        .then((allow) => {
+          if (allow !== true || window.isDestroyed()) {
+            return;
+          }
+          this.#closing.add(window);
+          window.close();
+        })
+        .catch((error) => {
+          console.error("window close coordination failed", error);
+        });
+    });
     window.on("closed", () => {
       const closedContext = this.#contexts.unregister(webContentsId);
       if (this.#manager === window) {

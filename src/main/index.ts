@@ -23,19 +23,24 @@ import { DeviceRegistryService } from "./devices/device-registry";
 import { ScreenRegistryService } from "./screens/screen-registry";
 import { WindowContextRegistry } from "./windows/window-context-registry";
 import { WindowManager } from "./windows/window-manager";
+import { TrayManager } from "./tray/tray-manager";
+import { mainStrings } from "./l10n/main-strings";
 
 const rendererUrl = process.env["ELECTRON_RENDERER_URL"];
 
 let persistence: PersistenceDatabase | null = null;
+let appPreferences: AppPreferencesStore | null = null;
 let devices: DeviceRegistryService | null = null;
 let screens: ScreenRegistryService | null = null;
 let logger: Logger | null = null;
 let windows: WindowManager | null = null;
+let trayManager: TrayManager | null = null;
 let removeDeviceHandlers: (() => void) | null = null;
 let removeScreenHandlers: (() => void) | null = null;
 let removeRunHandlers: (() => void) | null = null;
 let removeBackgroundRunCleanup: (() => void) | null = null;
-let shuttingDown = false;
+let quitting = false;
+let backgroundHintShown = false;
 
 function openPersistence(): {
   store: ProjectStore;
@@ -78,6 +83,7 @@ function closeScreenAfterWindow(contextId: string): void {
 void app.whenReady().then(async () => {
   const contexts = new WindowContextRegistry();
   const { store, settingsStore, preferencesStore } = openPersistence();
+  appPreferences = preferencesStore;
   logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
   logger.install();
 
@@ -91,6 +97,7 @@ void app.whenReady().then(async () => {
         window.webContents.send(ELECTRON_CHANNELS.localeChanged, saved);
       }
     }
+    trayManager?.setLocale(saved);
     return saved;
   });
   ipcMain.handle(ELECTRON_CHANNELS.windowContext, (event) => {
@@ -147,10 +154,29 @@ void app.whenReady().then(async () => {
   screens = screenRegistry;
 
   const contextRegistry = contexts;
+  const tray = TrayManager.isSupported()
+    ? new TrayManager({
+        locale: preferencesStore.getLocale(),
+        onShowManager: () => windowManager.openManager(),
+        onQuitRequest: () => {
+          void requestQuit();
+        },
+      })
+    : null;
+  trayManager = tray;
   const windowManager = new WindowManager(contextRegistry, {
     rendererUrl,
     preloadPath: join(import.meta.dirname, "../preload/index.cjs"),
     rendererPath: join(import.meta.dirname, "../renderer"),
+    hideManagerOnClose: tray !== null && tray.isPresent,
+    onManagerHidden: () => {
+      // First hide of the session explains that the app keeps running and
+      // how to get it back; later hides rely on the tray icon alone.
+      if (tray !== null && tray.isPresent && !backgroundHintShown) {
+        backgroundHintShown = true;
+        tray.showBackgroundNotification();
+      }
+    },
     onBeforeClose: async (_window, context) => {
       if (context.kind !== "screen") {
         return true;
@@ -237,20 +263,69 @@ void app.whenReady().then(async () => {
   });
 });
 
-app.on("before-quit", (event) => {
-  if (shuttingDown) {
+const QUIT_DISPOSE_TIMEOUT_MS = 8_000;
+
+function countActiveRuns(): number {
+  if (screens === null) {
+    return 0;
+  }
+  return screens.listContexts().filter(({ ref }) => {
+    const run = screens?.runRegistry.getRun(ref.screenInstanceId);
+    return run?.state === "running" || run?.state === "paused";
+  }).length;
+}
+
+/**
+ * The single guaranteed exit path, shared by the tray menu, Cmd+Q / Dock
+ * quit and any other quit trigger. Asks for confirmation while runs are
+ * active, disposes background services within a bounded budget, then tears
+ * down windows without their close coordination and hard-exits — a quit can
+ * never be cancelled by a per-window dialog or a hanging service teardown.
+ */
+async function requestQuit(): Promise<void> {
+  if (quitting) {
     return;
   }
-  event.preventDefault();
-  shuttingDown = true;
-  void (async () => {
-    await screens?.dispose();
-    await devices?.dispose();
-    app.quit();
-  })();
-});
+  quitting = true;
+  const activeRuns = countActiveRuns();
+  if (activeRuns > 0) {
+    const strings = mainStrings(appPreferences?.getLocale() ?? null);
+    const choice = await dialog.showMessageBox({
+      type: "question",
+      title: strings.quitTitle,
+      message: strings.quitWithActiveRuns(activeRuns),
+      buttons: [strings.quitAndStop, strings.cancel],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (choice.response !== 0) {
+      quitting = false;
+      return;
+    }
+  }
 
-app.on("will-quit", () => {
+  let disposalTimedOut = false;
+  await Promise.race([
+    (async () => {
+      await screens?.dispose();
+      await devices?.dispose();
+    })(),
+    new Promise<void>((resolve) => {
+      setTimeout(() => {
+        disposalTimedOut = true;
+        resolve();
+      }, QUIT_DISPOSE_TIMEOUT_MS);
+    }),
+  ]);
+  if (disposalTimedOut) {
+    console.error(
+      "Service disposal exceeded its time budget; exiting anyway.",
+    );
+  }
+
+  windows?.destroyAllWindows();
+  // app.exit() skips before-quit/will-quit, so teardown is explicit here.
   removeRunHandlers?.();
   removeBackgroundRunCleanup?.();
   removeScreenHandlers?.();
@@ -259,6 +334,8 @@ app.on("will-quit", () => {
   removeBackgroundRunCleanup = null;
   removeScreenHandlers = null;
   removeDeviceHandlers = null;
+  trayManager?.dispose();
+  trayManager = null;
   logger?.dispose();
   logger = null;
   persistence?.close();
@@ -266,21 +343,32 @@ app.on("will-quit", () => {
   screens = null;
   devices = null;
   windows = null;
+  app.exit(0);
+}
+
+app.on("before-quit", (event) => {
+  // Intercept every quit request (Cmd+Q, Dock menu, OS shutdown) and route
+  // it through the coordinated exit path above. Requests arriving while one
+  // is already in flight are ignored; requestQuit owns the exit.
+  event.preventDefault();
+  if (!quitting) {
+    void requestQuit();
+  }
 });
 
 app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    if (screens?.runRegistry !== undefined) {
-      // Keep a manager entry point while screen-scoped runs are still alive.
-      const activeRun = screens.listContexts().some(({ ref }) => {
-        const run = screens?.runRegistry.getRun(ref.screenInstanceId);
-        return run?.state === "running" || run?.state === "paused";
-      });
-      if (activeRun) {
-        windows?.openManager();
-        return;
-      }
-    }
-    app.quit();
+  if (quitting || process.platform === "darwin") {
+    return;
   }
+  if (trayManager === null) {
+    // No tray: with the manager closed for real, keep a manager entry point
+    // while screen-scoped runs are still alive, otherwise exit.
+    if (countActiveRuns() > 0) {
+      windows?.openManager();
+      return;
+    }
+    void requestQuit();
+  }
+  // With a tray the manager hides instead of closing, so an all-closed
+  // state can only be transient during teardown; the app stays resident.
 });
