@@ -4,7 +4,7 @@
   "description": "A cross-platform desktop control plane for Android devices",
   "author": "keiko233",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@11.24.0",
