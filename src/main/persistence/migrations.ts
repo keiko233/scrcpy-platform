@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { DEFAULT_SCRCPY_SETTINGS } from "../../shared/screen-contracts";
 
 export interface Migration {
   version: number;
@@ -46,6 +47,36 @@ const MIGRATIONS: readonly Migration[] = [
 
         CREATE INDEX idx_script_revisions_script_id ON script_revisions (script_id);
       `);
+    },
+  },
+  {
+    version: 2,
+    name: "scrcpy-settings",
+    up: (db) => {
+      // Idempotent on purpose: a partially migrated database (for example a
+      // table created by an interrupted earlier run) must be healable.
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS scrcpy_settings (
+          scope TEXT NOT NULL CHECK (scope IN ('global', 'device', 'screen')),
+          device_key TEXT NOT NULL DEFAULT '',
+          display_id INTEGER,
+          payload TEXT NOT NULL CHECK (json_valid(payload)),
+          updated_at TEXT NOT NULL,
+          PRIMARY KEY (scope, device_key, display_id)
+        );
+      `);
+      const existing = db
+        .prepare("SELECT 1 FROM scrcpy_settings WHERE scope = 'global'")
+        .get();
+      if (existing === undefined) {
+        db.prepare(
+          `INSERT INTO scrcpy_settings (scope, device_key, display_id, payload, updated_at)
+           VALUES ('global', '', NULL, ?, ?)`,
+        ).run(
+          JSON.stringify(DEFAULT_SCRCPY_SETTINGS),
+          new Date().toISOString(),
+        );
+      }
     },
   },
 ];

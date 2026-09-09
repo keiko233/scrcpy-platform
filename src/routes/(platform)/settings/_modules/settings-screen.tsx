@@ -8,21 +8,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSystemInfo } from "@/hooks/query/use-system-info";
-import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
 import {
-  useScrcpySettings,
-  useSetScrcpySettings,
+  useScrcpyScopeView,
+  useSetScrcpyGlobalSettings,
 } from "@/hooks/query/use-scrcpy-settings";
 import { useLanguage } from "@/i18n/language";
 import { m } from "@/paraglide/messages.js";
-import {
-  DEFAULT_SCRCPY_SETTINGS,
-  ScrcpySettingsSchema,
-  type ScrcpySettings,
-} from "@/shared/screen-contracts";
+import type { ScrcpySettings } from "@/shared/screen-contracts";
 import { StorageKey } from "@/shared/constants/enums";
 import { Switch } from "@/components/ui/switch";
 import { useState } from "react";
+import { ScrcpyScopedSettingsCard } from "@/features/settings/scrcpy-scoped-settings";
 
 export function SettingsScreen() {
   const { language, setLanguage } = useLanguage();
@@ -30,15 +26,11 @@ export function SettingsScreen() {
     () => window.localStorage.getItem(StorageKey.WorkbenchAllowUnsavedRun) === "true",
   );
   const infoQuery = useSystemInfo();
-  const scrcpySettingsQuery = useScrcpySettings();
-  const setScrcpySettings = useSetScrcpySettings();
-  const [, setSavedScrcpySettings] = useSafeLocalStorage(
-    StorageKey.ScrcpySettings,
-    ScrcpySettingsSchema.nullable().default(null),
-  );
+  const globalScope = { scope: "global" as const };
+  const globalViewQuery = useScrcpyScopeView(globalScope);
+  const setGlobalSettings = useSetScrcpyGlobalSettings();
   const info = infoQuery.data ?? null;
-  const scrcpySettings =
-    scrcpySettingsQuery.data ?? DEFAULT_SCRCPY_SETTINGS;
+  const globalSettings = globalViewQuery.data?.resolved;
 
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4 text-xs">
@@ -47,7 +39,7 @@ export function SettingsScreen() {
         <h1 className="text-sm font-semibold">{m.settings_title()}</h1>
       </header>
 
-      <div className="grid max-w-md gap-3">
+      <div className="grid max-w-3xl gap-3">
         <section className="rounded-lg border p-3">
           <h2 className="mb-2 font-medium">{m.settings_language_title()}</h2>
           <p className="mb-2 text-muted-foreground">
@@ -94,6 +86,8 @@ export function SettingsScreen() {
           </div>
         </section>
 
+        <ScrcpyScopedSettingsCard />
+
         <section className="rounded-lg border p-3">
           <h2 className="mb-2 font-medium">{m.settings_ocr_title()}</h2>
           <div className="flex items-center justify-between gap-4">
@@ -104,22 +98,20 @@ export function SettingsScreen() {
               </p>
             </div>
             <Select
-              value={scrcpySettings.ocrCaptureSource}
+              value={globalSettings?.ocrCaptureSource ?? "scrcpy"}
               disabled={
-                scrcpySettingsQuery.data === undefined ||
-                setScrcpySettings.isPending
+                globalSettings === undefined || setGlobalSettings.isPending
               }
               onValueChange={(value) => {
-                if (value === null) {
+                if (value === null || globalSettings === undefined) {
                   return;
                 }
-                void setScrcpySettings
+                void setGlobalSettings
                   .mutateAsync({
-                    ...scrcpySettings,
+                    ...globalSettings,
                     ocrCaptureSource:
                       value as ScrcpySettings["ocrCaptureSource"],
                   })
-                  .then(setSavedScrcpySettings)
                   .catch(() => undefined);
               }}
             >
@@ -163,8 +155,6 @@ export function SettingsScreen() {
             </div>
           </dl>
         </section>
-
-        <p className="text-muted-foreground">{m.settings_coming_soon()}</p>
       </div>
     </div>
   );

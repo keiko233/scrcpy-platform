@@ -4,32 +4,94 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 
-import type { ScrcpySettings } from "@/shared/screen-contracts";
+import type {
+  ScrcpyConfiguredScope,
+  ScrcpyOverridableScope,
+  ScrcpyOverrides,
+  ScrcpySettings,
+  ScrcpySettingsScope,
+  ScrcpySettingsScopeView,
+} from "@/shared/screen-contracts";
 
 export const SCRCPY_SETTINGS_QUERY_KEY = "scrcpy-settings" as const;
-export const scrcpySettingsQueryKey = [SCRCPY_SETTINGS_QUERY_KEY] as const;
-export const scrcpySettingsQueryFn = (): Promise<ScrcpySettings> =>
-  window.androidPlatform.getScrcpySettings();
+export const SCRCPY_SCOPES_QUERY_KEY = "scrcpy-settings-scopes" as const;
 
-export function useScrcpySettings() {
+function scopeParts(scope: ScrcpySettingsScope): readonly unknown[] {
+  if (scope.scope === "global") {
+    return ["global"];
+  }
+  if (scope.scope === "device") {
+    return ["device", scope.deviceKey];
+  }
+  return ["screen", scope.deviceKey, scope.displayId];
+}
+
+export function scrcpyScopeViewQueryKey(
+  scope: ScrcpySettingsScope,
+): readonly unknown[] {
+  return [SCRCPY_SETTINGS_QUERY_KEY, ...scopeParts(scope)] as const;
+}
+
+export const scrcpyScopesQueryKey = [SCRCPY_SCOPES_QUERY_KEY] as const;
+
+export function useScrcpyScopeView(scope: ScrcpySettingsScope) {
   return useQuery({
-    queryKey: scrcpySettingsQueryKey,
-    queryFn: scrcpySettingsQueryFn,
+    queryKey: scrcpyScopeViewQueryKey(scope),
+    queryFn: (): Promise<ScrcpySettingsScopeView> =>
+      window.androidPlatform.getScrcpySettings(scope),
     staleTime: Infinity,
     gcTime: Infinity,
   });
 }
 
-export function useSetScrcpySettings() {
+export function useSetScrcpyGlobalSettings() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (input: ScrcpySettings) =>
-      window.androidPlatform.setScrcpySettings(input),
-    onSuccess: (settings) => {
-      queryClient.setQueryData<ScrcpySettings>(
-        scrcpySettingsQueryKey,
-        settings,
+    mutationFn: (settings: ScrcpySettings) =>
+      window.androidPlatform.setScrcpyGlobalSettings(settings),
+    onSuccess: (view) => {
+      queryClient.setQueryData<ScrcpySettingsScopeView>(
+        scrcpyScopeViewQueryKey(view.scope),
+        view,
       );
     },
+  });
+}
+
+export function useSetScrcpyScopeOverrides(scope: ScrcpyOverridableScope) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (overrides: ScrcpyOverrides) =>
+      window.androidPlatform.setScrcpyScopeOverrides(scope, overrides),
+    onSuccess: (view) => {
+      queryClient.setQueryData<ScrcpySettingsScopeView>(
+        scrcpyScopeViewQueryKey(view.scope),
+        view,
+      );
+      void queryClient.invalidateQueries({ queryKey: scrcpyScopesQueryKey });
+    },
+  });
+}
+
+export function useDeleteScrcpySettingsScope() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (scope: ScrcpyOverridableScope) =>
+      window.androidPlatform.deleteScrcpySettingsScope(scope),
+    onSuccess: (_result, scope) => {
+      queryClient.removeQueries({
+        queryKey: scrcpyScopeViewQueryKey(scope),
+      });
+      void queryClient.invalidateQueries({ queryKey: scrcpyScopesQueryKey });
+    },
+  });
+}
+
+export function useScrcpyConfiguredScopes() {
+  return useQuery({
+    queryKey: scrcpyScopesQueryKey,
+    queryFn: (): Promise<ScrcpyConfiguredScope[]> =>
+      window.androidPlatform.listScrcpySettingsScopes(),
+    staleTime: 30_000,
   });
 }

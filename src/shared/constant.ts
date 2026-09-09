@@ -28,7 +28,6 @@ import { ExpressionLimits } from "./constants/limits";
 
 // Storage
 export const LAYOUT_STORAGE_KEY = StorageKey.WorkbenchLayout;
-export const SCRCPY_SETTINGS_STORAGE_KEY = StorageKey.ScrcpySettings;
 export const LOCALE_STORAGE_KEY = StorageKey.Locale;
 export const SIDEBAR_COOKIE_NAME = StorageKey.SidebarState;
 
@@ -58,7 +57,10 @@ export const ELECTRON_CHANNELS = {
   devicesPackages: ElectronChannel.DevicesPackages,
   screensSession: ElectronChannel.ScreensSession,
   screensSettingsGet: ElectronChannel.ScreensSettingsGet,
-  screensSettingsSet: ElectronChannel.ScreensSettingsSet,
+  screensSettingsGlobalSet: ElectronChannel.ScreensSettingsGlobalSet,
+  screensSettingsOverridesSet: ElectronChannel.ScreensSettingsOverridesSet,
+  screensSettingsDelete: ElectronChannel.ScreensSettingsDelete,
+  screensSettingsScopes: ElectronChannel.ScreensSettingsScopes,
   screensRefresh: ElectronChannel.ScreensRefresh,
   screensStart: ElectronChannel.ScreensStart,
   screensCreateVirtual: ElectronChannel.ScreensCreateVirtual,

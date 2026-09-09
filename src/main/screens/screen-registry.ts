@@ -2,18 +2,29 @@ import type {
   CreateVirtualDisplayInput,
   ScreenOperationResult,
   ScreenSessionDto,
+  ScrcpyConfiguredScope,
+  ScrcpyOverrides,
   ScrcpySettings,
+  ScrcpySettingsScope,
+  ScrcpySettingsScopeView,
 } from "../../shared/screen-contracts";
 import type {
   OpenScreenInput,
   ScreenRef,
 } from "../../shared/window-contracts";
 import type { ProjectStore } from "../persistence/project-store";
+import {
+  ScrcpySettingsStore,
+  type LoadedScrcpySettings,
+} from "../persistence/scrcpy-settings-store";
+import { resolveScrcpySettings } from "../../shared/scrcpy-scope-resolve";
+import { DEFAULT_SCRCPY_SETTINGS } from "../../shared/screen-contracts";
 import { AdbFlowActionDriver } from "../runtime/adb-flow-driver";
 import { createAdbOcrRecognitionDriver } from "../runtime/adb-ocr-recognition";
 import { RunRegistry } from "../runtime/run-registry";
 import { FlowRuntimeService } from "../runtime/flow-runtime";
 import { DeviceRegistryService } from "../devices/device-registry";
+import type { DeviceSessionService } from "../adb/device-session";
 import { ScreenSessionService } from "../adb/screen-session";
 
 export interface ScreenContextSnapshot {
@@ -38,32 +49,45 @@ function operationError(message: string): ScreenOperationResult {
   };
 }
 
+const EMPTY_OVERRIDES: ScrcpyOverrides = {};
+
 /**
  * Owns one scrcpy service and one flow runtime per screen instance. The
  * existing services remain deliberately small; this registry supplies their
  * stable scope and prevents one display from replacing another display's
  * stream.
+ *
+ * Scrcpy settings follow a three-layer scope model:
+ *   global defaults -> per-device overrides -> per-screen overrides.
+ * The registry resolves the effective settings whenever a screen session is
+ * created and re-applies them to affected sessions when a layer changes.
+ * Running streams are never restarted; the next stream uses the new values.
  */
 export class ScreenRegistryService {
   readonly #devices: DeviceRegistryService;
   readonly #store: ProjectStore;
+  readonly #settingsStore: ScrcpySettingsStore;
   readonly #userDataPath: string;
   readonly #contexts = new Map<string, ScreenContext>();
   readonly #runs = new RunRegistry();
   readonly #listeners = new Set<(snapshot: ScreenContextSnapshot) => void>();
-  #settings: ScrcpySettings;
+  #globalSettings: ScrcpySettings = { ...DEFAULT_SCRCPY_SETTINGS };
+  readonly #deviceOverrides = new Map<string, ScrcpyOverrides>();
+  readonly #screenOverrides = new Map<string, Map<number, ScrcpyOverrides>>();
   #disposePromise: Promise<void> | null = null;
 
   constructor(
     devices: DeviceRegistryService,
     store: ProjectStore,
+    settingsStore: ScrcpySettingsStore,
     userDataPath: string,
-    settings: ScrcpySettings,
   ) {
     this.#devices = devices;
     this.#store = store;
+    this.#settingsStore = settingsStore;
     this.#userDataPath = userDataPath;
-    this.#settings = { ...settings };
+    const loaded = settingsStore.load();
+    this.#applyLoaded(loaded);
   }
 
   get runRegistry(): RunRegistry {
@@ -120,7 +144,7 @@ export class ScreenRegistryService {
       return operationError("The requested Android device session is no longer connected.");
     }
     const probe = new ScreenSessionService(session);
-    probe.setSettings(this.#settings);
+    probe.setSettings(this.#resolvedFor(session, null, false));
     try {
       return await probe.refreshDisplays();
     } finally {
@@ -149,7 +173,9 @@ export class ScreenRegistryService {
       };
     }
     const service = new ScreenSessionService(session);
-    service.setSettings(this.#settings);
+    service.setSettings(
+      this.#resolvedFor(session, input.displayId, false),
+    );
     const started = await service.startDisplay(input.displayId);
     if (started.status === "error") {
       await service.dispose().catch(() => undefined);
@@ -185,7 +211,9 @@ export class ScreenRegistryService {
       return operationError("The requested Android device session is no longer connected.");
     }
     const service = new ScreenSessionService(session);
-    service.setSettings(this.#settings);
+    // Virtual displays only inherit the global + device layers: their Android
+    // display id is not known until the display has been created.
+    service.setSettings(this.#resolvedFor(session, null, true));
     const result = await service.createVirtualDisplay(input);
     if (result.status === "error") {
       await service.dispose().catch(() => undefined);
@@ -254,26 +282,130 @@ export class ScreenRegistryService {
     return result;
   }
 
-  getSettings(ref?: ScreenRef): ScrcpySettings {
-    const context = ref === undefined ? null : this.getContextByRef(ref);
-    return context?.service.getSettings() ?? { ...this.#settings };
+  // -------------------------------------------------------------------------
+  // Scoped settings
+  // -------------------------------------------------------------------------
+
+  getScopeView(scope: ScrcpySettingsScope): ScrcpySettingsScopeView {
+    if (scope.scope === "global") {
+      return {
+        scope,
+        overrides: { ...EMPTY_OVERRIDES },
+        resolved: { ...this.#globalSettings },
+      };
+    }
+    if (scope.scope === "device") {
+      return {
+        scope,
+        overrides: {
+          ...(this.#deviceOverrides.get(scope.deviceKey) ?? EMPTY_OVERRIDES),
+        },
+        resolved: this.#resolveLayers(scope.deviceKey, null, false),
+      };
+    }
+    return {
+      scope,
+      overrides: {
+        ...(this.#screenOverrides.get(scope.deviceKey)?.get(scope.displayId) ??
+          EMPTY_OVERRIDES),
+      },
+      resolved: this.#resolveLayers(scope.deviceKey, scope.displayId, false),
+    };
   }
 
-  setSettings(settings: ScrcpySettings, ref?: ScreenRef): ScrcpySettings {
-    if (ref !== undefined) {
-      const context = this.getContextByRef(ref);
-      if (context !== null) {
-        context.service.setSettings(settings);
-        this.#notify(context);
-        return context.service.getSettings();
+  getGlobalSettings(): ScrcpySettings {
+    return { ...this.#globalSettings };
+  }
+
+  setGlobalSettings(settings: ScrcpySettings): ScrcpySettingsScopeView {
+    this.#globalSettings = { ...settings };
+    this.#settingsStore.saveGlobal(this.#globalSettings);
+    this.#recomputeContexts();
+    return this.getScopeView({ scope: "global" });
+  }
+
+  setDeviceOverrides(
+    deviceKey: string,
+    overrides: ScrcpyOverrides,
+  ): ScrcpySettingsScopeView {
+    if (Object.keys(overrides).length === 0) {
+      this.#deviceOverrides.delete(deviceKey);
+    } else {
+      this.#deviceOverrides.set(deviceKey, { ...overrides });
+    }
+    this.#settingsStore.saveDeviceOverrides(deviceKey, overrides);
+    this.#recomputeContexts(deviceKey);
+    return this.getScopeView({ scope: "device", deviceKey });
+  }
+
+  setScreenOverrides(
+    deviceKey: string,
+    displayId: number,
+    overrides: ScrcpyOverrides,
+  ): ScrcpySettingsScopeView {
+    const byDisplay =
+      this.#screenOverrides.get(deviceKey) ??
+      new Map<number, ScrcpyOverrides>();
+    if (Object.keys(overrides).length === 0) {
+      byDisplay.delete(displayId);
+      if (byDisplay.size === 0) {
+        this.#screenOverrides.delete(deviceKey);
+      } else {
+        this.#screenOverrides.set(deviceKey, byDisplay);
+      }
+    } else {
+      byDisplay.set(displayId, { ...overrides });
+      this.#screenOverrides.set(deviceKey, byDisplay);
+    }
+    this.#settingsStore.saveScreenOverrides(deviceKey, displayId, overrides);
+    this.#recomputeContexts(deviceKey, displayId);
+    return this.getScopeView({ scope: "screen", deviceKey, displayId });
+  }
+
+  deleteScope(scope: ScrcpySettingsScope): void {
+    if (scope.scope === "global") {
+      // Global defaults cannot be deleted; deleting resets them.
+      this.setGlobalSettings({ ...this.#globalSettings });
+      return;
+    }
+    if (scope.scope === "device") {
+      this.#deviceOverrides.delete(scope.deviceKey);
+    } else {
+      const byDisplay = this.#screenOverrides.get(scope.deviceKey);
+      if (byDisplay !== undefined) {
+        byDisplay.delete(scope.displayId);
+        if (byDisplay.size === 0) {
+          this.#screenOverrides.delete(scope.deviceKey);
+        }
       }
     }
-    this.#settings = { ...settings };
-    for (const context of this.#contexts.values()) {
-      context.service.setSettings(settings);
-      this.#notify(context);
+    this.#settingsStore.deleteScope(scope);
+    this.#recomputeContexts(
+      scope.deviceKey,
+      scope.scope === "screen" ? scope.displayId : null,
+    );
+  }
+
+  listConfiguredScopes(): ScrcpyConfiguredScope[] {
+    const scopes: ScrcpyConfiguredScope[] = [];
+    for (const deviceKey of this.#deviceOverrides.keys()) {
+      scopes.push({ scope: "device", deviceKey });
     }
-    return { ...this.#settings };
+    for (const [deviceKey, byDisplay] of this.#screenOverrides) {
+      for (const displayId of byDisplay.keys()) {
+        scopes.push({ scope: "screen", deviceKey, displayId });
+      }
+    }
+    scopes.sort((left, right) => {
+      const byDevice = left.deviceKey.localeCompare(right.deviceKey);
+      if (byDevice !== 0) {
+        return byDevice;
+      }
+      const leftDisplay = left.scope === "screen" ? left.displayId : -1;
+      const rightDisplay = right.scope === "screen" ? right.displayId : -1;
+      return leftDisplay - rightDisplay;
+    });
+    return scopes;
   }
 
   attachVideoPort(ref: ScreenRef, streamId: string, port: Parameters<ScreenSessionService["attachVideoPort"]>[1]): boolean {
@@ -365,5 +497,83 @@ export class ScreenRegistryService {
         console.error("screen registry listener failed", errorMessageOf(error));
       }
     }
+  }
+
+  #applyLoaded(loaded: LoadedScrcpySettings): void {
+    this.#globalSettings = { ...loaded.global };
+    for (const [deviceKey, overrides] of loaded.deviceOverrides) {
+      this.#deviceOverrides.set(deviceKey, { ...overrides });
+    }
+    for (const [deviceKey, byDisplay] of loaded.screenOverrides) {
+      this.#screenOverrides.set(
+        deviceKey,
+        new Map([...byDisplay].map(([displayId, overrides]) => [
+          displayId,
+          { ...overrides },
+        ])),
+      );
+    }
+  }
+
+  /**
+   * Effective settings a newly created screen service should use for a target.
+   * Screen-layer overrides only apply to physical displays (`virtual` false
+   * and a known display id).
+   */
+  #resolvedFor(
+    session: DeviceSessionService | null,
+    displayId: number | null,
+    virtual: boolean,
+  ): ScrcpySettings {
+    const serial = session?.getConnection()?.serial ?? null;
+    return this.#resolveLayers(serial, displayId, virtual);
+  }
+
+  #resolveLayers(
+    deviceKey: string | null,
+    displayId: number | null,
+    virtual: boolean,
+  ): ScrcpySettings {
+    const deviceOverrides =
+      deviceKey === null ? undefined : this.#deviceOverrides.get(deviceKey);
+    const screenOverrides =
+      deviceKey === null || displayId === null || virtual
+        ? undefined
+        : this.#screenOverrides.get(deviceKey)?.get(displayId);
+    return resolveScrcpySettings(
+      this.#globalSettings,
+      deviceOverrides,
+      screenOverrides,
+    );
+  }
+
+  /** Re-applies resolved settings to the sessions affected by a scope change. */
+  #recomputeContexts(deviceKey?: string, displayId?: number | null): void {
+    for (const { ref, service } of this.#contexts.values()) {
+      const session = this.#devices.getSessionService(ref.sessionId);
+      const serial = session?.getConnection()?.serial ?? null;
+      if (deviceKey !== undefined && serial !== deviceKey) {
+        continue;
+      }
+      if (
+        displayId !== undefined &&
+        displayId !== null &&
+        ref.displayId !== displayId
+      ) {
+        continue;
+      }
+      const virtual = this.#isVirtualDisplay(service, ref.displayId);
+      service.setSettings(this.#resolveLayers(serial, ref.displayId, virtual));
+    }
+  }
+
+  #isVirtualDisplay(service: ScreenSessionService, displayId: number): boolean {
+    const snapshot = service.getSnapshot();
+    if (snapshot.ownedVirtualDisplayIds.includes(displayId)) {
+      return true;
+    }
+    return snapshot.displays.some(
+      (display) => display.displayId === displayId && display.kind === "virtual",
+    );
   }
 }

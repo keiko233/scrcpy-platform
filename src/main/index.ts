@@ -6,10 +6,10 @@ import {
   type SystemInfo,
   type SystemPlatform,
 } from "../shared/electron-api";
-import { DEFAULT_SCRCPY_SETTINGS } from "../shared/screen-contracts";
 import { ScreenRefSchema } from "../shared/window-contracts";
 import { PersistenceDatabase } from "./persistence/database";
 import { ProjectStore } from "./persistence/project-store";
+import { ScrcpySettingsStore } from "./persistence/scrcpy-settings-store";
 import { registerProjectHandlers } from "./ipc/project-handlers";
 import { registerDeviceHandlers } from "./ipc/device-handlers";
 import { registerScreenHandlers } from "./ipc/screen-handlers";
@@ -35,10 +35,13 @@ let removeRunHandlers: (() => void) | null = null;
 let removeBackgroundRunCleanup: (() => void) | null = null;
 let shuttingDown = false;
 
-function openPersistence(): ProjectStore {
+function openPersistence(): { store: ProjectStore; settingsStore: ScrcpySettingsStore } {
   const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
   persistence = new PersistenceDatabase(dbPath);
-  return new ProjectStore(persistence);
+  return {
+    store: new ProjectStore(persistence),
+    settingsStore: new ScrcpySettingsStore(persistence),
+  };
 }
 
 function getSystemInfo(): SystemInfo {
@@ -67,7 +70,7 @@ function closeScreenAfterWindow(contextId: string): void {
 
 void app.whenReady().then(async () => {
   const contexts = new WindowContextRegistry();
-  const store = openPersistence();
+  const { store, settingsStore } = openPersistence();
   logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
   logger.install();
 
@@ -120,8 +123,8 @@ void app.whenReady().then(async () => {
   const screenRegistry = new ScreenRegistryService(
     deviceRegistry,
     store,
+    settingsStore,
     app.getPath("userData"),
-    DEFAULT_SCRCPY_SETTINGS,
   );
   screens = screenRegistry;
 

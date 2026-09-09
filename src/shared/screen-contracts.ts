@@ -43,6 +43,94 @@ export const DEFAULT_SCRCPY_SETTINGS: ScrcpySettings = {
   powerOffOnClose: false,
 };
 
+/**
+ * Fields that may be overridden per device or per screen. The remaining
+ * fields (OCR capture source and device-behavior switches) only exist at the
+ * global default layer.
+ */
+export const SCRCPY_OVERRIDABLE_FIELDS = [
+  "maxSize",
+  "maxFps",
+  "videoBitRate",
+  "videoCodec",
+  "audio",
+  "audioSource",
+  "audioCodec",
+  "audioBitRate",
+] as const satisfies readonly (keyof ScrcpySettings)[];
+
+export type ScrcpyOverridableField =
+  (typeof SCRCPY_OVERRIDABLE_FIELDS)[number];
+
+const SCRCPY_OVERRIDABLE_SELECTORS = {
+  maxSize: true,
+  maxFps: true,
+  videoBitRate: true,
+  videoCodec: true,
+  audio: true,
+  audioSource: true,
+  audioCodec: true,
+  audioBitRate: true,
+} as const;
+
+/** A per-target partial settings object. A missing key inherits from the parent scope. */
+export const ScrcpyOverridesSchema = ScrcpySettingsSchema.pick(
+  SCRCPY_OVERRIDABLE_SELECTORS,
+).partial().strict();
+export type ScrcpyOverrides = z.infer<typeof ScrcpyOverridesSchema>;
+
+export const ScrcpySettingsScopeSchema = z.discriminatedUnion("scope", [
+  z.object({ scope: z.literal("global") }).strict(),
+  z
+    .object({ scope: z.literal("device"), deviceKey: z.string().min(1) })
+    .strict(),
+  z
+    .object({
+      scope: z.literal("screen"),
+      deviceKey: z.string().min(1),
+      displayId: z.number().int().nonnegative(),
+    })
+    .strict(),
+]);
+export type ScrcpySettingsScope = z.infer<typeof ScrcpySettingsScopeSchema>;
+
+export const ScrcpyDeviceScopeSchema = z.object({
+  scope: z.literal("device"),
+  deviceKey: z.string().min(1),
+}).strict();
+export type ScrcpyDeviceScope = z.infer<typeof ScrcpyDeviceScopeSchema>;
+
+export const ScrcpyScreenScopeSchema = z.object({
+  scope: z.literal("screen"),
+  deviceKey: z.string().min(1),
+  displayId: z.number().int().nonnegative(),
+}).strict();
+export type ScrcpyScreenScope = z.infer<typeof ScrcpyScreenScopeSchema>;
+
+/** A scope that carries a partial override (never the global scope). */
+export const ScrcpyOverridableScopeSchema = z.discriminatedUnion("scope", [
+  ScrcpyDeviceScopeSchema,
+  ScrcpyScreenScopeSchema,
+]);
+export type ScrcpyOverridableScope = z.infer<
+  typeof ScrcpyOverridableScopeSchema
+>;
+
+/**
+ * Read model handed to the renderer for one scope:
+ * - `overrides`: fields explicitly configured at this scope (empty for global).
+ * - `resolved`: the full effective settings after inheriting from the wider
+ *   scopes, exactly what a stream launched for this target will use.
+ */
+export interface ScrcpySettingsScopeView {
+  scope: ScrcpySettingsScope;
+  overrides: ScrcpyOverrides;
+  resolved: ScrcpySettings;
+}
+
+/** Configured override scopes, used to list targets that are currently offline. */
+export type ScrcpyConfiguredScope = ScrcpyDeviceScope | ScrcpyScreenScope;
+
 export const AndroidDisplayDtoSchema = z.object({
   displayId: z.number().int().nonnegative(),
   name: z.string().min(1),

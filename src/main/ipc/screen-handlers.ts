@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { BrowserWindow, ipcMain, MessageChannelMain } from "electron";
 
 import { ELECTRON_CHANNELS } from "../../shared/electron-api";
@@ -8,11 +9,15 @@ import {
   InjectScreenTouchInputSchema,
   PressDeviceButtonInputSchema,
   RequestScreenVideoInputSchema,
+  ScrcpyOverridableScopeSchema,
+  ScrcpyOverridesSchema,
   ScrcpySettingsSchema,
+  ScrcpySettingsScopeSchema,
   type ScreenOperationResult,
   type ScreenSessionDto,
   type ScreenVideoCaptureResponseMessage,
-  type ScrcpySettings,
+  type ScrcpyConfiguredScope,
+  type ScrcpySettingsScopeView,
 } from "../../shared/screen-contracts";
 import {
   CreateVirtualScreenForDeviceInputSchema,
@@ -47,6 +52,13 @@ function emptyScreen(): ScreenSessionDto {
   };
 }
 
+const ScrcpyScopeOverridesInputSchema = z
+  .object({
+    scope: ScrcpyOverridableScopeSchema,
+    overrides: ScrcpyOverridesSchema,
+  })
+  .strict();
+
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
@@ -73,23 +85,42 @@ export function registerScreenHandlers(
 
   ipcMain.handle(
     ELECTRON_CHANNELS.screensSettingsGet,
-    (event): ScrcpySettings => {
-      const context = getScreenContext(event.sender.id);
-      return screens.getSettings(context?.target);
+    (_event, raw: unknown): ScrcpySettingsScopeView => {
+      const scope = ScrcpySettingsScopeSchema.parse(raw);
+      return screens.getScopeView(scope);
     },
   );
 
   ipcMain.handle(
-    ELECTRON_CHANNELS.screensSettingsSet,
-    (event, raw: unknown): ScrcpySettings => {
-      const settings = ScrcpySettingsSchema.parse(
-        raw !== null && typeof raw === "object"
-          ? { ocrCaptureSource: "scrcpy", ...raw }
-          : raw,
-      );
-      const context = getScreenContext(event.sender.id);
-      return screens.setSettings(settings, context?.target);
+    ELECTRON_CHANNELS.screensSettingsGlobalSet,
+    (_event, raw: unknown): ScrcpySettingsScopeView => {
+      const settings = ScrcpySettingsSchema.parse(raw);
+      return screens.setGlobalSettings(settings);
     },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensSettingsOverridesSet,
+    (_event, raw: unknown): ScrcpySettingsScopeView => {
+      const input = ScrcpyScopeOverridesInputSchema.parse(raw);
+      const { scope, overrides } = input;
+      return scope.scope === "device"
+        ? screens.setDeviceOverrides(scope.deviceKey, overrides)
+        : screens.setScreenOverrides(scope.deviceKey, scope.displayId, overrides);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensSettingsDelete,
+    (_event, raw: unknown): void => {
+      const scope = ScrcpyOverridableScopeSchema.parse(raw);
+      screens.deleteScope(scope);
+    },
+  );
+
+  ipcMain.handle(
+    ELECTRON_CHANNELS.screensSettingsScopes,
+    (): ScrcpyConfiguredScope[] => screens.listConfiguredScopes(),
   );
 
   ipcMain.handle(

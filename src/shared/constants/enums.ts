@@ -249,8 +249,6 @@ export enum StorageKey {
   WorkbenchLayout = "android-platform:workbench-layout",
   /** Last copied Flow Script selection for cross-script paste */
   WorkbenchFlowClipboard = "android-platform:workbench-flow-clipboard",
-  /** Cached scrcpy settings */
-  ScrcpySettings = "android-platform:scrcpy-settings",
   /** Last virtual display dimensions and density */
   VirtualDisplaySettings = "android-platform:virtual-display-settings",
   /** Allow running the current unsaved workbench graph */
@@ -296,7 +294,10 @@ export enum ElectronChannel {
   ScreensCreateVirtualForDevice = "screens:create-virtual-for-device",
   ScreensOpenWindow = "screens:open-window",
   ScreensSettingsGet = "screens:settings:get",
-  ScreensSettingsSet = "screens:settings:set",
+  ScreensSettingsGlobalSet = "screens:settings:global-set",
+  ScreensSettingsOverridesSet = "screens:settings:overrides-set",
+  ScreensSettingsDelete = "screens:settings:delete",
+  ScreensSettingsScopes = "screens:settings:scopes",
   ScreensRefresh = "screens:refresh",
   ScreensStart = "screens:start",
   ScreensCreateVirtual = "screens:create-virtual",

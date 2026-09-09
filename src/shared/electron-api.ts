@@ -22,7 +22,12 @@ import type {
   ScreenVideoCaptureResponseMessage,
   ScreenOperationResult,
   ScreenSessionDto,
+  ScrcpyConfiguredScope,
+  ScrcpyOverridableScope,
+  ScrcpyOverrides,
   ScrcpySettings,
+  ScrcpySettingsScope,
+  ScrcpySettingsScopeView,
 } from "./screen-contracts";
 import type {
   CreateVirtualScreenForDeviceInput,
@@ -109,7 +114,10 @@ export const ELECTRON_CHANNELS = {
   screensCreateVirtualForDevice: ElectronChannel.ScreensCreateVirtualForDevice,
   screensOpenWindow: ElectronChannel.ScreensOpenWindow,
   screensSettingsGet: ElectronChannel.ScreensSettingsGet,
-  screensSettingsSet: ElectronChannel.ScreensSettingsSet,
+  screensSettingsGlobalSet: ElectronChannel.ScreensSettingsGlobalSet,
+  screensSettingsOverridesSet: ElectronChannel.ScreensSettingsOverridesSet,
+  screensSettingsDelete: ElectronChannel.ScreensSettingsDelete,
+  screensSettingsScopes: ElectronChannel.ScreensSettingsScopes,
   screensRefresh: ElectronChannel.ScreensRefresh,
   screensStart: ElectronChannel.ScreensStart,
   screensCreateVirtual: ElectronChannel.ScreensCreateVirtual,
@@ -212,8 +220,16 @@ export interface ElectronAPI {
   createVirtualScreenForDevice(
     input: CreateVirtualScreenForDeviceInput,
   ): Promise<ScreenOperationResult>;
-  getScrcpySettings(): Promise<ScrcpySettings>;
-  setScrcpySettings(input: ScrcpySettings): Promise<ScrcpySettings>;
+  getScrcpySettings(
+    scope: ScrcpySettingsScope,
+  ): Promise<ScrcpySettingsScopeView>;
+  setScrcpyGlobalSettings(settings: ScrcpySettings): Promise<ScrcpySettingsScopeView>;
+  setScrcpyScopeOverrides(
+    scope: ScrcpyOverridableScope,
+    overrides: ScrcpyOverrides,
+  ): Promise<ScrcpySettingsScopeView>;
+  deleteScrcpySettingsScope(scope: ScrcpyOverridableScope): Promise<void>;
+  listScrcpySettingsScopes(): Promise<ScrcpyConfiguredScope[]>;
   refreshScreens(): Promise<ScreenOperationResult>;
   startScreen(input: DisplayIdInput): Promise<ScreenOperationResult>;
   createVirtualScreen(

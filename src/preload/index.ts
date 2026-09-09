@@ -90,10 +90,19 @@ const api: ElectronAPI = {
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensOpenWindow, input),
   createVirtualScreenForDevice: (input) =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensCreateVirtualForDevice, input),
-  getScrcpySettings: () =>
-    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsGet),
-  setScrcpySettings: (input) =>
-    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsSet, input),
+  getScrcpySettings: (scope) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsGet, scope),
+  setScrcpyGlobalSettings: (settings) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsGlobalSet, settings),
+  setScrcpyScopeOverrides: (scope, overrides) =>
+    ipcRenderer.invoke(
+      ELECTRON_CHANNELS.screensSettingsOverridesSet,
+      { scope, overrides },
+    ),
+  deleteScrcpySettingsScope: (scope) =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsDelete, scope),
+  listScrcpySettingsScopes: () =>
+    ipcRenderer.invoke(ELECTRON_CHANNELS.screensSettingsScopes),
   refreshScreens: () =>
     ipcRenderer.invoke(ELECTRON_CHANNELS.screensRefresh),
   startScreen: (input) =>
