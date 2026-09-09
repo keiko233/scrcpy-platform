@@ -38,7 +38,7 @@ export function useScrcpyScopeView(scope: ScrcpySettingsScope) {
   return useQuery({
     queryKey: scrcpyScopeViewQueryKey(scope),
     queryFn: (): Promise<ScrcpySettingsScopeView> =>
-      window.androidPlatform.getScrcpySettings(scope),
+      window.scrcpyPlatform.getScrcpySettings(scope),
     staleTime: Infinity,
     gcTime: Infinity,
   });
@@ -48,7 +48,7 @@ export function useSetScrcpyGlobalSettings() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (settings: ScrcpySettings) =>
-      window.androidPlatform.setScrcpyGlobalSettings(settings),
+      window.scrcpyPlatform.setScrcpyGlobalSettings(settings),
     onSuccess: (view) => {
       queryClient.setQueryData<ScrcpySettingsScopeView>(
         scrcpyScopeViewQueryKey(view.scope),
@@ -62,7 +62,7 @@ export function useSetScrcpyScopeOverrides(scope: ScrcpyOverridableScope) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (overrides: ScrcpyOverrides) =>
-      window.androidPlatform.setScrcpyScopeOverrides(scope, overrides),
+      window.scrcpyPlatform.setScrcpyScopeOverrides(scope, overrides),
     onSuccess: (view) => {
       queryClient.setQueryData<ScrcpySettingsScopeView>(
         scrcpyScopeViewQueryKey(view.scope),
@@ -77,7 +77,7 @@ export function useDeleteScrcpySettingsScope() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (scope: ScrcpyOverridableScope) =>
-      window.androidPlatform.deleteScrcpySettingsScope(scope),
+      window.scrcpyPlatform.deleteScrcpySettingsScope(scope),
     onSuccess: (_result, scope) => {
       queryClient.removeQueries({
         queryKey: scrcpyScopeViewQueryKey(scope),
@@ -91,7 +91,7 @@ export function useScrcpyConfiguredScopes() {
   return useQuery({
     queryKey: scrcpyScopesQueryKey,
     queryFn: (): Promise<ScrcpyConfiguredScope[]> =>
-      window.androidPlatform.listScrcpySettingsScopes(),
+      window.scrcpyPlatform.listScrcpySettingsScopes(),
     staleTime: 30_000,
   });
 }

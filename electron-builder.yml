@@ -1,0 +1,26 @@
+appId: com.keiko233.scrcpy-platform
+directories:
+  buildResources: build
+  output: release
+files:
+  - "!src/**"
+  - "!scripts/**"
+  - "!docs/**"
+  - "!public/**"
+  - "!messages/**"
+  - "!project.inlang/**"
+  - "!{README.md,index.html,components.json,.oxlintrc.json,electron.vite.config.ts,vitest.config.ts,pnpm-workspace.yaml}"
+  - "!tsconfig*.json"
+  - "!*.local"
+artifactName: ${name}-${version}-${arch}.${ext}
+mac:
+  category: public.app-category.utilities
+  target:
+    - dmg
+  # CI passes --arm64 explicitly; local builds keep the host arch by default.
+win:
+  target:
+    - nsis
+nsis:
+  artifactName: ${name}-${version}-${arch}-setup.${ext}
+npmRebuild: false

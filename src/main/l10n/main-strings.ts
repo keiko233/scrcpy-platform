@@ -20,30 +20,30 @@ export interface MainProcessStrings {
 }
 
 const ZH_CN: MainProcessStrings = {
-  appName: "Android Platform",
+  appName: "Scrcpy Platform",
   trayShowManager: "显示主界面",
   trayQuit: "退出",
-  quitTitle: "退出 Android Platform",
+  quitTitle: "退出 Scrcpy Platform",
   quitWithActiveRuns: (count) =>
     `仍有 ${count} 个脚本正在运行。退出将停止全部脚本并断开设备连接。`,
   quitAndStop: "退出并停止",
   cancel: "取消",
-  backgroundNotificationTitle: "Android Platform 仍在后台运行",
+  backgroundNotificationTitle: "Scrcpy Platform 仍在后台运行",
   backgroundNotificationBody: "点击托盘图标可重新打开主界面。",
 };
 
 const EN: MainProcessStrings = {
-  appName: "Android Platform",
+  appName: "Scrcpy Platform",
   trayShowManager: "Show Main Window",
   trayQuit: "Quit",
-  quitTitle: "Quit Android Platform",
+  quitTitle: "Quit Scrcpy Platform",
   quitWithActiveRuns: (count) =>
     count === 1
       ? "1 script is still running. Quitting will stop it and disconnect devices."
       : `${count} scripts are still running. Quitting will stop them all and disconnect devices.`,
   quitAndStop: "Quit and Stop",
   cancel: "Cancel",
-  backgroundNotificationTitle: "Android Platform is still running",
+  backgroundNotificationTitle: "Scrcpy Platform is still running",
   backgroundNotificationBody: "Click the tray icon to reopen the main window.",
 };
 

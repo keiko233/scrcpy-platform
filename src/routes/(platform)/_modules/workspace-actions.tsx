@@ -38,7 +38,7 @@ export function WorkspaceActions() {
           aria-label={m.workspace_settings()}
           className="flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           title={m.workspace_settings()}
-          onClick={() => void window.androidPlatform.openSettingsWindow()}
+          onClick={() => void window.scrcpyPlatform.openSettingsWindow()}
         >
           <SettingsIcon className="size-4" />
         </button>

@@ -134,10 +134,10 @@ export class WindowManager {
       show: false,
       title:
         kind === "screen"
-          ? "Android Platform · Screen"
+          ? "Scrcpy Platform · Screen"
           : kind === "pair"
-            ? "Android Platform · Pair"
-            : "Android Platform",
+            ? "Scrcpy Platform · Pair"
+            : "Scrcpy Platform",
       ...(process.platform === "darwin"
         ? { titleBarStyle: "hiddenInset" as const }
         : { frame: false }),

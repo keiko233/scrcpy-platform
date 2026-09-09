@@ -4,20 +4,20 @@
 
 export const AppConstants = {
   /** Custom file protocol for renderer -> disk files */
-  FILE_SCHEME: "android-platform-file",
+  FILE_SCHEME: "scrcpy-platform-file",
   /** Window event for transferring scrcpy video MessagePort */
-  SCREEN_VIDEO_WINDOW_EVENT: "android-platform:screen-video-port",
+  SCREEN_VIDEO_WINDOW_EVENT: "scrcpy-platform:screen-video-port",
 } as const;
 
 export const FilePath = {
   /** Scrcpy server jar path on device */
-  SCRCPY_SERVER: "/data/local/tmp/android-platform-scrcpy-server.jar",
+  SCRCPY_SERVER: "/data/local/tmp/scrcpy-platform-scrcpy-server.jar",
   /** APK entries */
   ANDROID_RESOURCES_ARSC: "resources.arsc",
   ANDROID_MANIFEST: "AndroidManifest.xml",
   /** Persistence files under app.getPath("userData") */
-  DB_FILE: "android-platform.sqlite3",
-  LOG_FILE: "android-platform.log",
+  DB_FILE: "scrcpy-platform.sqlite3",
+  LOG_FILE: "scrcpy-platform.log",
   /** App metadata cache file under userData */
   APP_CACHE_FILE: "installed-apps-cache.json",
   OCR_LANGUAGES_DIR: "ocr-languages",

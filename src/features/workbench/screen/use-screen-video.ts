@@ -67,7 +67,7 @@ export function useScreenVideo(
       if (message.type === "capture-request") {
         const requestDecoder = decoder;
         if (requestDecoder === null) {
-          window.androidPlatform.sendScreenVideoCaptureResponse({
+          window.scrcpyPlatform.sendScreenVideoCaptureResponse({
             type: "capture-response",
             streamId,
             requestId: message.requestId,
@@ -83,7 +83,7 @@ export function useScreenVideo(
           try {
             const blob = await requestDecoder.snapshot();
             if (blob === undefined) {
-              window.androidPlatform.sendScreenVideoCaptureResponse({
+              window.scrcpyPlatform.sendScreenVideoCaptureResponse({
                 type: "capture-response",
                 streamId,
                 requestId: message.requestId,
@@ -97,7 +97,7 @@ export function useScreenVideo(
               requestId: message.requestId,
               bytes: buffer.byteLength,
             });
-            window.androidPlatform.sendScreenVideoCaptureResponse({
+            window.scrcpyPlatform.sendScreenVideoCaptureResponse({
               type: "capture-response",
               streamId,
               requestId: message.requestId,
@@ -105,7 +105,7 @@ export function useScreenVideo(
             });
           } catch (cause) {
             try {
-              window.androidPlatform.sendScreenVideoCaptureResponse({
+              window.scrcpyPlatform.sendScreenVideoCaptureResponse({
                 type: "capture-response",
                 streamId,
                 requestId: message.requestId,
@@ -182,7 +182,7 @@ export function useScreenVideo(
           requestRetry = window.setTimeout(() => {
             requestRetry = null;
             if (!disposed) {
-              window.androidPlatform.requestScreenVideo({ streamId });
+              window.scrcpyPlatform.requestScreenVideo({ streamId });
             }
           }, 100);
           setState((current) => ({
@@ -223,7 +223,7 @@ export function useScreenVideo(
         requestRetry = window.setTimeout(() => {
           requestRetry = null;
           if (!disposed) {
-            window.androidPlatform.requestScreenVideo({ streamId });
+            window.scrcpyPlatform.requestScreenVideo({ streamId });
           }
         }, 100);
         return;
@@ -240,7 +240,7 @@ export function useScreenVideo(
 
     window.addEventListener("message", receivePort);
     console.debug("requesting screen video", { streamId });
-    window.androidPlatform.requestScreenVideo({ streamId });
+    window.scrcpyPlatform.requestScreenVideo({ streamId });
 
     return () => {
       disposed = true;

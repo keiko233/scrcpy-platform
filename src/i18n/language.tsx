@@ -53,20 +53,20 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let receivedLocale = false;
     const initial = getInitialLocale();
-    const unsubscribe = window.androidPlatform.onAppLocale((locale) => {
+    const unsubscribe = window.scrcpyPlatform.onAppLocale((locale) => {
       if (!disposed) {
         receivedLocale = true;
         applyLanguage(locale);
       }
     });
 
-    void window.androidPlatform.getAppLocale().then((locale) => {
+    void window.scrcpyPlatform.getAppLocale().then((locale) => {
       if (disposed || receivedLocale || didChooseLanguage.current) {
         return;
       }
       if (locale === null) {
         // One-time migration from the legacy per-renderer localStorage value.
-        return window.androidPlatform.setAppLocale(initial);
+        return window.scrcpyPlatform.setAppLocale(initial);
       }
       applyLanguage(locale);
     }).catch((error: unknown) => {
@@ -84,7 +84,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     // Update this renderer first; IPC then persists and broadcasts to every
     // window, including windows with a different renderer/storage context.
     applyLanguage(locale);
-    void window.androidPlatform.setAppLocale(locale).catch((error: unknown) => {
+    void window.scrcpyPlatform.setAppLocale(locale).catch((error: unknown) => {
       console.error("Failed to save the application locale", error);
     });
   }, [applyLanguage]);

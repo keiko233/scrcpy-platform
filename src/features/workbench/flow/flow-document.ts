@@ -293,7 +293,7 @@ export interface ClipboardPayload {
   edges: ClipboardEdge[];
 }
 
-const CLIPBOARD_PREFIX = "android-platform:flow-clipboard:v1:";
+const CLIPBOARD_PREFIX = "scrcpy-platform:flow-clipboard:v1:";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

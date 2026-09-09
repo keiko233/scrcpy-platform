@@ -100,37 +100,37 @@ export function useScreens(devices: DeviceManager): ScreenManager {
   );
 
   const refresh = useCallback(async () => {
-    await run(() => window.androidPlatform.refreshScreens());
+    await run(() => window.scrcpyPlatform.refreshScreens());
   }, [run]);
 
   const selectDisplay = useCallback(
     async (displayId: number) => {
-      await run(() => window.androidPlatform.startScreen({ displayId }));
+      await run(() => window.scrcpyPlatform.startScreen({ displayId }));
     },
     [run],
   );
 
   const createVirtualDisplay = useCallback(
     async (input: CreateVirtualDisplayInput) => {
-      return await run(() => window.androidPlatform.createVirtualScreen(input));
+      return await run(() => window.scrcpyPlatform.createVirtualScreen(input));
     },
     [run],
   );
 
   const destroyVirtualDisplay = useCallback(async (displayId: number) => {
-    await run(() => window.androidPlatform.destroyVirtualScreen({ displayId }));
+    await run(() => window.scrcpyPlatform.destroyVirtualScreen({ displayId }));
   }, [run]);
 
   const pressButton = useCallback(
     async (button: DeviceButton) => {
-      await run(() => window.androidPlatform.pressDeviceButton({ button }));
+      await run(() => window.scrcpyPlatform.pressDeviceButton({ button }));
     },
     [run],
   );
 
   const injectTouch = useCallback(
     async (input: InjectScreenTouchInput) => {
-      const result = await window.androidPlatform.injectScreenTouch(input);
+      const result = await window.scrcpyPlatform.injectScreenTouch(input);
       if (result.status === "error") {
         setOperationError(result.error.message);
       }
@@ -140,7 +140,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
 
   const injectKeyboard = useCallback(
     async (input: InjectScreenKeyboardInput) => {
-      const result = await window.androidPlatform.injectScreenKeyboard(input);
+      const result = await window.scrcpyPlatform.injectScreenKeyboard(input);
       if (result.status === "error") {
         setOperationError(result.error.message);
       }
@@ -160,7 +160,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
     }
     autoStartedTargetRef.current = target;
     void (async () => {
-      const refreshed = await window.androidPlatform.refreshScreens();
+      const refreshed = await window.scrcpyPlatform.refreshScreens();
       if (!applyResult(refreshed) || refreshed.status !== "ok") {
         return;
       }
@@ -173,7 +173,7 @@ export function useScreens(devices: DeviceManager): ScreenManager {
         refreshed.screen.displays[0];
       if (main !== undefined) {
         applyResult(
-          await window.androidPlatform.startScreen({
+          await window.scrcpyPlatform.startScreen({
             displayId: main.displayId,
           }),
         );

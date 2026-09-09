@@ -47,7 +47,7 @@ function openPersistence(): {
   settingsStore: ScrcpySettingsStore;
   preferencesStore: AppPreferencesStore;
 } {
-  const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
+  const dbPath = join(app.getPath("userData"), "scrcpy-platform.sqlite3");
   persistence = new PersistenceDatabase(dbPath);
   return {
     store: new ProjectStore(persistence),
@@ -84,7 +84,7 @@ void app.whenReady().then(async () => {
   const contexts = new WindowContextRegistry();
   const { store, settingsStore, preferencesStore } = openPersistence();
   appPreferences = preferencesStore;
-  logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
+  logger = new Logger(join(app.getPath("userData"), "scrcpy-platform.log"));
   logger.install();
 
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());

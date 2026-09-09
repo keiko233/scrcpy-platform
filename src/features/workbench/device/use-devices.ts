@@ -123,7 +123,7 @@ export function useDevices(): DeviceManager {
 
   const connectMutation = useMutation({
     mutationFn: (transportId: string) =>
-      window.androidPlatform.connectDevice({ transportId }),
+      window.scrcpyPlatform.connectDevice({ transportId }),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<DeviceSessionDto>(
@@ -142,7 +142,7 @@ export function useDevices(): DeviceManager {
   });
 
   const disconnectMutation = useMutation({
-    mutationFn: () => window.androidPlatform.disconnectDevice(),
+    mutationFn: () => window.scrcpyPlatform.disconnectDevice(),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<DeviceSessionDto>(
@@ -162,7 +162,7 @@ export function useDevices(): DeviceManager {
 
   const pairWirelessMutation = useMutation({
     mutationFn: (input: { address: string; password: string }) =>
-      window.androidPlatform.pairWirelessDevice(input),
+      window.scrcpyPlatform.pairWirelessDevice(input),
     onSuccess: (result) => {
       if (result.status === "error") {
         setSessionError(describeWirelessFailure(result.error, result.message));
@@ -174,7 +174,7 @@ export function useDevices(): DeviceManager {
 
   const connectWirelessMutation = useMutation({
     mutationFn: (address: string) =>
-      window.androidPlatform.connectWirelessDevice({ address }),
+      window.scrcpyPlatform.connectWirelessDevice({ address }),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<DeviceSessionDto>(
@@ -193,7 +193,7 @@ export function useDevices(): DeviceManager {
 
   const disconnectWirelessMutation = useMutation({
     mutationFn: (address: string) =>
-      window.androidPlatform.disconnectWirelessDevice({ address }),
+      window.scrcpyPlatform.disconnectWirelessDevice({ address }),
     onSuccess: (result) => {
       if (result.status === "error") {
         setSessionError(describeWirelessFailure(result.error, result.message));

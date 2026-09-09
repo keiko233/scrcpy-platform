@@ -90,8 +90,8 @@ export function ScrcpyScopedSettingsCard(): React.ReactElement {
 
   const refresh = useCallback(async () => {
     const [deviceResult, nextSessions] = await Promise.all([
-      window.androidPlatform.listDevices(),
-      window.androidPlatform.listDeviceSessions(),
+      window.scrcpyPlatform.listDevices(),
+      window.scrcpyPlatform.listDeviceSessions(),
     ]);
     setDevices(deviceResult.status === "ok" ? deviceResult.devices : []);
     setSessions(nextSessions);
@@ -104,7 +104,7 @@ export function ScrcpyScopedSettingsCard(): React.ReactElement {
     await Promise.all(
       connected.map(async (session) => {
         try {
-          const result = await window.androidPlatform.listScreenDisplays({
+          const result = await window.scrcpyPlatform.listScreenDisplays({
             sessionId: session.sessionId,
           });
           if (result.status === "ok") {

@@ -49,8 +49,8 @@ export function ManagerScreen(): React.ReactElement {
     setLoading(true);
     try {
       const [deviceResult, nextSessions] = await Promise.all([
-        window.androidPlatform.listDevices(),
-        window.androidPlatform.listDeviceSessions(),
+        window.scrcpyPlatform.listDevices(),
+        window.scrcpyPlatform.listDeviceSessions(),
       ]);
       setDevices(deviceResult.status === "ok" ? deviceResult.devices : []);
       setSessions(nextSessions);
@@ -64,7 +64,7 @@ export function ManagerScreen(): React.ReactElement {
       const nextDisplays: Record<string, DisplayState> = {};
       await Promise.all(
         connected.map(async (session) => {
-          const result = await window.androidPlatform.listScreenDisplays({
+          const result = await window.scrcpyPlatform.listScreenDisplays({
             sessionId: session.sessionId,
           });
           nextDisplays[session.sessionId] = result.status === "ok"
@@ -97,7 +97,7 @@ export function ManagerScreen(): React.ReactElement {
 
   const connect = async (transportId: string) => {
     setError(null);
-    const result = await window.androidPlatform.connectDevice({ transportId });
+    const result = await window.scrcpyPlatform.connectDevice({ transportId });
     if (result.status === "error") {
       setError(m.manager_connect_failed({ error: result.error }));
     }
@@ -106,7 +106,7 @@ export function ManagerScreen(): React.ReactElement {
 
   const disconnect = async (sessionId: string) => {
     setError(null);
-    const result = await window.androidPlatform.disconnectDevice({ sessionId });
+    const result = await window.scrcpyPlatform.disconnectDevice({ sessionId });
     if (result.status === "error") {
       setError(m.manager_disconnect_failed());
     }
@@ -114,7 +114,7 @@ export function ManagerScreen(): React.ReactElement {
   };
 
   const openScreen = async (sessionId: string, displayId: number) => {
-    const result = await window.androidPlatform.openScreen({ sessionId, displayId });
+    const result = await window.scrcpyPlatform.openScreen({ sessionId, displayId });
     if (result.status === "error") {
       setError(result.message ?? m.manager_open_failed());
     }
@@ -124,7 +124,7 @@ export function ManagerScreen(): React.ReactElement {
     const width = Number(virtualForm.width);
     const height = Number(virtualForm.height);
     const dpi = Number(virtualForm.dpi);
-    const result = await window.androidPlatform.createVirtualScreenForDevice({
+    const result = await window.scrcpyPlatform.createVirtualScreenForDevice({
       sessionId,
       width,
       height,
@@ -138,7 +138,7 @@ export function ManagerScreen(): React.ReactElement {
   };
 
   const destroyVirtual = async (sessionId: string, displayId: number) => {
-    const result = await window.androidPlatform.destroyVirtualScreen({
+    const result = await window.scrcpyPlatform.destroyVirtualScreen({
       sessionId,
       displayId,
     });
@@ -161,12 +161,12 @@ export function ManagerScreen(): React.ReactElement {
           <Button
             size="sm"
             variant="outline"
-            onClick={() => void window.androidPlatform.openPairWindow()}
+            onClick={() => void window.scrcpyPlatform.openPairWindow()}
           >
             <PlugIcon />
             {m.manager_connect_device()}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => void window.androidPlatform.openSettingsWindow()}>
+          <Button size="sm" variant="ghost" onClick={() => void window.scrcpyPlatform.openSettingsWindow()}>
             <SettingsIcon />
             {m.settings_title()}
           </Button>

@@ -34,7 +34,7 @@ export function useInstalledApps(
   const query = useQuery<InstalledAppsData>({
     queryKey,
     queryFn: async (): Promise<InstalledAppsData> => {
-      const snapshot = await window.androidPlatform.listInstalledApps();
+      const snapshot = await window.scrcpyPlatform.listInstalledApps();
       return { apps: snapshot.apps, pending: snapshot.pending };
     },
     enabled: enabled && sessionId !== null,
@@ -58,7 +58,7 @@ export function useInstalledApps(
     let cancelled = false;
     void (async () => {
       try {
-        const enriched = await window.androidPlatform.enrichInstalledApps(batch);
+        const enriched = await window.scrcpyPlatform.enrichInstalledApps(batch);
         if (cancelled) {
           return;
         }

@@ -20,5 +20,5 @@
     "erasableSyntaxOnly": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["electron.vite.config.ts"]
+  "include": ["electron.vite.config.ts", "scripts/**/*.ts"]
 }

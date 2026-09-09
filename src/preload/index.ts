@@ -192,4 +192,4 @@ ipcRenderer.on(ELECTRON_CHANNELS.screensVideoPort, (event, payload) => {
   );
 });
 
-contextBridge.exposeInMainWorld("androidPlatform", Object.freeze(api));
+contextBridge.exposeInMainWorld("scrcpyPlatform", Object.freeze(api));

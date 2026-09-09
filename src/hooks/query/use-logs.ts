@@ -12,7 +12,7 @@ import { LogLimits } from "@/shared/constants/limits";
 export const LOGS_QUERY_KEY = QueryKey.Logs;
 export const logsQueryKey = [LOGS_QUERY_KEY] as const;
 export const logsQueryFn = (): Promise<LogEntry[]> =>
-  window.androidPlatform.listLogs();
+  window.scrcpyPlatform.listLogs();
 
 const MAX_LOGS = LogLimits.MAX_FRONTEND_LOGS;
 
@@ -34,7 +34,7 @@ export function useLogs(): LogsManager {
   });
 
   useEffect(() => {
-    return window.androidPlatform.onLog((entry) => {
+    return window.scrcpyPlatform.onLog((entry) => {
       queryClient.setQueryData<LogEntry[]>(logsQueryKey, (current) => {
         if (current === undefined) {
           return [entry];
@@ -45,7 +45,7 @@ export function useLogs(): LogsManager {
   }, [queryClient]);
 
   const clearLogsMutation = useMutation({
-    mutationFn: () => window.androidPlatform.clearLogs(),
+    mutationFn: () => window.scrcpyPlatform.clearLogs(),
     onSuccess: () => {
       queryClient.setQueryData<LogEntry[]>(logsQueryKey, () => []);
     },

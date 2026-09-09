@@ -18,7 +18,7 @@ export const revisionsQueryKey = (scriptId: string) =>
   [REVISIONS_QUERY_KEY, scriptId] as const;
 export const revisionsQueryFn =
   (scriptId: string) => (): Promise<RevisionDto[]> =>
-    window.androidPlatform.listRevisions({ scriptId });
+    window.scrcpyPlatform.listRevisions({ scriptId });
 
 export function useRevisions(scriptId: string | null) {
   return useQuery({
@@ -34,7 +34,7 @@ export function useCreateRevision() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateRevisionInput) =>
-      window.androidPlatform.createRevision(input),
+      window.scrcpyPlatform.createRevision(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<RevisionDto[]>(
@@ -55,7 +55,7 @@ export function useRestoreRevision() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: RestoreRevisionInput) =>
-      window.androidPlatform.restoreRevision(input),
+      window.scrcpyPlatform.restoreRevision(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<ScriptDto[]>(

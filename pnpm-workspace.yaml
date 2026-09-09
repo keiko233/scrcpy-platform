@@ -1,6 +1,9 @@
 allowBuilds:
   esbuild: true
   electron: true
+  # electron-builder's Windows installer dependency; its postinstall stages
+  # helper binaries.
+  electron-winstaller: true
   # Its postinstall only prints an OpenCollective message; runtime files are
   # already present in the package, so explicitly skip it.
   tesseract.js: false

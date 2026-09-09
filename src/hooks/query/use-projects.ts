@@ -15,7 +15,7 @@ import { scriptsQueryKey } from "@/hooks/query/use-scripts";
 export const PROJECTS_QUERY_KEY = "projects" as const;
 export const projectsQueryKey = [PROJECTS_QUERY_KEY] as const;
 export const projectsQueryFn = (): Promise<ProjectDto[]> =>
-  window.androidPlatform.listProjects();
+  window.scrcpyPlatform.listProjects();
 
 export function useProjects() {
   return useQuery({
@@ -30,7 +30,7 @@ export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateProjectInput) =>
-      window.androidPlatform.createProject(input),
+      window.scrcpyPlatform.createProject(input),
     onSuccess: (project) => {
       queryClient.setQueryData<ProjectDto[]>(projectsQueryKey, (current) => {
         if (current === undefined) {
@@ -46,7 +46,7 @@ export function useRenameProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: RenameProjectInput) =>
-      window.androidPlatform.renameProject(input),
+      window.scrcpyPlatform.renameProject(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<ProjectDto[]>(projectsQueryKey, (current) => {
@@ -66,7 +66,7 @@ export function useDeleteProject() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: DeleteProjectInput) =>
-      window.androidPlatform.deleteProject(input),
+      window.scrcpyPlatform.deleteProject(input),
     onSuccess: (result, variables) => {
       if (result.status === "ok") {
         queryClient.setQueryData<ProjectDto[]>(projectsQueryKey, (current) => {

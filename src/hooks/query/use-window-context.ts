@@ -7,7 +7,7 @@ export const windowContextQueryKey = ["window-context"] as const;
 export function useWindowContext() {
   return useQuery<WindowBootstrapResult>({
     queryKey: windowContextQueryKey,
-    queryFn: () => window.androidPlatform.getWindowContext(),
+    queryFn: () => window.scrcpyPlatform.getWindowContext(),
     staleTime: Infinity,
     gcTime: Infinity,
   });

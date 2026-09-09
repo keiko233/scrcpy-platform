@@ -7,7 +7,7 @@ export const scriptQueryKey = (scriptId: string) =>
   [SCRIPT_QUERY_KEY, scriptId] as const;
 export const scriptQueryFn =
   (scriptId: string) => (): Promise<ScriptDto | null> =>
-    window.androidPlatform.getScript({ scriptId });
+    window.scrcpyPlatform.getScript({ scriptId });
 
 export function useScript(scriptId: string | null) {
   return useQuery({

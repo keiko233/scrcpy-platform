@@ -7,7 +7,7 @@ const { mkdtempSync } = require('node:fs');
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 const { pathToFileURL } = require('node:url');
-app.setPath('userData', mkdtempSync(join(tmpdir(), 'android-locale-smoke-')));
+app.setPath('userData', mkdtempSync(join(tmpdir(), 'scrcpy-locale-smoke-')));
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(read, matches, description) {
   for (let i = 0; i < 100; i++) {
@@ -39,7 +39,7 @@ async function chooseLanguage(settings, label) {
   await app.whenReady();
   const main = await until(async () => BrowserWindow.getAllWindows()[0], Boolean, 'manager window');
   await until(() => heading(main), text => text === 'Devices and screens', 'initial English manager');
-  await evaluate(main, 'window.androidPlatform.openSettingsWindow()');
+  await evaluate(main, 'window.scrcpyPlatform.openSettingsWindow()');
   let settings = await until(async () => BrowserWindow.getAllWindows().find(w => w !== main), Boolean, 'settings window');
   await until(() => heading(settings), text => text === 'Settings', 'initial English settings');
   for (const [locale, label, mainTitle, settingsTitle] of [
@@ -50,7 +50,7 @@ async function chooseLanguage(settings, label) {
     await chooseLanguage(settings, label);
     await until(() => heading(main), text => text === mainTitle, `${locale} manager`);
     await until(() => heading(settings), text => text === settingsTitle, `${locale} settings`);
-    assert.equal(await evaluate(main, 'window.androidPlatform.getAppLocale()'), locale);
+    assert.equal(await evaluate(main, 'window.scrcpyPlatform.getAppLocale()'), locale);
     assert.equal(await evaluate(settings, 'document.querySelector("[data-slot=select-trigger]").textContent'), label);
     if (locale === 'en') {
       assert.doesNotMatch(await evaluate(main, 'document.body.innerText'), /[\p{Script=Han}]/u);
@@ -58,7 +58,7 @@ async function chooseLanguage(settings, label) {
     process.stdout.write(`PASS: settings selection ${locale} updates both windows\n`);
   }
   settings.destroy();
-  await evaluate(main, 'window.androidPlatform.openSettingsWindow()');
+  await evaluate(main, 'window.scrcpyPlatform.openSettingsWindow()');
   settings = await until(async () => BrowserWindow.getAllWindows().find(w => w !== main), Boolean, 'reopened settings');
   await until(() => heading(settings), text => text === '设置', 'reopened settings retains Chinese');
   const reloaded = once(main.webContents, "did-finish-load");

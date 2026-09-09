@@ -18,7 +18,7 @@ Display 0:
   mDisplayInfo=DisplayInfo{"Built-in Screen", uniqueId "local:0"}
   FLAG_DEFAULT_DISPLAY
 Display 7:
-  DisplayDeviceInfo{"scrcpy", uniqueId "virtual:android-platform"}
+  DisplayDeviceInfo{"scrcpy", uniqueId "virtual:scrcpy-platform"}
   type VIRTUAL
 `);
     const result = mergeDisplayCatalog(details, [0, 7], new Set([7]), new Set([7]));

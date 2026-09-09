@@ -7,7 +7,7 @@ import { Timing } from "@/shared/constants/timing";
 export const SCREEN_SESSION_QUERY_KEY = QueryKey.ScreenSession;
 export const screenSessionQueryKey = [SCREEN_SESSION_QUERY_KEY] as const;
 export const screenSessionQueryFn = (): Promise<ScreenSessionDto> =>
-  window.androidPlatform.getScreenSession();
+  window.scrcpyPlatform.getScreenSession();
 
 const SCREEN_POLL_MS = Timing.SCREEN_POLL_MS;
 

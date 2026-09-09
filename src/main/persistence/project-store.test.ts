@@ -69,7 +69,7 @@ function assertThrowsError(
 
 describe("ProjectStore", () => {
   test("migrations apply once and are idempotent across reopenings", () => {
-    const dir = mkdtempSync(join(tmpdir(), "android-platform-test-"));
+    const dir = mkdtempSync(join(tmpdir(), "scrcpy-platform-test-"));
     const dbPath = join(dir, "test.sqlite3");
     try {
       const first = new PersistenceDatabase(dbPath);

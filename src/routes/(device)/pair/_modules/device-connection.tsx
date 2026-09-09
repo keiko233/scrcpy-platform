@@ -23,7 +23,7 @@ import type { DeviceManager } from "@/features/workbench/device/use-devices";
 import { m } from "@/paraglide/messages.js";
 import { z } from "zod";
 
-const WIRELESS_DRAFT_STORAGE_KEY = "android-platform:wireless-draft";
+const WIRELESS_DRAFT_STORAGE_KEY = "scrcpy-platform:wireless-draft";
 const WirelessDraftSchema = z.object({
   pairAddress: z.string().default(""),
   connectAddress: z.string().default(""),

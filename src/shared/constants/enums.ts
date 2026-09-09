@@ -246,13 +246,13 @@ export enum OcrLanguageOption {
 
 export enum StorageKey {
   /** Persisted workbench layout */
-  WorkbenchLayout = "android-platform:workbench-layout",
+  WorkbenchLayout = "scrcpy-platform:workbench-layout",
   /** Last copied Flow Script selection for cross-script paste */
-  WorkbenchFlowClipboard = "android-platform:workbench-flow-clipboard",
+  WorkbenchFlowClipboard = "scrcpy-platform:workbench-flow-clipboard",
   /** Last virtual display dimensions and density */
-  VirtualDisplaySettings = "android-platform:virtual-display-settings",
+  VirtualDisplaySettings = "scrcpy-platform:virtual-display-settings",
   /** Allow running the current unsaved workbench graph */
-  WorkbenchAllowUnsavedRun = "android-platform:workbench-allow-unsaved-run",
+  WorkbenchAllowUnsavedRun = "scrcpy-platform:workbench-allow-unsaved-run",
   /** Selected locale */
   Locale = "app.locale",
   /** Sidebar collapsed state cookie */

@@ -18,12 +18,12 @@ export function WindowButtons(): React.ReactElement | null {
       return;
     }
     let active = true;
-    void window.androidPlatform.windowIsMaximized().then((value) => {
+    void window.scrcpyPlatform.windowIsMaximized().then((value) => {
       if (active) {
         setMaximized(value);
       }
     });
-    const unsubscribe = window.androidPlatform.onWindowMaximized(setMaximized);
+    const unsubscribe = window.scrcpyPlatform.onWindowMaximized(setMaximized);
     return () => {
       active = false;
       unsubscribe();
@@ -39,7 +39,7 @@ export function WindowButtons(): React.ReactElement | null {
       <button
         aria-label={m.window_controls_minimize()}
         className={BUTTON_CLASS}
-        onClick={() => void window.androidPlatform.windowMinimize()}
+        onClick={() => void window.scrcpyPlatform.windowMinimize()}
         type="button"
       >
         <MinusIcon className="size-3.5" />
@@ -50,7 +50,7 @@ export function WindowButtons(): React.ReactElement | null {
           maximized ? m.window_controls_restore() : m.window_controls_maximize()
         }
         className={BUTTON_CLASS}
-        onClick={() => void window.androidPlatform.windowToggleMaximize()}
+        onClick={() => void window.scrcpyPlatform.windowToggleMaximize()}
         type="button"
       >
         {maximized ? (
@@ -62,7 +62,7 @@ export function WindowButtons(): React.ReactElement | null {
       <button
         aria-label={m.window_controls_close()}
         className={cn(BUTTON_CLASS, "hover:bg-red-600 hover:text-white")}
-        onClick={() => void window.androidPlatform.windowClose()}
+        onClick={() => void window.scrcpyPlatform.windowClose()}
         type="button"
       >
         <XIcon className="size-3.5" />

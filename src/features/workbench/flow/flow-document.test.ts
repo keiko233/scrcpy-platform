@@ -476,7 +476,7 @@ describe("workbench copy and paste", () => {
     );
     assert.equal(parseClipboardPayload("plain text"), null);
     assert.equal(
-      parseClipboardPayload("android-platform:flow-clipboard:v1:{}"),
+      parseClipboardPayload("scrcpy-platform:flow-clipboard:v1:{}"),
       null,
     );
   });

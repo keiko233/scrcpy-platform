@@ -7,7 +7,7 @@ import { RunPanel } from "@/features/workbench/debug/run-panel";
 import { ScriptBrowser } from "@/features/workbench/library/script-browser";
 import { useSafeLocalStorage } from "@/hooks/use-safe-local-storage";
 
-const LAYOUT_STORAGE_KEY = "android-platform:workbench-layout";
+const LAYOUT_STORAGE_KEY = "scrcpy-platform:workbench-layout";
 
 const layoutsSchema = z
   .object({

@@ -8,7 +8,7 @@ import { Timing } from "@/shared/constants/timing";
 export const DEVICE_SESSION_QUERY_KEY = QueryKey.DeviceSession;
 export const deviceSessionQueryKey = [DEVICE_SESSION_QUERY_KEY] as const;
 export const deviceSessionQueryFn = (): Promise<DeviceSessionDto> =>
-  window.androidPlatform.getDeviceSession();
+  window.scrcpyPlatform.getDeviceSession();
 
 const SESSION_POLL_MS = Timing.DEVICE_SESSION_POLL_MS;
 
@@ -16,7 +16,7 @@ export function useDeviceSession() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    return window.androidPlatform.onDeviceSession((session) => {
+    return window.scrcpyPlatform.onDeviceSession((session) => {
       queryClient.setQueryData(deviceSessionQueryKey, session);
     });
   }, [queryClient]);

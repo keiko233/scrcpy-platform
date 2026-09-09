@@ -112,7 +112,7 @@ export function useFlowRun(): FlowRunManager {
   }, [run]);
 
   useEffect(() => {
-    return window.androidPlatform.onFlowRunLog((entry) => {
+    return window.scrcpyPlatform.onFlowRunLog((entry) => {
       setLogs((current) => [...current, entry].slice(-1000));
     });
   }, []);

@@ -19,7 +19,7 @@ export const scriptsQueryKey = (projectId: string) =>
   [SCRIPTS_QUERY_KEY, projectId] as const;
 export const scriptsQueryFn =
   (projectId: string) => (): Promise<ScriptDto[]> =>
-    window.androidPlatform.listScripts({ projectId });
+    window.scrcpyPlatform.listScripts({ projectId });
 
 export function useScripts(projectId: string | null) {
   return useQuery({
@@ -49,7 +49,7 @@ export function useCreateScript() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: CreateScriptInput) =>
-      window.androidPlatform.createScript(input),
+      window.scrcpyPlatform.createScript(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         queryClient.setQueryData<ScriptDto[]>(
@@ -70,7 +70,7 @@ export function useRenameScript() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: RenameScriptInput) =>
-      window.androidPlatform.renameScript(input),
+      window.scrcpyPlatform.renameScript(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         updateScriptInCache(queryClient, result.script);
@@ -83,7 +83,7 @@ export function useDeleteScript() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: DeleteScriptInput) =>
-      window.androidPlatform.deleteScript(input),
+      window.scrcpyPlatform.deleteScript(input),
     onSuccess: (result, variables) => {
       if (result.status === "ok") {
         queryClient.setQueryData<ScriptDto[]>(
@@ -107,7 +107,7 @@ export function useSaveScriptDraft() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (input: SaveScriptDraftInput) =>
-      window.androidPlatform.saveScriptDraft(input),
+      window.scrcpyPlatform.saveScriptDraft(input),
     onSuccess: (result) => {
       if (result.status === "ok") {
         updateScriptInCache(queryClient, result.script);
