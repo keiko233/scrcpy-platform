@@ -261,6 +261,9 @@ export enum StorageKey {
 
 export enum ElectronChannel {
   SystemGetInfo = "system:get-info",
+  LocaleGet = "locale:get",
+  LocaleSet = "locale:set",
+  LocaleChanged = "locale:changed",
   LogsList = "logs:list",
   LogsClear = "logs:clear",
   LogsEntry = "logs:entry",

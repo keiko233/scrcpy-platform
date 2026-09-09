@@ -10,6 +10,7 @@ import {
   UnplugIcon,
 } from "lucide-react";
 
+import { m } from "@/paraglide/messages.js";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { AdbDeviceDto, DeviceSessionDto } from "@/shared/device-contracts";
@@ -33,7 +34,7 @@ function sessionName(session: DeviceSessionDto, devices: AdbDeviceDto[]): string
 }
 
 function displayName(display: AndroidDisplayDto): string {
-  return display.name || `Display ${display.displayId}`;
+  return display.name || m.manager_display_name({ id: display.displayId });
 }
 
 export function ManagerScreen(): React.ReactElement {
@@ -54,7 +55,7 @@ export function ManagerScreen(): React.ReactElement {
       setDevices(deviceResult.status === "ok" ? deviceResult.devices : []);
       setSessions(nextSessions);
       if (deviceResult.status === "error") {
-        setError("ADB server is not reachable.");
+        setError(m.manager_adb_unreachable());
       } else {
         setError(null);
       }
@@ -98,7 +99,7 @@ export function ManagerScreen(): React.ReactElement {
     setError(null);
     const result = await window.androidPlatform.connectDevice({ transportId });
     if (result.status === "error") {
-      setError(`Could not connect: ${result.error}`);
+      setError(m.manager_connect_failed({ error: result.error }));
     }
     await refresh();
   };
@@ -107,7 +108,7 @@ export function ManagerScreen(): React.ReactElement {
     setError(null);
     const result = await window.androidPlatform.disconnectDevice({ sessionId });
     if (result.status === "error") {
-      setError("Disconnect failed.");
+      setError(m.manager_disconnect_failed());
     }
     await refresh();
   };
@@ -115,7 +116,7 @@ export function ManagerScreen(): React.ReactElement {
   const openScreen = async (sessionId: string, displayId: number) => {
     const result = await window.androidPlatform.openScreen({ sessionId, displayId });
     if (result.status === "error") {
-      setError(result.message ?? "Could not open the screen window.");
+      setError(result.message ?? m.manager_open_failed());
     }
   };
 
@@ -153,8 +154,8 @@ export function ManagerScreen(): React.ReactElement {
       <header className="flex shrink-0 items-center gap-2 border-b px-4 py-3">
         <SmartphoneIcon className="size-4 text-muted-foreground" />
         <div>
-          <h1 className="text-sm font-semibold">设备与屏幕</h1>
-          <p className="text-[11px] text-muted-foreground">主工作台 · 每个屏幕可独立打开和运行</p>
+          <h1 className="text-sm font-semibold">{m.manager_title()}</h1>
+          <p className="text-[11px] text-muted-foreground">{m.manager_subtitle()}</p>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <Button
@@ -163,15 +164,15 @@ export function ManagerScreen(): React.ReactElement {
             onClick={() => void window.androidPlatform.openPairWindow()}
           >
             <PlugIcon />
-            连接设备
+            {m.manager_connect_device()}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => void window.androidPlatform.openSettingsWindow()}>
             <SettingsIcon />
-            设置
+            {m.settings_title()}
           </Button>
           <Button size="sm" variant="outline" loading={loading} onClick={() => void refresh()}>
             <RefreshCwIcon />
-            刷新
+            {m.pair_refresh()}
           </Button>
         </div>
       </header>
@@ -186,15 +187,15 @@ export function ManagerScreen(): React.ReactElement {
         <section className="mx-auto grid max-w-5xl gap-3">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">ADB 设备</h2>
-              <p className="mt-1 text-[11px] text-muted-foreground">同一台设备可同时打开多个显示屏窗口。</p>
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{m.manager_devices_title()}</h2>
+              <p className="mt-1 text-[11px] text-muted-foreground">{m.manager_devices_description()}</p>
             </div>
-            <span className="text-[11px] text-muted-foreground">{devices.length} 个发现设备 · {sessions.length} 个会话</span>
+            <span className="text-[11px] text-muted-foreground">{m.manager_counts({ devices: devices.length, sessions: sessions.length })}</span>
           </div>
 
           {devices.length === 0 ? (
             <div className="rounded-lg border border-dashed p-6 text-center text-xs text-muted-foreground">
-              未发现可用设备。点击“连接设备”进行 USB 或无线配对。
+              {m.manager_empty()}
             </div>
           ) : (
             devices.map((device) => {
@@ -208,17 +209,17 @@ export function ManagerScreen(): React.ReactElement {
                     </div>
                     <div className="min-w-0">
                       <div className="truncate text-sm font-medium">{deviceName(device)}</div>
-                      <div className="truncate text-[11px] text-muted-foreground">{device.serial || "无序列号"} · transport {device.transportId}</div>
+                      <div className="truncate text-[11px] text-muted-foreground">{device.serial || m.manager_no_serial()} · transport {device.transportId}</div>
                     </div>
                     <span className="ml-auto text-[11px] text-muted-foreground">{device.state}</span>
                     {connected && session !== undefined ? (
                       <Button size="sm" variant="ghost" onClick={() => void disconnect(session.sessionId)}>
                         <UnplugIcon />
-                        断开
+                        {m.device_status_disconnect()}
                       </Button>
                     ) : (
                       <Button size="sm" variant="outline" disabled={device.state !== "device"} onClick={() => void connect(device.transportId)}>
-                        连接
+                        {m.pair_connect()}
                       </Button>
                     )}
                   </div>
@@ -269,7 +270,7 @@ function DeviceDisplays({
     <div className="mt-3 border-t pt-3">
       <div className="mb-2 flex items-center gap-2">
         <MonitorIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium">{sessionName(session, devices)} 的屏幕</span>
+        <span className="text-xs font-medium">{m.manager_device_screens({ device: sessionName(session, devices) })}</span>
         <span className="text-[11px] text-muted-foreground">{session.sessionId}</span>
       </div>
       {state.error !== null && <p className="mb-2 text-[11px] text-destructive-foreground">{state.error}</p>}
@@ -279,13 +280,13 @@ function DeviceDisplays({
             {display.kind === "virtual" ? <MonitorIcon className="size-3.5" /> : <SmartphoneIcon className="size-3.5" />}
             <div className="min-w-0 flex-1">
               <div className="truncate text-xs font-medium">{displayName(display)}</div>
-              <div className="text-[10px] text-muted-foreground">display {display.displayId} · {display.kind}</div>
+              <div className="text-[10px] text-muted-foreground">display {display.displayId} · {display.kind === "virtual" ? m.display_tabs_virtual() : m.display_tabs_physical()}</div>
             </div>
-            <Button size="icon-xs" variant="ghost" title="打开屏幕窗口" onClick={() => void onOpen(session.sessionId, display.displayId)}>
+            <Button size="icon-xs" variant="ghost" title={m.manager_open_screen()} onClick={() => void onOpen(session.sessionId, display.displayId)}>
               <ExternalLinkIcon />
             </Button>
             {display.ownedBySession && (
-              <Button size="icon-xs" variant="ghost" title="销毁虚拟屏" onClick={() => void onDestroy(session.sessionId, display.displayId)}>
+              <Button size="icon-xs" variant="ghost" title={m.manager_destroy_virtual()} onClick={() => void onDestroy(session.sessionId, display.displayId)}>
                 ×
               </Button>
             )}
@@ -293,12 +294,12 @@ function DeviceDisplays({
         ))}
       </div>
       <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        <Input className="h-7 w-20 text-[11px]" value={virtualForm.width} onChange={(event) => setVirtualForm({ ...virtualForm, width: event.target.value })} aria-label="虚拟屏宽度" />
-        <Input className="h-7 w-20 text-[11px]" value={virtualForm.height} onChange={(event) => setVirtualForm({ ...virtualForm, height: event.target.value })} aria-label="虚拟屏高度" />
-        <Input className="h-7 w-20 text-[11px]" value={virtualForm.dpi} onChange={(event) => setVirtualForm({ ...virtualForm, dpi: event.target.value })} aria-label="虚拟屏 DPI" />
+        <Input className="h-7 w-20 text-[11px]" value={virtualForm.width} onChange={(event) => setVirtualForm({ ...virtualForm, width: event.target.value })} aria-label={m.manager_virtual_width()} />
+        <Input className="h-7 w-20 text-[11px]" value={virtualForm.height} onChange={(event) => setVirtualForm({ ...virtualForm, height: event.target.value })} aria-label={m.manager_virtual_height()} />
+        <Input className="h-7 w-20 text-[11px]" value={virtualForm.dpi} onChange={(event) => setVirtualForm({ ...virtualForm, dpi: event.target.value })} aria-label={m.manager_virtual_dpi()} />
         <Button size="sm" variant="outline" onClick={() => void onCreate(session.sessionId)}>
           <PlusIcon />
-          创建虚拟屏
+          {m.manager_create_virtual()}
         </Button>
       </div>
     </div>

@@ -79,6 +79,19 @@ const MIGRATIONS: readonly Migration[] = [
       }
     },
   },
+  {
+    version: 3,
+    name: "app-preferences",
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS app_preferences (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 export function runMigrations(db: DatabaseSync): void {

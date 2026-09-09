@@ -10,6 +10,8 @@ import { ScreenRefSchema } from "../shared/window-contracts";
 import { PersistenceDatabase } from "./persistence/database";
 import { ProjectStore } from "./persistence/project-store";
 import { ScrcpySettingsStore } from "./persistence/scrcpy-settings-store";
+import { AppPreferencesStore } from "./persistence/app-preferences-store";
+import { AppLocaleSchema } from "../shared/locale-contracts";
 import { registerProjectHandlers } from "./ipc/project-handlers";
 import { registerDeviceHandlers } from "./ipc/device-handlers";
 import { registerScreenHandlers } from "./ipc/screen-handlers";
@@ -35,12 +37,17 @@ let removeRunHandlers: (() => void) | null = null;
 let removeBackgroundRunCleanup: (() => void) | null = null;
 let shuttingDown = false;
 
-function openPersistence(): { store: ProjectStore; settingsStore: ScrcpySettingsStore } {
+function openPersistence(): {
+  store: ProjectStore;
+  settingsStore: ScrcpySettingsStore;
+  preferencesStore: AppPreferencesStore;
+} {
   const dbPath = join(app.getPath("userData"), "android-platform.sqlite3");
   persistence = new PersistenceDatabase(dbPath);
   return {
     store: new ProjectStore(persistence),
     settingsStore: new ScrcpySettingsStore(persistence),
+    preferencesStore: new AppPreferencesStore(persistence),
   };
 }
 
@@ -70,11 +77,22 @@ function closeScreenAfterWindow(contextId: string): void {
 
 void app.whenReady().then(async () => {
   const contexts = new WindowContextRegistry();
-  const { store, settingsStore } = openPersistence();
+  const { store, settingsStore, preferencesStore } = openPersistence();
   logger = new Logger(join(app.getPath("userData"), "android-platform.log"));
   logger.install();
 
   ipcMain.handle(ELECTRON_CHANNELS.systemInfo, () => getSystemInfo());
+  ipcMain.handle(ELECTRON_CHANNELS.localeGet, () => preferencesStore.getLocale());
+  ipcMain.handle(ELECTRON_CHANNELS.localeSet, (_event, raw: unknown) => {
+    const locale = AppLocaleSchema.parse(raw);
+    const saved = preferencesStore.setLocale(locale);
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(ELECTRON_CHANNELS.localeChanged, saved);
+      }
+    }
+    return saved;
+  });
   ipcMain.handle(ELECTRON_CHANNELS.windowContext, (event) => {
     const context = contexts.get(event.sender.id);
     if (context === null) {

@@ -1,16 +1,19 @@
 import {
   createContext,
+  Fragment,
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
 
 import { setLocale as setParaglideLocale } from "@/paraglide/runtime.js";
 import type { Locale } from "@/paraglide/runtime.js";
+import { StorageKey } from "@/shared/constants/enums";
 
-const STORAGE_KEY = "app.locale";
+const STORAGE_KEY = StorageKey.Locale;
 
 type LanguageContextValue = {
   language: Locale;
@@ -31,28 +34,67 @@ function getInitialLocale(): Locale {
 }
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguageState] = useState<Locale>(() => getInitialLocale());
-
-  useEffect(() => {
-    setParaglideLocale(language, { reload: false });
-  }, [language]);
-
-  useEffect(() => {
+  const [language, setLanguageState] = useState<Locale>(() => {
     const initial = getInitialLocale();
-    if (initial !== "en") {
-      setParaglideLocale(initial, { reload: false });
-    }
-  }, []);
+    // Message functions run during the first child render. An effect is too
+    // late, and receiving this same locale over IPC will not trigger a render.
+    setParaglideLocale(initial, { reload: false });
+    return initial;
+  });
+  const didChooseLanguage = useRef(false);
 
-  const setLanguage = useCallback((locale: Locale) => {
-    setLanguageState(locale);
+  const applyLanguage = useCallback((locale: Locale) => {
     window.localStorage.setItem(STORAGE_KEY, locale);
     setParaglideLocale(locale, { reload: false });
+    setLanguageState(locale);
   }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let receivedLocale = false;
+    const initial = getInitialLocale();
+    const unsubscribe = window.androidPlatform.onAppLocale((locale) => {
+      if (!disposed) {
+        receivedLocale = true;
+        applyLanguage(locale);
+      }
+    });
+
+    void window.androidPlatform.getAppLocale().then((locale) => {
+      if (disposed || receivedLocale || didChooseLanguage.current) {
+        return;
+      }
+      if (locale === null) {
+        // One-time migration from the legacy per-renderer localStorage value.
+        return window.androidPlatform.setAppLocale(initial);
+      }
+      applyLanguage(locale);
+    }).catch((error: unknown) => {
+      console.error("Failed to load the application locale", error);
+    });
+
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [applyLanguage]);
+
+  const setLanguage = useCallback((locale: Locale) => {
+    didChooseLanguage.current = true;
+    // Update this renderer first; IPC then persists and broadcasts to every
+    // window, including windows with a different renderer/storage context.
+    applyLanguage(locale);
+    void window.androidPlatform.setAppLocale(locale).catch((error: unknown) => {
+      console.error("Failed to save the application locale", error);
+    });
+  }, [applyLanguage]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage }}>
-      {children}
+      {/* Translation calls are not all React context consumers. Changing this
+          key remounts the visible app tree so every direct message call is
+          re-evaluated immediately. */}
+      <Fragment key={language}>{children}</Fragment>
     </LanguageContext.Provider>
   );
 }

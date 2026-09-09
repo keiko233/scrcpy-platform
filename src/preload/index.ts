@@ -7,6 +7,16 @@ import {
 
 const api: ElectronAPI = {
   getSystemInfo: () => ipcRenderer.invoke(ELECTRON_CHANNELS.systemInfo),
+  getAppLocale: () => ipcRenderer.invoke(ELECTRON_CHANNELS.localeGet),
+  setAppLocale: (locale) => ipcRenderer.invoke(ELECTRON_CHANNELS.localeSet, locale),
+  onAppLocale: (listener) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      locale: Parameters<typeof listener>[0],
+    ) => listener(locale);
+    ipcRenderer.on(ELECTRON_CHANNELS.localeChanged, handler);
+    return () => ipcRenderer.removeListener(ELECTRON_CHANNELS.localeChanged, handler);
+  },
   listLogs: (input) => ipcRenderer.invoke(ELECTRON_CHANNELS.logsList, input),
   clearLogs: () => ipcRenderer.invoke(ELECTRON_CHANNELS.logsClear),
   onLog: (listener) => {

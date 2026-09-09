@@ -73,6 +73,7 @@ import type {
   StopFlowRunInput,
   StopFlowRunResult,
 } from "./run-contracts";
+import type { AppLocale } from "./locale-contracts";
 import {
   ElectronChannel,
   SystemPlatform as SystemPlatformEnum,
@@ -81,6 +82,9 @@ import { AppConstants } from "./constants/app";
 
 export const ELECTRON_CHANNELS = {
   systemInfo: ElectronChannel.SystemGetInfo,
+  localeGet: ElectronChannel.LocaleGet,
+  localeSet: ElectronChannel.LocaleSet,
+  localeChanged: ElectronChannel.LocaleChanged,
   logsList: ElectronChannel.LogsList,
   logsClear: ElectronChannel.LogsClear,
   logsEntry: ElectronChannel.LogsEntry,
@@ -181,6 +185,10 @@ export type LogListener = (entry: LogEntry) => void;
 
 export interface ElectronAPI {
   getSystemInfo(): Promise<SystemInfo>;
+  /** The main-process owned locale. `null` means legacy renderer storage has not migrated yet. */
+  getAppLocale(): Promise<AppLocale | null>;
+  setAppLocale(locale: AppLocale): Promise<AppLocale>;
+  onAppLocale(listener: (locale: AppLocale) => void): () => void;
   listLogs(input?: { limit?: number }): Promise<LogEntry[]>;
   clearLogs(): Promise<void>;
   onLog(listener: LogListener): () => void;

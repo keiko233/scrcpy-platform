@@ -80,14 +80,14 @@ describe("ProjectStore", () => {
       const firstCount = first.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as {
         n: number;
       };
-      assert.equal(Number(firstCount.n), 2);
+      assert.equal(Number(firstCount.n), 3);
       first.close();
 
       const second = new PersistenceDatabase(dbPath);
       const secondCount = second.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as {
         n: number;
       };
-      assert.equal(Number(secondCount.n), 2);
+      assert.equal(Number(secondCount.n), 3);
       second.close();
     } finally {
       rmSync(dir, { recursive: true, force: true });

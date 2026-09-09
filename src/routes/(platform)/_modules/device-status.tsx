@@ -22,7 +22,7 @@ export function DeviceStatus(): React.ReactElement | null {
 
   if (session?.state !== "connected") {
     return isScreenWindow ? (
-      <span className="app-no-drag px-2 text-[11px] text-warning-foreground">设备已断开</span>
+      <span className="app-no-drag px-2 text-[11px] text-warning-foreground">{m.device_status_disconnected()}</span>
     ) : null;
   }
 

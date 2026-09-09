@@ -54,7 +54,9 @@ export function SettingsScreen() {
             }}
           >
             <SelectTrigger className="w-full">
-              <SelectValue />
+              <SelectValue>
+                {language === "zh-cn" ? m.settings_language_chinese() : m.settings_language_english()}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="en">{m.settings_language_english()}</SelectItem>
