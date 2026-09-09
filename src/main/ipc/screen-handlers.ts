@@ -266,7 +266,7 @@ export function registerScreenHandlers(
 
   return screens.subscribe(({ ref, screen }) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (window.isDestroyed()) {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) {
         continue;
       }
       const context = contexts.getScreen(window.webContents.id);

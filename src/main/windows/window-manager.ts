@@ -135,6 +135,10 @@ export class WindowManager {
         devTools: this.#options.rendererUrl !== undefined,
       },
     });
+    // Electron destroys `window.webContents` before emitting `closed`. Keep
+    // its id while the window is alive so cleanup does not dereference a
+    // destroyed WebContents instance.
+    const webContentsId = window.webContents.id;
     const context = this.#contexts.register(window.webContents, kind, target);
     window.once("ready-to-show", () => {
       if (!window.isDestroyed()) {
@@ -145,10 +149,14 @@ export class WindowManager {
     window.on("maximize", () => {
       // The renderer receives the initial value via the existing query and
       // only needs a change notification after native maximize/unmaximize.
-      window.webContents.send("window:maximized-changed", true);
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send("window:maximized-changed", true);
+      }
     });
     window.on("unmaximize", () => {
-      window.webContents.send("window:maximized-changed", false);
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send("window:maximized-changed", false);
+      }
     });
     window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
     window.webContents.on("will-navigate", (event) => {
@@ -175,7 +183,7 @@ export class WindowManager {
       });
     }
     window.on("closed", () => {
-      const closedContext = this.#contexts.unregister(window.webContents.id);
+      const closedContext = this.#contexts.unregister(webContentsId);
       if (this.#manager === window) {
         this.#manager = null;
       }

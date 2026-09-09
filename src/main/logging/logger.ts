@@ -119,7 +119,9 @@ export class Logger {
     );
     this.writeFile(entry);
     for (const win of BrowserWindow.getAllWindows()) {
-      win.webContents.send(LOG_CHANNEL, entry);
+      if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
+        win.webContents.send(LOG_CHANNEL, entry);
+      }
     }
   }
 

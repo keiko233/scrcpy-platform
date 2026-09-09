@@ -97,7 +97,7 @@ export function registerDeviceHandlers(
 
   return service.subscribe((session) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed()) {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
         const context = contexts.get(window.webContents.id);
         if (
           context === null ||

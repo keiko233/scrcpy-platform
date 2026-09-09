@@ -129,7 +129,7 @@ export function registerRunHandlers(
 
   const removeRunListener = runs.subscribe((screenInstanceId, run) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (window.isDestroyed()) {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) {
         continue;
       }
       const context = contexts.get(window.webContents.id);
@@ -144,7 +144,7 @@ export function registerRunHandlers(
   });
   const removeLogListener = runs.subscribeLogs((screenInstanceId, entry) => {
     for (const window of BrowserWindow.getAllWindows()) {
-      if (window.isDestroyed()) {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) {
         continue;
       }
       const context = contexts.get(window.webContents.id);
