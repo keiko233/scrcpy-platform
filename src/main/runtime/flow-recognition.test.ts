@@ -293,11 +293,10 @@ describe("OcrRecognitionDriver", () => {
   test("returns or fails only after transient errors exhaust the timeout", async () => {
     const capture = new FakeCapture();
     const engine = new FakeEngine();
-    engine.failures = [
-      new Error("temporary OCR engine failure"),
-      new Error("temporary OCR engine failure"),
-      new Error("temporary OCR engine failure"),
-    ];
+    engine.failures = Array.from(
+      { length: 10 },
+      () => new Error("temporary OCR engine failure"),
+    );
     const driver = new OcrRecognitionDriver(capture, engine);
 
     const result = await driver.recognize(
