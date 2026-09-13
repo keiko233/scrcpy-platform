@@ -15,21 +15,23 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   version:
-    name: Bump version, tag and push
+    name: Bump version, tag and trigger build
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.bump.outputs.version }}
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.24.0
+          version: 12.4.1
 
       - uses: actions/setup-node@v4
         with:
@@ -56,86 +58,19 @@ jobs:
           git push origin main "v${VERSION}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Package (${{ matrix.name }})
-    needs: version
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: macOS
-            os: macos-latest
-            args: --mac --arm64
-          - name: Windows
-            os: windows-latest
-            args: --win
-    env:
-      CSC_IDENTITY_AUTO_DISCOVERY: "false"
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.24.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build
-        run: pnpm build
-
-      - name: Package installers
-        run: pnpm exec electron-builder ${{ matrix.args }} --publish never
-
-      - name: Upload installers
-        uses: actions/upload-artifact@v4
-        with:
-          name: installer-${{ matrix.name }}
-          path: |
-            release/*.dmg
-            release/*-setup.exe
-          if-no-files-found: error
-
-  release:
-    name: Publish GitHub Release
-    needs: [version, build]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 11.24.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Download installers
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Generate release notes
+      # Tags pushed with the default GITHUB_TOKEN do not emit `push` events,
+      # so the tag alone cannot trigger the build workflow. Dispatch it
+      # explicitly instead; tags pushed by a real user still trigger it.
+      - name: Dispatch release build
         env:
-          VERSION: ${{ needs.version.outputs.version }}
-        run: pnpm exec tsx scripts/release-notes.ts "$VERSION" > release-notes.md
-
-      - name: Publish
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release create "v${VERSION}" artifacts/* --title "v${VERSION}" --notes-file release-notes.md
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          for attempt in 1 2 3 4 5; do
+            if gh workflow run release-build.yml --ref "v${VERSION}" -f tag="v${VERSION}"; then
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Failed to dispatch release-build.yml for v${VERSION}" >&2
+          exit 1

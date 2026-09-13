@@ -54,12 +54,15 @@ GitHub Actions drives both checks and releases:
 
 - **`ci.yml`** — on every push to `main` and on pull requests: install with a
   frozen lockfile, then test, typecheck, lint and build on Ubuntu.
-- **`release.yml`** — manual `workflow_dispatch` release with a
-  `major / minor / patch` option. The version is derived from the latest
-  `vX.Y.Z` tag (starting from `0.0.0`), written back to `package.json`, tagged
-  and pushed to `main`. macOS (arm64, dmg) and Windows (nsis) installers are
-  built on their native runners and attached to a GitHub Release together with
-  a changelog generated from conventional commits.
+- **`release.yml`** — manual `workflow_dispatch` with a `major / minor / patch`
+  option. The version is derived from the latest `vX.Y.Z` tag (starting from
+  `0.0.0`), written back to `package.json`, committed, tagged and pushed to
+  `main`, then it dispatches `release-build.yml` for the new tag.
+- **`release-build.yml`** — triggered by `v*` tag pushes (or manually via
+  `workflow_dispatch` with an existing tag). It checks out the tag, verifies
+  that `package.json` matches it, builds macOS (arm64, dmg) and Windows (nsis)
+  installers on their native runners, generates a changelog from conventional
+  commits and attaches everything to a GitHub Release.
 
 Artifacts are unsigned; macOS users need to right-click open on first launch.
 
