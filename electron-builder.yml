@@ -2,7 +2,12 @@ appId: com.keiko233.scrcpy-platform
 directories:
   buildResources: build
   output: release
+compression: maximum
+electronLanguages:
+  - en-US
+  - zh-CN
 files:
+  - "!release*/**"
   - "!src/**"
   - "!scripts/**"
   - "!docs/**"
@@ -12,6 +17,20 @@ files:
   - "!{README.md,index.html,components.json,.oxlintrc.json,electron.vite.config.ts,vitest.config.ts,pnpm-workspace.yaml}"
   - "!tsconfig*.json"
   - "!*.local"
+  # Runtime code never reads source maps; stripping them saves several MB.
+  - "!node_modules/**/*.map"
+  # tesseract.js loads its core from Node, so the browser bundles
+  # (*.wasm.js) and the non-LSTM cores are dead weight.
+  - "!node_modules/tesseract.js-core/*.wasm.js"
+  - "!node_modules/tesseract.js-core/tesseract-core.js"
+  - "!node_modules/tesseract.js-core/tesseract-core.wasm"
+  - "!node_modules/tesseract.js-core/tesseract-core-simd.js"
+  - "!node_modules/tesseract.js-core/tesseract-core-simd.wasm"
+  - "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.js"
+  - "!node_modules/tesseract.js-core/tesseract-core-relaxedsimd.wasm"
+  # The app uses the integerized best models (4.0.0_best_int); the larger
+  # fast models (4.0.0) are dead weight.
+  - "!node_modules/@tesseract.js-data/*/4.0.0/**"
 artifactName: ${name}-${version}-${arch}.${ext}
 mac:
   category: public.app-category.utilities

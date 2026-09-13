@@ -1,6 +1,6 @@
 import { copyFile, mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { deflateSync } from "node:zlib";
 
 import { createWorker, OEM, type Worker } from "tesseract.js";
@@ -50,6 +50,12 @@ interface LanguageDataPackage {
   gzip: boolean;
   langPath: string;
 }
+
+/**
+ * The language packages ship both the fast (4.0.0) and integerized best
+ * (4.0.0_best_int) models. Only the latter is bundled to keep installers small.
+ */
+const OCR_LANGUAGE_MODEL_DIRECTORY = "4.0.0_best_int";
 
 function abortIfNeeded(signal: AbortSignal): void {
   if (signal.aborted) {
@@ -320,7 +326,8 @@ export class TesseractOcrEngine implements OcrEngine {
         throw new Error(`Unexpected OCR language package metadata for ${language}.`);
       }
       const source = join(
-        languagePackage.langPath,
+        dirname(languagePackage.langPath),
+        OCR_LANGUAGE_MODEL_DIRECTORY,
         `${language}.traineddata.gz`,
       );
       const target = join(
